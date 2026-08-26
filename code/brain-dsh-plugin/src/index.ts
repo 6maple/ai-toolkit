@@ -1,9 +1,8 @@
 /**
- * @dsh-external/brain-dsh-plugin — brain-dsh 记忆系统 DSH 原生插件。
+ * @dsh-external/brain-dsh-plugin — brain 记忆系统 DSH 原生插件。
  *
- * 薄包装：按项目根懒 spawn brain-dsh（MCP stdio），把 8 个 brain_* 工具注册进
- * dsh-tools 注册表，并把当前 DSH 会话 id 注入 brain_think 的 session_id
- * （优先级：模型显式传参 > 注入的会话 id > 服务端 default）。
+ * 薄包装：按项目根懒 spawn brain（MCP stdio），把 core 唯一 public
+ * contract 注册进 dsh-tools，并转发可信的 DSH session fact。
  *
  * 会话/项目解析（宿主直读，无需 _meta）：
  * - 会话 id：exec.agent.id
@@ -12,24 +11,25 @@
  *
  * 资源注册全部挂 ctx.effect（热重载/卸载自动清理）。
  */
-import type { Context } from 'cordis'
-import z from 'schemastery'
+import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { JsonSchemaNode, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { PUBLIC_BRAIN_TOOLS, type BrainToolDefinition } from 'brain/public-tools'
 import { setupAutoThink } from './autothink.js'
 import { InstanceManager } from './instances.js'
 import { extractText } from './mcp.js'
-import { BRAIN_TOOLS, type BrainToolSpec } from './tools.js'
 
-// Programmatic surface (verification scripts / embedding): the manager, the
-// vendored contracts, and the result renderer.
+// Programmatic surface for verification and embedding. The contract itself is
+// re-exported from core; this package does not own a copy.
 export { InstanceManager } from './instances.js'
-export { BRAIN_TOOLS, type BrainToolSpec } from './tools.js'
-export { extractText } from './mcp.js'
+export { PUBLIC_BRAIN_TOOLS } from 'brain/public-tools'
+export { setupAutoThink } from './autothink.js'
+export { extractAnchorContext, extractText } from './mcp.js'
 
 export const name = '@dsh-external/brain-dsh-plugin'
 export const inject = ['tools', 'agents']
@@ -45,9 +45,7 @@ export interface Config {
     projectRoot?: string
     /** Global memory root; default ~/.brain-data. */
     home: string
-    askLongTerm: string
   }
-  injectSessionId: boolean
   /**
    * 是否把 brain_think 注册给模型（默认开放）。
    * 注意：当 autoThink.enabled 开启（宿主自动注入）时，brain_think 自动对模型隐藏
@@ -72,9 +70,7 @@ export const Config = z.object({
   brain: z.object({
     projectRoot: z.string().default(''),
     home: z.string().default(''),
-    askLongTerm: z.string().default('none'),
   }),
-  injectSessionId: z.boolean().default(true),
   exposeThink: z.boolean().default(true),
   autoThink: z.object({
     enabled: z.boolean().default(true),
@@ -82,17 +78,25 @@ export const Config = z.object({
   }),
 })
 
-const OUTPUT_SCHEMA: JsonSchemaNode = {
+const OUTPUT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: { content: { type: 'array', items: {} } },
   required: ['content'],
   additionalProperties: false,
 }
 
-/** Whether a vendored tool declares `session_id` (only brain_think does today). */
-function declaresSessionId(spec: BrainToolSpec): boolean {
-  const properties = spec.parameters.properties as Record<string, unknown> | undefined
-  return typeof properties === 'object' && properties !== null && 'session_id' in properties
+function toHostSchema(definition: BrainToolDefinition): Record<string, unknown> {
+  return definition.inputSchema.toJSONSchema({ target: 'draft-07' })
+}
+
+/** The hook owns anchor triggering, so it is the only mode that hides think. */
+export function visibleToolDefinitions(
+  autoThinkEnabled: boolean,
+  exposeThink: boolean,
+): readonly BrainToolDefinition[] {
+  return PUBLIC_BRAIN_TOOLS.filter(
+    (definition) => definition.name !== 'brain_think' || (exposeThink && !autoThinkEnabled),
+  )
 }
 
 /** Per-call project root: session cwd first, config override as fallback. */
@@ -106,34 +110,31 @@ export function resolveProjectRoot(agent: Agent | undefined, config: Config): st
 }
 
 /**
- * Model args → wire args. Injects the caller's session id into tools that
- * declare `session_id`, only when the model did not pass one explicitly.
+ * Model args → wire args. brain_think receives the trusted DSH session only
+ * when the model did not explicitly choose a session.
  */
-function buildCallArgs(
+export function buildCallArgs(
   args: unknown,
   agent: Agent | undefined,
-  config: Config,
   injectable: boolean,
 ): Record<string, unknown> {
   const raw = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
   const out: Record<string, unknown> = { ...raw }
-  if (config.injectSessionId && injectable && agent && typeof out.session_id !== 'string') {
+  if (injectable && agent && typeof out.session_id !== 'string') {
     out.session_id = agent.id
   }
   return out
 }
 
 export function apply(ctx: Context, config: Config): void {
-  // ---- resolve the brain-dsh server entry ----
-  // lib/ sits one level below the package root; the sibling project is at
-  // <pkg>/../brain-dsh, so the dist entry is lib/../../brain-dsh/dist/index.mjs.
-  const pluginLibDir = dirname(fileURLToPath(import.meta.url))
-  const defaultServerPath = join(pluginLibDir, '..', '..', 'brain-dsh', 'dist', 'index.mjs')
+  // ---- resolve the brain server entry ----
+  const require = createRequire(import.meta.url)
+  const defaultServerPath = require.resolve('brain')
   const serverArgs = config.server.args.length > 0 ? [...config.server.args] : [defaultServerPath]
   if (config.server.args.length === 0 && !existsSync(defaultServerPath)) {
     throw new Error(
-      `brain-dsh-plugin: brain-dsh dist not found at ${defaultServerPath} — build brain-dsh first ` +
-        '(cd ../brain-dsh && vp pack), or point server.args at the built entry explicitly',
+      `brain-dsh-plugin: brain dist not found at ${defaultServerPath} — build brain first ` +
+        '(install the matching brain package, or point server.args at the built entry explicitly)',
     )
   }
   const command = config.server.command === 'node' ? process.execPath : config.server.command
@@ -144,40 +145,40 @@ export function apply(ctx: Context, config: Config): void {
     args: serverArgs,
     timeoutMs: config.server.timeoutMs,
     home,
-    askLongTerm: config.brain.askLongTerm === 'protect' ? 'protect' : 'none',
   })
-  ctx.effect(() => () => manager.dispose(), 'brain-dsh: instances')
+  ctx.effect(() => () => manager.dispose(), 'brain: instances')
 
-  // ---- register brain_* tools (vendored contracts, lazy instances) ----
+  // ---- register the core-owned public contract (lazy instances) ----
   // brain_think 的实际注册条件 = exposeThink && !autoThink.enabled：
   // 自动注入开启时它对模型隐藏（宿主接管），关闭时才开放给模型手动调。
   const exposeThink = config.exposeThink && !config.autoThink.enabled
   const registered: string[] = []
-  for (const spec of BRAIN_TOOLS) {
-    if (spec.name === 'brain_think' && !exposeThink) continue
-    const injectable = declaresSessionId(spec)
-    registered.push(spec.name)
+  for (const definition of visibleToolDefinitions(config.autoThink.enabled, config.exposeThink)) {
+    const injectable = definition.name === 'brain_think'
+    registered.push(definition.name)
     ctx.effect(
       () =>
         ctx.tools.register({
-          name: spec.name,
-          description: spec.description,
-          parameters: spec.parameters,
+          name: definition.name,
+          description: definition.description,
+          parameters: toHostSchema(definition),
           output: {
             schema: OUTPUT_SCHEMA,
             render: (_args: unknown, value: { content?: Array<{ type: string; text?: string }> }) => [
-              { type: 'text' as const, text: extractText(value.content, spec.name) },
+              { type: 'text' as const, text: extractText(value.content, definition.name) },
             ],
           },
           async execute(args: unknown, exec: ToolRunContext) {
             const projectRoot = resolveProjectRoot(exec.agent, config)
-            const callArgs = buildCallArgs(args, exec.agent, config, injectable)
-            const result = await manager.call(projectRoot, spec.name, callArgs, exec.signal)
-            if (result.isError === true) throw new Error(extractText(result.content, spec.name))
+            const callArgs = buildCallArgs(args, exec.agent, injectable)
+            const result = await manager.call(projectRoot, definition.name, callArgs, exec.signal, {
+              ...(exec.agent?.id === undefined ? {} : { threadId: exec.agent.id }),
+            })
+            if (result.isError === true) throw new Error(extractText(result.content, definition.name))
             return { content: result.content }
           },
         }),
-      `brain-dsh: ${spec.name}`,
+      `brain: ${definition.name}`,
     )
   }
 
@@ -190,12 +191,12 @@ export function apply(ctx: Context, config: Config): void {
         { enabled: config.autoThink.enabled, timeoutMs: config.autoThink.timeoutMs },
         (agent) => resolveProjectRoot(agent, config),
       ),
-    'brain-dsh: auto-think',
+    'brain: auto-think',
   )
 
   ctx.logger.info(
     `brain-dsh-plugin: ${registered.length} tools registered (${registered.join(', ')}); ` +
-      `server ${command} ${serverArgs.join(' ')}, home=${home}, injectSessionId=${config.injectSessionId}, ` +
+      `server ${command} ${serverArgs.join(' ')}, home=${home}, ` +
       `exposeThink=${exposeThink}, autoThink=${config.autoThink.enabled}`,
   )
 }

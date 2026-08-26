@@ -1,0 +1,54 @@
+{
+  "name": "brain",
+  "version": "0.1.0",
+  "description": "Generic MCP server implementing the brain_think memory system: three-layer persistent memory (global/project/session) with progressive disclosure and a use-it-or-lose-it memory model.",
+  "license": "MIT",
+  "bin": {
+    "brain": "./dist/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./public-tools": {
+      "types": "./dist/public-tools.d.mts",
+      "default": "./dist/public-tools.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack && pnpm run types",
+    "types": "tsc -p tsconfig.public-tools.json --emitDeclarationOnly --outDir dist && node -e \"require('node:fs').copyFileSync('dist/public-tools.d.ts', 'dist/public-tools.d.mts')\"",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "typecheck": "tsc --noEmit",
+    "release": "bumpp",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "picomatch": "^4.0.5",
+    "proper-lockfile": "4.1.2",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/picomatch": "^4.0.3",
+    "bumpp": "^11.1.0",
+    "typescript": "^7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.21.0",
+      "onFail": "download"
+    }
+  }
+}

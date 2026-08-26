@@ -3,9 +3,8 @@
  * 的标准配置文件名是 build.config.ts —— 不是 unbuild.config.ts，后者不会被加载）。
  *
  * - 单入口 dist/index.mjs + dist/index.d.mts（declaration 由 rollup-plugin-dts 产出）
- * - externals：宿主运行时提供 / 仅类型使用的包全部保持外部
- *   （cordis、schemastery、@deepseek-ai/*、@standard-schema/spec）；类型解析依赖
- *   build.sh 的 junction links（与 dsh 部署树 / pi-mp 工具链关联构建）
+ * - externals：宿主运行时服务包与独立安装的 brain 均保持外部；依赖由
+ *   profile/package manager 管理，构建本身不修改 node_modules
  * - emitCJS: false — 纯 ESM 插件
  */
 import { defineBuildConfig } from 'unbuild'
@@ -19,8 +18,6 @@ export default defineBuildConfig({
     inlineDependencies: false,
   },
   externals: [
-    'cordis',
-    'schemastery',
     '@deepseek-ai/schemastery',
     '@deepseek-ai/cordis',
     '@deepseek-ai/cosmokit',
@@ -33,5 +30,6 @@ export default defineBuildConfig({
     '@deepseek-ai/dsh-typert-protocol',
     '@deepseek-ai/dsh-brand',
     '@standard-schema/spec',
+    'brain',
   ],
 })

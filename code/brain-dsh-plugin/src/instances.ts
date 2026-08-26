@@ -1,5 +1,5 @@
 /**
- * InstanceManager — one brain-dsh process per project root, lazily spawned.
+ * InstanceManager — one brain process per project root, lazily spawned.
  *
  * - First `brain_*` call for a project root spawns its server (initialize +
  *   tools/list), later calls reuse it.
@@ -10,14 +10,13 @@
  * Requests multiplex over one stdio pipe by JSON-RPC id; the server serializes
  * its own writes via withStoreLock, so no client-side queue is needed.
  */
-import { McpClient, type McpCallResult, type McpToolInfo } from './mcp.js'
+import { McpClient, type McpCallResult, type McpInvocationMeta, type McpToolInfo } from './mcp.js'
 
 export interface InstanceConfig {
   command: string
   args: readonly string[]
   timeoutMs: number
   home: string
-  askLongTerm: 'none' | 'protect'
 }
 
 interface Instance {
@@ -53,9 +52,15 @@ export class InstanceManager {
   }
 
   /** Forward one tool call to the instance owning the project root. */
-  async call(projectRoot: string, name: string, args: unknown, signal?: AbortSignal): Promise<McpCallResult> {
+  async call(
+    projectRoot: string,
+    name: string,
+    args: unknown,
+    signal?: AbortSignal,
+    meta?: McpInvocationMeta,
+  ): Promise<McpCallResult> {
     const instance = await this.ensure(projectRoot)
-    return instance.client.call(name, args, signal)
+    return instance.client.call(name, args, signal, meta)
   }
 
   /** Kill every managed server. Idempotent; safe to call twice. */
@@ -86,7 +91,7 @@ export class InstanceManager {
     const recent = existing.restartTimes.filter((t) => now - t < STORM_WINDOW_MS)
     if (recent.length >= STORM_MAX_RESTARTS) {
       throw new Error(
-        'brain: server crashed repeatedly; refusing to restart (check that brain-dsh dist/index.mjs exists and is built)',
+        'brain: server crashed repeatedly; refusing to restart (check that brain dist/index.mjs exists and is built)',
       )
     }
   }
@@ -100,7 +105,6 @@ export class InstanceManager {
         ...process.env,
         BRAIN_PROJECT_ROOT: projectRoot,
         BRAIN_HOME: this.config.home,
-        BRAIN_ASK_LONG_TERM: this.config.askLongTerm,
       },
       timeoutMs: this.config.timeoutMs,
       onExit: () => {

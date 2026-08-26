@@ -21,10 +21,10 @@
  * 去重：仅按**用户消息**去重（同一条消息的多个 step 只注入一次）；
  * 每条新用户消息必定注入（内容相同也输出，think 每次调用推进 tick）。
  */
-import type { Context } from 'cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { extractText } from './mcp.js'
+import { extractAnchorContext, extractText } from './mcp.js'
 import type { InstanceManager } from './instances.js'
 
 export interface AutoThinkConfig {
@@ -34,7 +34,6 @@ export interface AutoThinkConfig {
 
 /** 注入消息的来源标识（GUI 显示"上下文注入 @dsh-external/brain-dsh-plugin"）。 */
 export const SOURCE_PLUGIN = '@dsh-external/brain-dsh-plugin'
-export const INJECT_LABEL = '[brain memory auto-refresh]'
 
 interface SpliceEvent {
   type: string
@@ -86,25 +85,37 @@ export function setupAutoThink(
     if (last <= baseline) return assembled
     injectedSeq.set(agent.id, last)
     try {
-      const result = await withTimeout(
-        manager.call(resolveProjectRoot(agent), 'brain_think', { session_id: agent.id }, context.signal),
-        config.timeoutMs,
+      const signal = timeoutSignal(context.signal, config.timeoutMs)
+      const result = await manager.call(
+          resolveProjectRoot(agent),
+          'brain_think',
+          { session_id: agent.id },
+          signal,
+          { threadId: agent.id },
       )
-      const text = extractText(result.content, 'brain_think')
-      if (result.isError === true || !text) return assembled
+      const text = extractAnchorContext(result.content)
+      if (result.isError === true) {
+        ctx.logger.warn(`brain: auto think rejected for ${agent.id}: ${extractText(result.content, 'brain_think')}`)
+        return assembled
+      }
+      if (!text) {
+        ctx.logger.warn(`brain: auto think returned no cognition context for ${agent.id}`)
+        return assembled
+      }
+      const warnings = result.content.slice(1).filter((block) => block.type === 'text' && block.text)
+      for (const warning of warnings) ctx.logger.warn(`brain: auto think diagnostic for ${agent.id}: ${warning.text}`)
       pending.set(
         agent.id,
         createUserMessage({
-          content: [{ type: 'text', text: `${INJECT_LABEL}\n${text}` }],
+          content: [{ type: 'text', text }],
           // 自定义来源：GUI 显示"上下文注入 @dsh-external/brain-dsh-plugin"。
           // 不声明 form（undeclared context 是文档默认，GUI 用普通文本展示正文）。
           source: { kind: 'plugin', plugin: SOURCE_PLUGIN },
         }),
       )
-      ctx.logger.debug(`brain-dsh: auto think staged for ${agent.id} (splice seq ${last})`)
+      ctx.logger.debug(`brain: auto think staged for ${agent.id} (splice seq ${last})`)
     } catch (error) {
-      injectedSeq.delete(agent.id) // 失败后允许下个 step 重试
-      ctx.logger.warn(`brain-dsh: auto think failed for ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
+      ctx.logger.warn(`brain: auto think failed for ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
     }
     return assembled
   })
@@ -127,19 +138,8 @@ export function setupAutoThink(
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  if (!Number.isFinite(ms) || ms <= 0) return promise
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`auto think timed out after ${ms}ms`)), ms)
-    promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error) => {
-        clearTimeout(timer)
-        reject(error)
-      },
-    )
-  })
+function timeoutSignal(parent: AbortSignal | undefined, ms: number): AbortSignal | undefined {
+  if (!Number.isFinite(ms) || ms <= 0) return parent
+  const timeout = AbortSignal.timeout(ms)
+  return parent ? AbortSignal.any([parent, timeout]) : timeout
 }

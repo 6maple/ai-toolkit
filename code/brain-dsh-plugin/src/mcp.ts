@@ -1,11 +1,11 @@
 /**
- * Minimal MCP (JSON-RPC 2.0 over stdio) client for brain-dsh.
+ * Minimal MCP (JSON-RPC 2.0 over stdio) client for brain.
  *
  * Why not the @modelcontextprotocol/sdk: the plugin speaks to exactly one
  * server it owns, over a tiny protocol surface (initialize / tools-list /
  * tools-call + one notification), and a dependency-free client avoids linking
  * another package and SDK-version coupling. The wire format was verified
- * directly against brain-dsh before this plugin existed.
+ * directly against brain before this plugin existed.
  *
  * Semantics follow dsh-mcp-client's bridge: `tools/call` carries the caller
  * abort signal and a per-call timeout; `isError` surfaces as a thrown error;
@@ -35,6 +35,11 @@ export interface McpToolInfo {
 export interface McpCallResult {
   content: Array<{ type: string; text?: string }>
   isError?: boolean
+}
+
+/** Trusted host invocation facts forwarded in the MCP request envelope. */
+export interface McpInvocationMeta {
+  threadId?: string
 }
 
 interface PendingRequest {
@@ -98,10 +103,19 @@ export class McpClient {
   }
 
   /** Invoke one server tool. Rejects on timeout, caller abort, or server error. */
-  async call(name: string, args: unknown, signal?: AbortSignal): Promise<McpCallResult> {
+  async call(
+    name: string,
+    args: unknown,
+    signal?: AbortSignal,
+    meta?: McpInvocationMeta,
+  ): Promise<McpCallResult> {
     const result = (await this.request(
       'tools/call',
-      { name, arguments: args },
+      {
+        name,
+        arguments: args,
+        ...(meta?.threadId === undefined ? {} : { _meta: { threadId: meta.threadId } }),
+      },
       signal,
     )) as McpCallResult
     return result
@@ -132,6 +146,7 @@ export class McpClient {
       const onAbort = () => {
         this.pending.delete(id)
         clearTimeout(timer)
+        this.notify('notifications/cancelled', { requestId: id, reason: 'caller aborted' })
         reject(new Error('brain mcp: tool call aborted'))
       }
       if (signal?.aborted) {
@@ -157,8 +172,8 @@ export class McpClient {
     })
   }
 
-  private notify(method: string): void {
-    this.child?.stdin?.write(JSON.stringify({ jsonrpc: '2.0', method, params: {} }) + '\n')
+  private notify(method: string, params: unknown = {}): void {
+    this.child?.stdin?.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n')
   }
 
   private onData(chunk: string): void {
@@ -248,4 +263,11 @@ export function extractText(content: Array<{ type: string; text?: string }> | un
     }
   }
   return parts.join('\n')
+}
+
+/** The anchor context is always the first text block; later blocks are warnings. */
+export function extractAnchorContext(content: Array<{ type: string; text?: string }> | undefined): string {
+  if (!Array.isArray(content)) return ''
+  const first = content.find((block) => block?.type === 'text')
+  return first?.text ?? ''
 }

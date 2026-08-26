@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/brain-dsh-plugin",
   "version": "0.0.1",
-  "description": "brain-dsh 记忆系统 DSH 原生插件：spawn brain-dsh MCP server，注册 8 个 brain_* 工具并注入当前会话 id",
+  "description": "brain v2 的 DSH A2 host adapter：转发 core public tools 并注入当前会话 cognition context",
   "private": true,
   "type": "module",
   "main": "./dist/index.mjs",
@@ -24,18 +24,35 @@
     }
   },
   "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0-rc <5",
+    "@deepseek-ai/dsh-agent": ">=0.0.1-rc <2",
     "@deepseek-ai/dsh-llm": ">=0.0.1-rc <2",
     "@deepseek-ai/dsh-tools": ">=0.0.1-rc <2",
-    "cordis": ">=4.0.0-rc <5",
-    "schemastery": "^3.18.0"
+    "@deepseek-ai/schemastery": "^3.18.0"
+  },
+  "dependencies": {
+    "brain": "link:../brain"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-agent": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-llm": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
+    "@deepseek-ai/schemastery": "3.18.1",
     "@types/node": "^24.13.3",
     "typescript": "^6.0.3",
     "unbuild": "^3.6.1"
   },
   "scripts": {
-    "build": "bash scripts/build.sh",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "unbuild",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/verify.mjs"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.23.0",
+      "onFail": "download"
+    }
   }
 }
