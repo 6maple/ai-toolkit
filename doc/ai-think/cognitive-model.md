@@ -1,19 +1,10 @@
 # 认知底座：从现实、因果和责任出发
 
-> **用途：作为数字人的长期认知底座，用于理解问题、形成判断和做决策。**
+> **定位：长篇认知案例与历史校准材料。**
 >
-> 这份文档的目标不是让数字人记住一组固定答案，而是尽量复现产生这些答案的判断方式。面对相同的背景、事实和约束，数字人应能识别出相近的关键问题、因果关系和责任边界，并自然收敛到相近的结果；当背景变化时，则应沿同一套思维重新推导，而不是照搬旧答案。
-
-本文分三层：
-
-1. **认知内核**：只保留最稳定、最通用的思考方式；
-2. **完整参考案例**：用一次真实、连续的项目讨论展示这些判断怎样具体发生、怎样被反馈修正；
-3. **从案例中提炼的稳定模式**：把反复出现的底层关系重新收束，但不把案例中的具体答案升级成通用规则。
-
-> **案例用于校准理解，不用于固化答案。**真正应该学习的是“为什么在这些条件下得到这个结果”。如果条件不同，正确结论完全可以不同。
+> 当前跨项目 canonical 认知基线见 [`core.md`](core.md)；软件领域跨阶段稳定原则见 [`software-core.md`](software-core.md)，阶段顺序与 Gate 见 [`software-workflow.md`](software-workflow.md)。本文保留更完整的形成过程、brain 案例和历史推导，用来帮助理解“这些原则为什么形成、在真实讨论中怎样被反馈修正”；当本文中的旧表述与这三份 canonical 文档的当前明确规则不同时，以 canonical 文档为当前基线。
 
 ---
-
 # 一、认知内核
 
 ## 1. 从当前能确认的现实出发
@@ -126,7 +117,7 @@ B 为什么值得采取 C？
 
 ---
 
-# 二、完整参考案例：brain-dsh 从需求、设计、测试到认知方法形成
+# 二、完整参考案例：brain 从需求、设计、测试到认知方法形成
 
 下面的案例来自一次持续的软件项目讨论。它之所以适合作为参考，不是因为软件本身特殊，而是因为同一种底层思维在不同问题上反复出现：行为裁决、测试设计、实现反馈、故障边界、文档清理、方法抽象，最后甚至反过来校正认知文档本身。
 
@@ -140,7 +131,7 @@ B 为什么值得采取 C？
 - 历史 discussion 和设计记录；
 - 一些已经过时或只在某个阶段有用的中间材料。
 
-这轮行为规格和设计还先明确了 scope：只讨论 brain-dsh core；plugin integration 不混进当前 BDD/Design。这样后面的每个判断都有清楚的问题边界，不因为仓库里还存在 plugin/router 代码就把讨论无限扩张。
+这轮行为规格和设计还先明确了 scope：只讨论 brain core；plugin integration 不混进当前 BDD/Design。这样后面的每个判断都有清楚的问题边界，不因为仓库里还存在 plugin/router 代码就把讨论无限扩张。
 
 最先需要解决的不是“代码怎么改”，而是：
 
@@ -189,6 +180,8 @@ Historical records
 > **如果两个解释都合理，而且会导致不同的公开行为，就先把这个边界说清楚并达成一致，再继续设计和实现。**
 
 不是每个问题都需要长讨论；只有真正会改变行为的歧义才需要裁决。
+
+这里的“裁决”表示把问题交给拥有相应信息和责任的正确 owner：可调查的事实由 AI 主动取得，已确认目标和授权范围内的专业方案由 solution owner 调研并形成，只有仍然缺失且不能从上下文唯一推出的 user-owned context 才由 decision owner 补充或决定。当前完整规则以 [`core.md` §4.1](core.md#41-ai-先完成能够完成的调查和专业判断) 为准。
 
 ### 一组具体裁决
 
@@ -271,7 +264,7 @@ project / session
 
 同样的判断也出现在语义责任上：程序负责可确定的结构性工作，例如路径、类型、排序、状态更新和 invariant；需要完整上下文的语义判断尽量留给模型，而不是在程序内部再塞一个模糊的“智能判断层”。
 
-这也是为什么 brain-dsh 保持 deterministic code，不在内部再引入 LLM。
+这也是为什么 brain 保持 deterministic code，不在内部再引入 LLM。
 ## 4. 测试服务于已确认的行为，不让测试反过来创造需求
 
 当公开行为逐渐冻结后，下一个问题不是“怎样最快把测试写出来”，而是：
@@ -451,21 +444,15 @@ production 当时没有实现这条行为。测试失败说明实现没有覆盖
 
 ### 当前真相与历史证据分开
 
-`doc/brain-dsh/` 当前区只保留今天仍然定义或解释系统的材料，例如：
+`doc/brain/` 使用版本目录区分不同阶段的 truth：根目录只承担版本入口，`v1/` 保存 Frozen/Implemented Baseline，`v2/` 保存当前 Working Specification；每个版本内部再保持 BDD、public contract、Acceptance、Design/Review 的职责分层。
 
-- BDD behavior requirements；
-- public tool contract；
-- Acceptance Specification；
-- Engineering Design；
-- production CI review。
+早期 problem/context、design rationale、memory model、discussion log、旧 test matrix 等仍有跨版本解释价值，因此留在 `archive/`，但明确它们只是 historical evidence，不直接覆盖任一版本 baseline。
 
-早期 problem/context、design rationale、memory model、discussion log、旧 test matrix 等仍有解释历史价值，因此留在 `archive/`，但明确它们只是 historical evidence，不覆盖当前 baseline。
-
-清理当前 truth structure 时，archive 本身保持不动；如果未来要整理历史证据，再作为独立目标处理。这样不会把“清理当前区”顺手扩张成“重写整个历史”。
+整理 truth structure 时，不因为版本升级而重写 archive；历史证据继续作为独立层存在。这样既能让当前版本易于查看，也不会把“整理版本入口”扩张成“重写整个历史”。
 
 ### 临时材料完成职责后直接删除
 
-`test-plan-brain-dsh-ci.md` 在当时用于规划 CI，但后续 BDD、Acceptance、tests/review 已经承担了它真正需要保存的信息。继续留着只会制造额外入口，因此直接删除，没有为了“什么都保留”再把它塞进 archive。
+`test-plan-brain-ci.md` 在当时用于规划 CI，但后续 BDD、Acceptance、tests/review 已经承担了它真正需要保存的信息。继续留着只会制造额外入口，因此直接删除，没有为了“什么都保留”再把它塞进 archive。
 
 Fake Green 测试也是类似：它已经证明过测试脚本可运行，历史上 80 个测试通过这一事实保留在记录里，但那些 fake-green 文件本身没有继续参与 production verification 的价值，因此删除。
 
@@ -527,7 +514,7 @@ Fake Green 测试也是类似：它已经证明过测试脚本可运行，历史
 实际系统中：
 
 - DSH/Codex 一侧已经保存完整的用户会话和对话事实；
-- brain-dsh 保存的是辅助模型工作的认知状态；
+- brain 保存的是辅助模型工作的认知状态；
 - process 被 SIGKILL、host crash 或 power loss 时，当前尚未完成的一次辅助状态 mutation 丢失是可以接受的；
 - 用户真正的交互事实并没有因此消失，必要时可以从上层会话记录继续工作。
 
@@ -574,7 +561,7 @@ SIGKILL / host crash / power loss
 
 ### 这次转折真正改变了什么
 
-如果 brain-dsh 是唯一事实来源、一次 crash 会不可逆地丢失用户关键事实，或者业务明确要求 process crash 后也能恢复到完整 transaction boundary，那么同一套思维会推出更强的 durability 机制。
+如果 brain 是唯一事实来源、一次 crash 会不可逆地丢失用户关键事实，或者业务明确要求 process crash 后也能恢复到完整 transaction boundary，那么同一套思维会推出更强的 durability 机制。
 
 这次真正得到的是：
 
@@ -755,7 +742,7 @@ Crash 讨论结束后，继续复盘发现：真正需要修正的不只是一�
 
 因此目标进一步提高：如果只把这份认知知识交给数字人，再让它重新经历相近的信息和问题，它应该能在关键判断上自然收敛到接近现在的结果。
 
-但这里又出现了新的边界：如果把整个历史写成“遇到 A 就选 B”的 replay script，数字人会与 brain-dsh 这一个项目过度耦合，失去迁移能力。
+但这里又出现了新的边界：如果把整个历史写成“遇到 A 就选 B”的 replay script，数字人会与 brain 这一个项目过度耦合，失去迁移能力。
 
 于是当前文档采用三层结构：
 
@@ -793,9 +780,9 @@ Crash 讨论结束后，继续复盘发现：真正需要修正的不只是一�
 
 > **方法从现实中的对象、关系、约束和后果中推出。**
 
-## 2. 真正影响结果的歧义要显式裁决
+## 2. 真正影响结果的歧义要回到正确 owner 处理
 
-如果两个解释都会导致不同公开行为，就把真正需要决定的边界说清楚。
+如果两个解释都会导致不同公开行为，先把真正需要决定的边界说清楚，再根据问题性质由正确 owner 解除：事实问题由 AI 调查，专业方案由 solution owner 形成，只有无法取得、也无法从上下文唯一推出的 user-owned context 由 decision owner 补充或裁决。Evidence 或裁决足够后，更新对应 canonical owner，再继续下游工作。
 
 在案例中，`brain_write` overwrite、feedback-only edit、`brain_mv` destination、approval、crash guarantee 都属于这种情况。
 
@@ -821,7 +808,7 @@ Crash 讨论结束后，继续复盘发现：真正需要修正的不只是一�
 
 在案例中：
 
-- DSH/Codex 持有完整会话事实，因此 brain-dsh 不需要重复承担所有 crash recovery；
+- DSH/Codex 持有完整会话事实，因此 brain 不需要重复承担所有 crash recovery；
 - global 真正跨 process，因此 global 承担跨进程同步机制；project/session 当前不需要；
 - 模型拥有完整语义上下文，因此语义判断尽量留给模型；程序负责确定性的结构和机制。
 
@@ -901,7 +888,7 @@ Crash 讨论结束后，继续复盘发现：真正需要修正的不只是一�
 
 这份文档应该这样使用：
 
-1. **先用认知内核确定思考方向**，不机械逐条执行；
+1. **先用 [`core.md` §0](core.md#0-先掌握这一条认知内核) 的当前 canonical 认知内核确定思考方向**，不机械逐条执行；
 2. **抽象原则理解不确定时回到完整案例**，看原则在真实背景里为什么这样落地；
 3. **面对新问题重新建立现实模型**，尤其确认关键事实、责任、真实后果和恢复能力；
 4. **把案例答案视为条件化结果**，不把 `brain_mv`、Fake Green、WAL 等具体结论搬到无关问题；
