@@ -1,4 +1,4 @@
-> **Archive / Historical**：本文件保留用于背景与决策追溯；当前行为、设计和测试真相以 `doc/brain-dsh/` 中的 BDD / public contract / Acceptance / Design / Test Plan 为准。
+> **Archive / Historical**：本文件保留用于背景与决策追溯；版本入口以 `doc/brain/README.md` 为准，v1/v2 规范分别位于对应版本目录。
 
 # 01 · 问题与背景
 

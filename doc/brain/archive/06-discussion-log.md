@@ -1,9 +1,9 @@
-> **Archive / Historical**：本文件保留用于背景与决策追溯；当前行为、设计和测试真相以 `doc/brain-dsh/` 中的 BDD / public contract / Acceptance / Design / Test Plan 为准。
+> **Archive / Historical**：本文件保留用于背景与决策追溯；版本入口以 `doc/brain/README.md` 为准，v1/v2 规范分别位于对应版本目录。
 
 # 06 · 讨论纪要
 
 > **⚠️ 本文档为历史会话记录（设计讨论过程），优先级最低，仅供参考。**
-> 其中任何表述若与 doc/01~05 或 `code/brain-dsh/DESIGN.md`（定稿汇总）冲突，一律以定稿为准——定稿以本文档之后的决策为准，包括但不限于：必调锚 = 工具描述引导（非协议强制）、审批两档（none/protect）、@-scheme 路径寻址、core 单文档语义、frontmatter id 退场。改动设计时优先更新定稿文档，本文档不随定稿同步。
+> 其中任何表述若与 doc/01~05 或 `code/brain/DESIGN.md`（定稿汇总）冲突，一律以定稿为准——定稿以本文档之后的决策为准，包括但不限于：必调锚 = 工具描述引导（非协议强制）、审批两档（none/protect）、@-scheme 路径寻址、core 单文档语义、frontmatter id 退场。改动设计时优先更新定稿文档，本文档不随定稿同步。
 
 > 本文档完整记录设计讨论的决策历史、被否方案与原因、演进路径。它既是"为什么这样做"的旁证，也是防止未来设计倒退的锚。
 

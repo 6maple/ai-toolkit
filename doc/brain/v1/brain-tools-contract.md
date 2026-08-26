@@ -1,4 +1,4 @@
-# brain-dsh 工具契约
+# brain 工具契约
 
 ## 1. 概念与实现
 
@@ -53,8 +53,8 @@
 收到每条用户消息后，模型**立即调用一次 `brain_think`（L0 锚）**；拿到返回的三层 core / candidates / signals 后，**把它们作为当前记忆继续思考、回答和行动**。该调用由**工具描述引导**（`brain_think` 的 description 置顶要求），**非协议级强制**：
 
 - 可靠性的来源：**距上次写只隔一轮对话**（文件连续维护，每次触发时刚被更新过）；
-- 触发不依赖模型自觉是理想形态（Letta"agent not self-editing memory"失败模式的直接对抗），但 v1 定稿接受降级：工具描述每 step 常驻系统提示工具区，可靠性高于 skill 文本、低于协议注入——换取不绑定载体的通用性（工程落实见 `doc/brain-dsh/design-brain-dsh-runtime.md` §8.1）；
-- **载体层注入（harness turn 前注入 / hook）属于可选宿主增强，不是 brain-dsh core public contract。**
+- 触发不依赖模型自觉是理想形态（Letta"agent not self-editing memory"失败模式的直接对抗），但 v1 定稿接受降级：工具描述每 step 常驻系统提示工具区，可靠性高于 skill 文本、低于协议注入——换取不绑定载体的通用性（工程落实见 `doc/brain/v1/design-brain-runtime.md` §8.1）；
+- **载体层注入（harness turn 前注入 / hook）属于可选宿主增强，不是 brain core public contract。**
 
 ## 4. brain_think（必调工具）返回结构
 
@@ -101,7 +101,7 @@
   → 机制检查：
      core 文档超长（> CORE_DOC_MAX_CHARS）→ 拒绝并提示 → 模型拆分（保留常用，移别处）→ 重试
      `protect` 下若此次 mutation 实际 touched project/global → 审批；`brain_mv` 同时考虑 source + destination
-  → brain-dsh 在当前工具调用内同步提交：预验证 → body/index/state/audit 一致更新 → 返回
+  → brain 在当前工具调用内同步提交：预验证 → body/index/state/audit 一致更新 → 返回
   → 返回结果反馈（成功 / 提示 / pending-approval）
 ```
 
@@ -115,7 +115,7 @@
 | `protect` | 任何实际修改 project/global 的 mutation 都需确认（两段式：pending-approval → 模型转述 → confirmed:true 重试）；`brain_mv` 同时看 source/destination，因为移出长期层本身也会修改长期记忆 |
 
 - 审批门由各 mutation 工具统一执行：未确认时不得先改 body/index/state/history；`confirmed:true` 重试后才真正提交；
-- brain-dsh 的信任边界到调用方提供 `confirmed` 截止；确认是否真实来自用户属于外部调用方/宿主责任；
+- brain 的信任边界到调用方提供 `confirmed` 截止；确认是否真实来自用户属于外部调用方/宿主责任；
 - 与省事省力的平衡：默认 `none` 不审批；只有显式开启 `protect` 后才保护长期层。
 
 ## 7. 存储路径约定与 @-scheme 映射

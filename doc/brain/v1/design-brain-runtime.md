@@ -1,20 +1,20 @@
-# brain-dsh 工程设计
+# brain 工程设计
 
 > **状态：Design Baseline / Re-reviewed（2026-08-20，基于 Frozen Acceptance Specification）**  
-> **范围：仅 `code/brain-dsh/` 本体，不包含 `brain-dsh-plugin` 或其他宿主集成。**  
-> **需求基线：`doc/brain-dsh/bdd-brain-dsh-behavior-requirements.md`；冻结验收规格：`doc/brain-dsh/acceptance-spec-brain-dsh.md`**  
+> **范围：仅 `code/brain/` 本体，不包含 `brain-dsh-plugin` 或其他宿主集成。**  
+> **需求基线：`doc/brain/v1/bdd-brain-behavior-requirements.md`；冻结验收规格：`doc/brain/v1/acceptance-spec-brain.md`**
 > 本文档回答“如何实现 Frozen BDD / Acceptance Specification 中已经确认的行为”。若本文与 BDD / frozen acceptance expectation 冲突，必须修改 Design；不能反向修改 acceptance 来迁就 How。若 Design 暴露真正的行为歧义，先回到 BDD/Scenario 重新裁决并重新 Freeze。
 
 ## 1. 设计目标
 
-brain-dsh 是一个纯程序化 MCP memory runtime。设计需要同时满足：
+brain 是一个纯程序化 MCP memory runtime。设计需要同时满足：
 
 - 模型看到的是熟悉的 `brain_ls / brain_grep / brain_cat / brain_write / brain_edit / brain_rm / brain_mv` 与 `brain_think`，而不是内部文件系统；同名工具的参数与基础行为默认对齐模型已有训练先验，只有已确认 BDD 的 memory-specific 需求确实冲突时才偏离，并由 tool description 明确说明；
 - 三层 memory（global / project / session）具有独立生命周期，但可被一次 `brain_think` 合并成整体认知锚；
 - 模型负责语义：写什么、summary/type/importance 是什么、写哪层、何时 adopt/correct/attribute；
 - 机制负责确定性约束：路径、安全、schema、区间、状态机、审批门、索引同步、并发、一致性、审计；
 - 所有写入在成功返回后必须形成可验证的一致状态；
-- 不为了预防性问题扩张协议。特别是：不引入额外 turn identity 协议、不内嵌 LLM、不引入 embedding/RAG、不把宿主自动注入能力耦合进 brain-dsh。
+- 不为了预防性问题扩张协议。特别是：不引入额外 turn identity 协议、不内嵌 LLM、不引入 embedding/RAG、不把宿主自动注入能力耦合进 brain。
 
 ### 1.1 非目标
 
@@ -32,12 +32,12 @@ brain-dsh 是一个纯程序化 MCP memory runtime。设计需要同时满足：
 
 | 材料 | 作用 |
 |---|---|
-| `doc/brain-dsh/bdd-brain-dsh-behavior-requirements.md` | **唯一行为需求基线**；本文逐条落实 |
-| `doc/brain-dsh/acceptance-spec-brain-dsh.md` | **Frozen Specification by Example**；约束可观察 expected behavior 与 verification 边界 |
-| `doc/brain-dsh/brain-tools-contract.md` | 当前模型可见/public tool contract；约束 schema、@-scheme 与工具交互语义 |
+| `doc/brain/v1/bdd-brain-behavior-requirements.md` | **唯一行为需求基线**；本文逐条落实 |
+| `doc/brain/v1/acceptance-spec-brain.md` | **Frozen Specification by Example**；约束可观察 expected behavior 与 verification 边界 |
+| `doc/brain/v1/brain-tools-contract.md` | 当前模型可见/public tool contract；约束 schema、@-scheme 与工具交互语义 |
 | `doc/design-rule.md` | **设计方法约束**：最小充分机制、failure-driven、训练先验、真实部署拓扑、测试设计原则 |
 
-| `doc/brain-dsh/archive/*` | 历史背景、旧设计/实现笔记、讨论和测试快照；仅用于追溯，不作为当前 Design truth |
+| `doc/brain/archive/*` | 历史背景、旧设计/实现笔记、讨论和测试快照；仅用于追溯，不作为当前 Design truth |
 
 | 当前 `src/**` / legacy tests | implementation 现状事实；用于 compliance/改造，不反向定义需求或设计 |
 ---
@@ -49,7 +49,7 @@ MCP caller / model
       │
       ▼
 ┌─────────────────────────────────────────────────────────┐
-│ brain-dsh MCP tools                                     │
+│ brain MCP tools                                     │
 │ think / ls / grep / cat / write / edit / rm / mv      │
 └──────────────────────────┬──────────────────────────────┘
                            │
@@ -85,7 +85,7 @@ MCP caller / model
 
 ### 4.1 进程级根
 
-brain-dsh server 启动时确定：
+brain server 启动时确定：
 
 ```text
 projectRoot = canonical(BRAIN_PROJECT_ROOT || process.cwd())
@@ -225,7 +225,7 @@ importance: 0.8
 
 `memories/skill/x.md` 必须对应 `type: skill`。
 
-模型决定“它是什么类型”；机制只验证“路径声明与 frontmatter 声明一致”。如果模型要改变类型，应通过 `brain_mv` 指向另一个类型目录下的**明确 `.md` destination file path**；destination file 的父类型目录表达模型选择的新 type，brain-dsh 在同一 transaction 中把 frontmatter `type` 同步改成 destination path 对应的 type。不能只 edit frontmatter 留在旧目录，也不接受仅给 type directory 的 destination shorthand。
+模型决定“它是什么类型”；机制只验证“路径声明与 frontmatter 声明一致”。如果模型要改变类型，应通过 `brain_mv` 指向另一个类型目录下的**明确 `.md` destination file path**；destination file 的父类型目录表达模型选择的新 type，brain 在同一 transaction 中把 frontmatter `type` 同步改成 destination path 对应的 type。不能只 edit frontmatter 留在旧目录，也不接受仅给 type directory 的 destination shorthand。
 
 ### 6.3 index.json
 
@@ -338,7 +338,7 @@ validateStoreStructure(layer)
 
 核心不是“回答前形式化调用”，而是：**先取得 memory view，再拿它继续思考。**
 
-brain-dsh 本体只提供此工具契约；外部宿主是否自动调用不属于本设计。
+brain 本体只提供此工具契约；外部宿主是否自动调用不属于本设计。
 
 ### 8.2 参数
 
@@ -533,7 +533,7 @@ core：
 
 - 不参与 index；
 - 不参与 FSRS / exposure / usage；
-- 可以有 frontmatter，但 brain-dsh 不要求它满足 archival schema；
+- 可以有 frontmatter，但 brain 不要求它满足 archival schema；
 - write-time 检查 `CORE_DOC_MAX_CHARS`。
 
 ### 11.2 edit core
@@ -588,7 +588,7 @@ incoming item 的完整 Markdown 替换目标 core；进入 core 后其 archival
 - core → core：源清空、目标替换；
 - source / destination 都不接受 directory shorthand。
 
-因此 `brain_mv src @/.../knowledge` 必须拒绝并要求模型给出明确 destination file path。这里是对通用 `mv file directory` 的小范围 memory-specific 偏离，用来避免 core 名称、类型迁移与 archival 文件名之间的歧义。brain-dsh 不增加 `overwrite=true`、`new_type` 等额外参数。
+因此 `brain_mv src @/.../knowledge` 必须拒绝并要求模型给出明确 destination file path。这里是对通用 `mv file directory` 的小范围 memory-specific 偏离，用来避免 core 名称、类型迁移与 archival 文件名之间的歧义。brain 不增加 `overwrite=true`、`new_type` 等额外参数。
 
 ### 12.2 archival file → archival file，同一记忆迁移
 
@@ -648,7 +648,7 @@ BRAIN_ASK_LONG_TERM=none | protect
 默认 none
 ```
 
-`none`：任何 brain-dsh mutation 不要求额外确认。
+`none`：任何 brain mutation 不要求额外确认。
 
 `protect`：只要此次 MutationPlan 会改变 project/global 任一层，就要求确认。
 
@@ -678,7 +678,7 @@ protect + touched long-term + `confirmed !== true`：
 
 `confirmed: true` 重试后执行。
 
-brain-dsh 的信任边界到“调用方提供 confirmed”截止；v1 不增加审批 token、challenge id 或宿主真实性验证。
+brain 的信任边界到“调用方提供 confirmed”截止；v1 不增加审批 token、challenge id 或宿主真实性验证。
 
 ---
 
@@ -686,7 +686,7 @@ brain-dsh 的信任边界到“调用方提供 confirmed”截止；v1 不增加
 
 ### 15.1 实际并发拓扑
 
-部署前提是**每项目最多一个 brain-dsh MCP server 进程**。因此：
+部署前提是**每项目最多一个 brain MCP server 进程**。因此：
 
 - 当前项目的 project layer 只由该项目 server 访问；
 - 该项目下各 session layer 也只由同一个 server 访问；
@@ -696,7 +696,7 @@ brain-dsh 的信任边界到“调用方提供 confirmed”截止；v1 不增加
 
 ### 15.2 global 跨进程互斥
 
-任何会读取并修改 global 的操作，在进入 global transaction 前必须获得一个**global 专用的跨进程 exclusive lock**。它的含义很简单：同一时刻只能有一个 brain-dsh 进程对共享 global state/index/body 做一致性 mutation。
+任何会读取并修改 global 的操作，在进入 global transaction 前必须获得一个**global 专用的跨进程 exclusive lock**。它的含义很简单：同一时刻只能有一个 brain 进程对共享 global state/index/body 做一致性 mutation。
 
 可用文件系统可见的原子锁实现，例如在 global root 下原子创建 `.brain.lock`（具体库/协议可在实现时选择）。另一个项目进程如果发现锁已存在，就等待当前 global mutation 完成后再继续。
 
@@ -782,11 +782,11 @@ commit 任一步骤 throw 时，在当前调用仍持有 queue/global lock 的�
 
 单个 `state.json` / `index.json` 等覆盖写仍使用 §16.2 的同目录 temp + rename，避免单文件写入中途终止直接留下半截正式 JSON。
 
-v1 **不为“进程恰好在多个已原子写文件之间崩溃”增加 durable journal 自动恢复协议**。SIGKILL、宿主崩溃、机器断电等强制终止发生在 mutation 完成前时，允许该次未完成 mutation 丢失；brain-dsh 不承诺自动 rollback / roll-forward，也不承诺识别所有仍可解析的跨文件部分提交组合。
+v1 **不为“进程恰好在多个已原子写文件之间崩溃”增加 durable journal 自动恢复协议**。SIGKILL、宿主崩溃、机器断电等强制终止发生在 mutation 完成前时，允许该次未完成 mutation 丢失；brain 不承诺自动 rollback / roll-forward，也不承诺识别所有仍可解析的跨文件部分提交组合。
 
 若重启后某份持久表示本身不可解析或明确违反既有 invariant，仍按 corruption 规则 fail loud。除此之外不为 crash durability 增加额外协议。
 
-该取舍基于实际职责边界：DSH / Codex 等宿主已经持久化会话事实，可作为对话恢复来源；brain-dsh core 从简，不重复承担 durable event log / transaction recovery 职责。
+该取舍基于实际职责边界：DSH / Codex 等宿主已经持久化会话事实，可作为对话恢复来源；brain core 从简，不重复承担 durable event log / transaction recovery 职责。
 
 ---
 
@@ -999,7 +999,7 @@ CI acceptance 只通过稳定 application/tool facade 驱动行为，不 import 
 - 真实删除回收/audit 的物理证据；
 - LLM/AI 对自然语言 description/result 的语义 review。
 
-这些按 `doc/brain-dsh/acceptance-spec-brain-dsh.md` 的 `MAN-*` 以及显式标记 Manual/E2E 的 AC/FI case 执行。
+这些按 `doc/brain/v1/acceptance-spec-brain.md` 的 `MAN-*` 以及显式标记 Manual/E2E 的 AC/FI case 执行。
 
 ### 23.4 Fault / Invariant / Mechanism
 
@@ -1020,7 +1020,7 @@ CI acceptance 只通过稳定 application/tool facade 驱动行为，不 import 
 7. 才读取/接入 current production business logic；允许修改 Arrange / instance creation / dependency wiring，resource ports 仍为 fake；
 8. 第一次 CI production Red/Green；
 9. Double-Loop implementation → CI Green；
-10. 按 brain-dsh 当前项目 Test Strategy 选择是否执行 Manual/E2E 真实 adapter 用例；
+10. 按 brain 当前项目 Test Strategy 选择是否执行 Manual/E2E 真实 adapter 用例；
 11. Compliance Review。
 
 已有直接调用内部 helper 或真实 filesystem/process 的测试必须重新分类：前者只能作为 Mechanism/Invariant 候选，后者只能作为 Manual/E2E 候选；不能继续以 REQ 标签冒充 CI acceptance coverage。
@@ -1044,7 +1044,7 @@ CI acceptance 只通过稳定 application/tool facade 驱动行为，不 import 
 
 以下 D4/D5 已于 2026-08-20 确认；A10 在本轮 Frozen BDD re-review 中进一步修订为明确 file → file path：
 
-- **D4 — `brain_write` 对齐 create/overwrite**：项目实际复用的 pi/coding-agent `write` 明确定义为 **creates/overwrites**。brain-dsh 因而不再人为收窄为 create-only；目标不存在时创建，已存在时整篇 overwrite。overwrite 先做完整 semantic validation，并保留该 path 已有内部 id 与 mechanism learning state，不把它重置成新记忆。
+- **D4 — `brain_write` 对齐 create/overwrite**：项目实际复用的 pi/coding-agent `write` 明确定义为 **creates/overwrites**。brain 因而不再人为收窄为 create-only；目标不存在时创建，已存在时整篇 overwrite。overwrite 先做完整 semantic validation，并保留该 path 已有内部 id 与 mechanism learning state，不把它重置成新记忆。
 - **D5 — 移除 `brain_think.project_root?`**：真实部署是“每项目一个 MCP server，project root 启动时固定”。模型可见 schema 只保留 `session_id?`；debug/test 通过 server 启动参数、环境变量或测试构造环境设置 project root。
 - **A10 re-review — `brain_mv` 明确 file → file**：src/dst 默认都必须是明确文件级 public path；不使用 memory type directory shorthand。destination `.md` file 的父类型目录仍可表达类型迁移；core ↔ archival / core ↔ core 都保持文件路径到文件路径。
 
@@ -1066,4 +1066,4 @@ CI acceptance 只通过稳定 application/tool facade 驱动行为，不 import 
 - `brain_think` description 的自然语言语义由 Hybrid verification 看护，不使用 exact-text brittle test；
 - 参数标定与行为正确性继续分离。
 
-本 Design Freeze 之后，下一阶段是按 `doc/brain-dsh/acceptance-spec-brain-dsh.md` 实现/审查 verification。**在 acceptance automation 完成并再次审查之前，不读取 current production implementation 来调整测试期望。** 第一次运行 current production 后产生的 Red/Green 只是实现事实，不会反向修改 Frozen Specification。
+本 Design Freeze 之后，下一阶段是按 `doc/brain/v1/acceptance-spec-brain.md` 实现/审查 verification。**在 acceptance automation 完成并再次审查之前，不读取 current production implementation 来调整测试期望。** 第一次运行 current production 后产生的 Red/Green 只是实现事实，不会反向修改 Frozen Specification。

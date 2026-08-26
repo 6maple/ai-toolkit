@@ -1,9 +1,9 @@
-# brain-dsh Acceptance Specification
+# brain Acceptance Specification
 
 > **状态：Acceptance Specification Baseline / Frozen（2026-08-20）**  
 > **阶段：Specification by Example + Test Design Review 已完成并冻结；production 验证结果记录在独立 Review / tests 中，不写回本规格。**  
-> **输入：** `doc/brain-dsh/bdd-brain-dsh-behavior-requirements.md` + `doc/brain-dsh/brain-tools-contract.md` 的模型可见/public contract。  
-> **禁止输入：** `code/brain-dsh/src/**`、现有 tests 的内部 helper/fixture、当前 state/index schema、当前锁/事务/ID 算法。
+> **输入：** `doc/brain/v1/bdd-brain-behavior-requirements.md` + `doc/brain/v1/brain-tools-contract.md` 的模型可见/public contract。
+> **禁止输入：** `code/brain/src/**`、现有 tests 的内部 helper/fixture、当前 state/index schema、当前锁/事务/ID 算法。
 
 ## 1. 目的
 
@@ -111,7 +111,7 @@ Fake Green 后冻结的是 Scenario、输入边界、Expected behavior 与核心
 **类型：** Contract
 **Execution：** CI Automated
 
-**Given** 构造 brain-dsh 的公开 tool contract surface，所有 resource ports 使用 stub/fake，且不启动真实 MCP transport  
+**Given** 构造 brain 的公开 tool contract surface，所有 resource ports 使用 stub/fake，且不启动真实 MCP transport  
 **When** CI test driver 查询公开工具定义  
 **Then** 应暴露约定的 8 个 `brain_*` 能力：think / ls / grep / cat / write / edit / rm / mv  
 **And** `brain_think` 的模型输入只包含可选 `session_id`，不公开 `project_root` 这类 server 配置参数  
@@ -677,7 +677,7 @@ Fake Green 后冻结的是 Scenario、输入边界、Expected behavior 与核心
 
 **对应：** CONSISTENCY-005-A [Boundary]
 
-进程在 mutation 完成前被 SIGKILL、宿主崩溃或机器断电强制终止时，brain-dsh 允许当前未完成 mutation 丢失；不要求自动 rollback、roll-forward、journal recovery，也不要求识别所有仍可解析的跨文件部分提交组合。
+进程在 mutation 完成前被 SIGKILL、宿主崩溃或机器断电强制终止时，brain 允许当前未完成 mutation 丢失；不要求自动 rollback、roll-forward、journal recovery，也不要求识别所有仍可解析的跨文件部分提交组合。
 
 如果重启后落盘表示不可解析或明确违反既有 invariant，则由 `FI-CORRUPT-*` 继续验证 fail-loud。该边界本身不生成 Manual/E2E crash-recovery case。
 
@@ -739,7 +739,7 @@ Engineering Design 完成后，Invariant Test 只需要证明：
 **Execution：** Manual / E2E  
 **覆盖：** public tool contract / AC-CONTRACT-001 的真实 transport adapter
 
-**Given** 使用真实启动命令启动 brain-dsh MCP stdio server  
+**Given** 使用真实启动命令启动 brain MCP stdio server  
 **When** 真实 MCP client 完成 initialize、listTools，并至少调用一次代表性 read 与 mutation tool  
 **Then** 8 个公开 `brain_*` tools 能通过真实 transport 访问  
 **And** public schema 与 CI contract guard 一致  

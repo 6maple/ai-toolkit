@@ -1,12 +1,12 @@
-> **Archive / Historical**：本文件保留用于背景与决策追溯；当前行为、设计和测试真相以 `doc/brain-dsh/` 中的 BDD / public contract / Acceptance / Design / Test Plan 为准。
+> **Archive / Historical**：本文件保留用于背景与决策追溯；版本入口以 `doc/brain/README.md` 为准，v1/v2 规范分别位于对应版本目录。
 
-# brain-dsh TDD 测试追踪矩阵
+# brain TDD 测试追踪矩阵
 
-> **状态：Historical / Superseded** — 记录上一轮实现耦合较重的 TDD 轨迹，仅保留历史价值；当前测试设计以 `doc/brain-dsh/bdd-brain-dsh-behavior-requirements.md` + `doc/brain-dsh/acceptance-spec-brain-dsh.md` + `doc/design-rule.md` §13 为准。不得从本矩阵反推新的 acceptance test。
+> **状态：Historical / Superseded** — 记录上一轮实现耦合较重的 TDD 轨迹，仅保留历史价值；当前测试设计以 `doc/brain/v1/bdd-brain-behavior-requirements.md` + `doc/brain/v1/acceptance-spec-brain.md` + `doc/design-rule.md` §13 为准。不得从本矩阵反推新的 acceptance test。
 
 > **状态：TDD Green / 已完成（2026-08-20）**  
-> **需求基线：`doc/brain-dsh/bdd-brain-dsh-behavior-requirements.md`**  
-> **设计基线：`doc/brain-dsh/design-brain-dsh-runtime.md`**  
+> **需求基线：`doc/brain/v1/bdd-brain-behavior-requirements.md`**
+> **设计基线：`doc/brain/v1/design-brain-runtime.md`**
 > **规则：测试只定义 BDD + Design 已确认行为；现有实现和旧测试不具备反向定义需求的权力。**
 
 ## 1. 测试策略

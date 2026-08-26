@@ -1,16 +1,16 @@
-> **Archive / Historical**：本文件保留用于背景与决策追溯；当前行为、设计和测试真相以 `doc/brain-dsh/` 中的 BDD / public contract / Acceptance / Design / Test Plan 为准。
+> **Archive / Historical**：本文件保留用于背景与决策追溯；版本入口以 `doc/brain/README.md` 为准，v1/v2 规范分别位于对应版本目录。
 
 # 05 · 实现要点与开放项
 
-> 本文档记录 brain-dsh 的实现边界、载体差异和仍需实测标定的参数。行为契约以 [bdd-brain-dsh-behavior-requirements.md](../bdd-brain-dsh-behavior-requirements.md) 为准，工程设计以 [design-brain-dsh-runtime.md](../design-brain-dsh-runtime.md) 为准，设计判断规则见 [design-rule.md](../../design-rule.md)。`code/brain-dsh/DESIGN.md` 只保留实现入口摘要，不再作为第二份完整设计真相。
+> 本文档记录 brain 的实现边界、载体差异和仍需实测标定的参数。行为契约以 [bdd-brain-behavior-requirements.md](../v1/bdd-brain-behavior-requirements.md) 为准，工程设计以 [design-brain-runtime.md](../v1/design-brain-runtime.md) 为准，设计判断规则见 [design-rule.md](../../design-rule.md)。`code/brain/DESIGN.md` 只保留实现入口摘要，不再作为第二份完整设计真相。
 
-## 1. brain-dsh 本体边界
+## 1. brain 本体边界
 
 - 一个纯程序化 MCP server，注册 `brain_think` + `brain_ls / brain_grep / brain_cat / brain_edit / brain_write / brain_rm / brain_mv` 八个工具；
 - 模型可见路径只有 @-scheme；`state.json / index.json / history.jsonl / change_history.jsonl / memories/history/` 等机制/回收位置不可寻址；
 - `brain_think` 模型可见参数只保留 `session_id?`；project root 在 server 启动时通过 `BRAIN_PROJECT_ROOT` / cwd 固定；
-- brain-dsh 运行时无独立 LLM：模型负责语义，机制负责路径/schema/区间/invariant/审批/并发/持久化；
-- `ls/grep` 继续复用 pi/coding-agent 的成熟只读文件工具；`write/edit` 保持熟悉的模型交互语义，但正式 memory mutation 由 brain-dsh 自己先在内存构造 after document、验证后同步提交，避免“文件先改、metadata 后同步”的双通道。
+- brain 运行时无独立 LLM：模型负责语义，机制负责路径/schema/区间/invariant/审批/并发/持久化；
+- `ls/grep` 继续复用 pi/coding-agent 的成熟只读文件工具；`write/edit` 保持熟悉的模型交互语义，但正式 memory mutation 由 brain 自己先在内存构造 after document、验证后同步提交，避免“文件先改、metadata 后同步”的双通道。
 
 ## 2. 存储、一致性与并发
 
@@ -41,17 +41,17 @@
 - core→archival 必须先满足 archival semantic contract；缺 `type/summary/importance` 时拒绝，模型先 edit core 再重试；
 - mv replace 的旧 destination 进入 recycle + removed state + change audit，但不伪装成用户主动 rm 的 deletion history；
 - 审批只有一套配置：`none`（默认）/ `protect`。protect 依据一次 mutation **实际 touched 的所有 layers** 判断；`brain_mv project/global → session` 仍因修改长期 source 而需要确认；
-- brain-dsh 的信任边界到调用方提供 `confirmed:true` 截止，确认来源真实性属于宿主/调用方。
+- brain 的信任边界到调用方提供 `confirmed:true` 截止，确认来源真实性属于宿主/调用方。
 
 ## 5. 载体差异
 
-brain-dsh 本体的契约不绑定宿主：tool description 要求模型**收到每条新的用户消息后立即调用一次 `brain_think`，拿到返回 memory view 后再把它作为当前记忆继续思考、回答和行动**。
+brain 本体的契约不绑定宿主：tool description 要求模型**收到每条新的用户消息后立即调用一次 `brain_think`，拿到返回 memory view 后再把它作为当前记忆继续思考、回答和行动**。
 
-宿主可以额外增强这个触发，但不改变 brain-dsh 核心契约：
+宿主可以额外增强这个触发，但不改变 brain 核心契约：
 
-- DSH：仓库中的 `brain-dsh-plugin` 已实现 AutoThink/会话上下文注入能力，这是 DSH adapter，不属于 brain-dsh BDD/design；
-- Codex/其他 MCP host：可通过 MCP `_meta` 提供 session identity；brain-dsh 当前兼容 `threadId / dshSessionId / com.example.dsh/sessionId / sessionId`，未提供时回退 `default`；
-- host 级挂载、session `_meta` 接线细节见 `code/brain-dsh/MCP_HOSTS.md`。
+- DSH：仓库中的 `brain-dsh-plugin` 已实现 AutoThink/会话上下文注入能力，这是 DSH adapter，不属于 brain BDD/design；
+- Codex/其他 MCP host：可通过 MCP `_meta` 提供 session identity；brain 当前兼容 `threadId / dshSessionId / com.example.dsh/sessionId / sessionId`，未提供时回退 `default`；
+- host 级挂载、session `_meta` 接线细节见 `code/brain/MCP_HOSTS.md`。
 
 ## 6. 仍需真实使用标定的参数
 
@@ -65,4 +65,4 @@ brain-dsh 本体的契约不绑定宿主：tool description 要求模型**收到
 | CORE_DOC_MAX_CHARS | 4000 | 待真实使用标定 |
 | FSRS hard/good/again 系数 | 当前经验值 | 先机制后参数 |
 
-2026-08-20 当前实现验证见 `doc/tdd-brain-dsh-test-matrix.md`：**11 个 test file / 75 个测试全部通过，`pnpm exec tsc --noEmit` 通过。**
+2026-08-20 当前实现验证见 `doc/tdd-brain-test-matrix.md`：**11 个 test file / 75 个测试全部通过，`pnpm exec tsc --noEmit` 通过。**

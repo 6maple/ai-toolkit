@@ -1,7 +1,7 @@
-# brain-dsh Production CI Compliance Review
+# brain Production CI Compliance Review
 
 > **Date:** 2026-08-20  
-> **Scope:** brain-dsh core only  
+> **Scope:** brain core only  
 > **Inputs:** Frozen BDD + Frozen Acceptance Specification + confirmed Engineering Design + Production CI tests  
 > **Purpose:** record the dated implementation/test result without turning BDD/Acceptance/Design into an execution log.
 
@@ -16,7 +16,7 @@ The reviewed Production CI baseline is Green.
 - `pnpm run build`: pass
 - `pnpm exec vp lint`: pass
 
-The default CI suite executes real brain-dsh production business/application logic while filesystem/persistence/process/network/LLM resource boundaries remain deterministic fake/stub resources.
+The default CI suite executes real brain production business/application logic while filesystem/persistence/process/network/LLM resource boundaries remain deterministic fake/stub resources.
 
 No real temp directory, filesystem adapter, MCP stdio transport, child process, network call, LLM call, or wall-clock sleep is created by the default Production CI tests.
 
@@ -52,7 +52,7 @@ White-box knowledge is restricted to the level already allowed by the frozen tes
 - Invariant/Mechanism tests may read Design parameters or call an existing pure mechanism function;
 - Then/observable behavior remains public or a stable Design invariant.
 
-The fake filesystem is a resource test double only. It implements generic file operations over Map/Set and contains no brain-dsh path, learning, approval, move, or memory-domain rules.
+The fake filesystem is a resource test double only. It implements generic file operations over Map/Set and contains no brain path, learning, approval, move, or memory-domain rules.
 
 ## 4. Real Production Reds found by the frozen tests
 
@@ -137,7 +137,7 @@ The following behavior remains specified but is not claimed as default CI verifi
 - real filesystem adapter / MCP stdio wiring;
 - real physical rm recycle/audit evidence.
 
-This is intentional. The generic `design-rule.md` does not require Manual/E2E as a universal phase; brain-dsh may choose additional verification according to project maturity/release needs.
+This is intentional. The generic `design-rule.md` does not require Manual/E2E as a universal phase; brain may choose additional verification according to project maturity/release needs.
 
 ## 8. Compliance result
 

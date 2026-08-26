@@ -1,10 +1,10 @@
-> **Archive / Historical**：本文件保留用于背景与决策追溯；当前行为、设计和测试真相以 `doc/brain-dsh/` 中的 BDD / public contract / Acceptance / Design / Test Plan 为准。
+> **Archive / Historical**：本文件保留用于背景与决策追溯；版本入口以 `doc/brain/README.md` 为准，v1/v2 规范分别位于对应版本目录。
 
-# brain-dsh 测试设计审查：功能场景覆盖 vs 实现耦合
+# brain 测试设计审查：功能场景覆盖 vs 实现耦合
 
 > 状态：Review / 仅审查，不修改测试与 production
 > 日期：2026-08-20
-> 需求基线：`doc/brain-dsh/bdd-brain-dsh-behavior-requirements.md`
+> 需求基线：`doc/brain/v1/bdd-brain-behavior-requirements.md`
 
 ## 1. 本次审查采用的测试哲学
 
@@ -142,7 +142,7 @@
 
 ### 6.2 CONSISTENCY-005-A 写 mechanism JSON 时进程异常中断
 
-当前“手工写半截 JSON → load 失败”主要覆盖 CORRUPT-001，而不是“brain-dsh 自己写 state/index 中途进程崩溃”的 crash scenario。
+当前“手工写半截 JSON → load 失败”主要覆盖 CORRUPT-001，而不是“brain 自己写 state/index 中途进程崩溃”的 crash scenario。
 
 如果 BDD 保留这一 scenario，应增加真正的 crash/fault test：在 mutation 期间 kill process，然后重新启动，验证只能读到上一个完整版本或明确 corruption，不能把半截 JSON 当正常状态。
 

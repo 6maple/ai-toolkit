@@ -1,4 +1,4 @@
-> **Archive / Historical**：本文件保留用于背景与决策追溯；当前行为、设计和测试真相以 `doc/brain-dsh/` 中的 BDD / public contract / Acceptance / Design / Test Plan 为准。
+> **Archive / Historical**：本文件保留用于背景与决策追溯；版本入口以 `doc/brain/README.md` 为准，v1/v2 规范分别位于对应版本目录。
 
 # 03 · 记忆模型
 
@@ -39,7 +39,7 @@
 ```
 
 **语义域（模型写）**：`type / content / note / importance`（机制只定类型与范围）。
-**机制域（brain-dsh 维护）**：`id / difficulty / stability / retrievability / last_at / exposure / usage / status / at`（模型不直接写，只通过 brain 工具事件影响——采纳/纠正/失败/删除）。
+**机制域（brain 维护）**：`id / difficulty / stability / retrievability / last_at / exposure / usage / status / at`（模型不直接写，只通过 brain 工具事件影响——采纳/纠正/失败/删除）。
 
 **存储位置（定稿）**：`content / note` 等语义域写在 `memories/**/*.md` 的 frontmatter 与正文中；`state.json` 的 `items` **只保存机制域字段**，不保存正文快照。
 
@@ -49,17 +49,17 @@
 
 | 文件 | 内容 | 谁写 | 用途 |
 |---|---|---|---|
-| `state.json` | **core 数组**（该层，`core: string[]`，每条为 markdown 文本）+ FSRS/exposure/usage/status 等机制域状态 | brain-dsh runtime | 常驻核心 + 记忆模型状态 |
-| `index.json` | 索引：id、file、type、title、summary(短)、importance、updated_at | brain-dsh runtime | **L0 直接序列化**（不扫描文件） |
-| `history.jsonl` | 显式删除事件元数据（追加式）；被回收正文进入内部 `memories/history/` | brain-dsh runtime | 审计；**不清理**（不参与正常检索） |
-| `change_history.jsonl` | 所有记忆变更：write/edit/rm/mv/core_update 等（@-scheme path + action + tick） | brain-dsh runtime | 可审计记忆变化；追加式，不清理 |
+| `state.json` | **core 数组**（该层，`core: string[]`，每条为 markdown 文本）+ FSRS/exposure/usage/status 等机制域状态 | brain runtime | 常驻核心 + 记忆模型状态 |
+| `index.json` | 索引：id、file、type、title、summary(短)、importance、updated_at | brain runtime | **L0 直接序列化**（不扫描文件） |
+| `history.jsonl` | 显式删除事件元数据（追加式）；被回收正文进入内部 `memories/history/` | brain runtime | 审计；**不清理**（不参与正常检索） |
+| `change_history.jsonl` | 所有记忆变更：write/edit/rm/mv/core_update 等（@-scheme path + action + tick） | brain runtime | 可审计记忆变化；追加式，不清理 |
 | `memories/**/*.md` | frontmatter（type/summary/importance…，无 id）+ 正文 | 经 `brain_*` mutation tools 写 | 记忆本体，渐进披露载体 |
 
 **要点**：
 - **core 不落独立文件**：core 是 state.json 内的 markdown 文本（每层 1 篇，`string[]` 仅合并时用）。因为 core 每次必调都在场，放内嵌字段使检查/拦截零成本（长度检查、梳理提示、合并）；
 - **摘要放 frontmatter**：与 skills（SKILL.md）的维护方式一致；模型写记忆时**自己先做摘要**，记录"摘要 + 正文"——摘要用于 L0/L1 快速呈现，正文用于 L2 深读；
 - **记忆条目先只做 .md**（不引入 json 形态条目）；
-- **记忆数据全部由 brain-dsh 的 `brain_*` 工具通道管理**：模型不能直接用原生 read/write 碰记忆文件——单一通道使审批不可绕过、索引与正文不失配、状态维护点唯一；
+- **记忆数据全部由 brain 的 `brain_*` 工具通道管理**：模型不能直接用原生 read/write 碰记忆文件——单一通道使审批不可绕过、索引与正文不失配、状态维护点唯一；
 - **外层抽象**：外层（模型/用户）只知道"记忆"，不知道物理格式（json/markdown 是实现细节）。
 
 ## 4. 记忆模型（FSRS 三状态 + 事件时间）

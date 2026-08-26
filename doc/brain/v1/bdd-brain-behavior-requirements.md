@@ -1,4 +1,4 @@
-# brain-dsh 行为需求（BDD）
+# brain 行为需求（BDD）
 
 > **状态：BDD Baseline / Re-reviewed（2026-08-20）**  
 > **用途：行为需求基线（What），不是工程设计（How）**  
@@ -8,7 +8,7 @@
 
 ## 1. 文档定位
 
-brain-dsh 的目标不是提供一个普通“长期记忆数据库”，而是为 agent 提供一个**外部化、可持久、可审计的认知状态与记忆运行时**：在每个用户 turn 开始时恢复关键状态，并允许主模型在清晰的结构约束下读取、写入、纠正、移动和淘汰记忆。
+brain 的目标不是提供一个普通“长期记忆数据库”，而是为 agent 提供一个**外部化、可持久、可审计的认知状态与记忆运行时**：在每个用户 turn 开始时恢复关键状态，并允许主模型在清晰的结构约束下读取、写入、纠正、移动和淘汰记忆。
 
 本文档只回答：
 
@@ -36,16 +36,16 @@ brain-dsh 的目标不是提供一个普通“长期记忆数据库”，而是�
 | 文档 | 角色 |
 |---|---|
 | `doc/design-rule.md` | 设计与验证方法；用于处理新增问题和歧义，不覆盖已确认 BDD。 |
-| `doc/brain-dsh/brain-tools-contract.md` | 当前模型可见/public tool contract；与 BDD 一起约束公开接口。 |
-| `doc/brain-dsh/acceptance-spec-brain-dsh.md` | Frozen Specification by Example；把本 BDD 展开为可验证场景。 |
-| `doc/brain-dsh/design-brain-dsh-runtime.md` | Engineering Design；回答如何实现，不反向定义行为。 |
-| `doc/brain-dsh/archive/*` | 历史问题分析、设计依据、旧领域模型、实现笔记、讨论记录与被替代测试资料；仅作为背景证据和决策追溯。 |
+| `doc/brain/v1/brain-tools-contract.md` | 当前模型可见/public tool contract；与 BDD 一起约束公开接口。 |
+| `doc/brain/v1/acceptance-spec-brain.md` | Frozen Specification by Example；把本 BDD 展开为可验证场景。 |
+| `doc/brain/v1/design-brain-runtime.md` | Engineering Design；回答如何实现，不反向定义行为。 |
+| `doc/brain/archive/*` | 历史问题分析、设计依据、旧领域模型、实现笔记、讨论记录与被替代测试资料；仅作为背景证据和决策追溯。 |
 
 ### 2.1 行为需求的裁决优先级
 
-行为冲突首先回到本 BDD 与已确认决策；public tool 形状再对照 `doc/brain-dsh/brain-tools-contract.md`。若仍存在真实行为歧义，应先讨论并修改 BDD，再同步 Acceptance、Design、Tests 与 production。
+行为冲突首先回到本 BDD 与已确认决策；public tool 形状再对照 `doc/brain/v1/brain-tools-contract.md`。若仍存在真实行为歧义，应先讨论并修改 BDD，再同步 Acceptance、Design、Tests 与 production。
 
-`doc/brain-dsh/archive/*` 可以解释历史原因和被否方案，但不直接覆盖当前规范。
+`doc/brain/archive/*` 可以解释历史原因和被否方案，但不直接覆盖当前规范。
 ---
 
 ## 3. BDD 约定与总原则
@@ -66,7 +66,7 @@ brain-dsh 的目标不是提供一个普通“长期记忆数据库”，而是�
 程序能 100% 判断的结构、合法区间、状态机、安全边界、一致性必须机械保证；需要理解内容和意图的语义判断由主模型负责。
 
 **BR-P2：工具纯程序化。**  
-brain-dsh 运行时不得依赖独立 LLM 来判断记忆语义。
+brain 运行时不得依赖独立 LLM 来判断记忆语义。
 
 **BR-P3：单一记忆通道。**  
 模型只通过公开的 brain 工具与 @-scheme 操作记忆；任何非公开机制存储都不得成为模型可寻址接口。
@@ -138,7 +138,7 @@ BDD Scenario 必须优先使用模型/调用方可观察的产品语言表达：
 
 ## REQ-THINK-001 brain_think 是每轮认知锚工具
 
-brain-dsh 必须暴露 `brain_think`。其 tool description 必须明确要求模型：**收到每条新的用户消息后立即调用一次；拿到 `brain_think` 返回的 memory view 后，将其作为当前记忆继续思考、回答和行动。**
+brain 必须暴露 `brain_think`。其 tool description 必须明确要求模型：**收到每条新的用户消息后立即调用一次；拿到 `brain_think` 返回的 memory view 后，将其作为当前记忆继续思考、回答和行动。**
 
 本次调用加载三层 core、L0 candidates 与机制 signals，并推进记忆事件时间。调用方是否通过宿主 hook、plugin 或模型显式调用来保证这一调用纪律，属于**外部集成层**，不属于本 BDD 的范围。
 
@@ -161,7 +161,7 @@ brain-dsh 必须暴露 `brain_think`。其 tool description 必须明确要求�
 **Then** 第二次调用仍视为新的 think 事件  
 **And** 第二次调用必须被当作新的 think event，后续所有基于 brain event 的行为都应体现新增的一次事件。
 
-> **确认结论 A1：** 正确性依赖 `brain_think` description 的调用纪律——收到每条用户消息后立即调用一次，并基于返回记忆继续思考；brain-dsh 不对重复调用做特殊处理，每次实际成功调用都正常推进事件时间。
+> **确认结论 A1：** 正确性依赖 `brain_think` description 的调用纪律——收到每条用户消息后立即调用一次，并基于返回记忆继续思考；brain 不对重复调用做特殊处理，每次实际成功调用都正常推进事件时间。
 
 ---
 
@@ -301,7 +301,7 @@ brain-dsh 必须暴露 `brain_think`。其 tool description 必须明确要求�
 
 渐进层级固定为：`L0 目录 → L1 摘要 → L2 正文`。L1 不默认返回正文 preview。
 
-> **确认结论 A2：** 历史材料 `doc/brain-dsh/archive/03-memory-model.md`、`doc/brain-dsh/archive/06-discussion-log.md` 中的渐进披露语义已被本 BDD 吸收：L1=摘要，L2=正文。
+> **确认结论 A2：** 历史材料 `doc/brain/archive/03-memory-model.md`、`doc/brain/archive/06-discussion-log.md` 中的渐进披露语义已被本 BDD 吸收：L1=摘要，L2=正文。
 
 ### Scenario READ-002-A：L1 摘要读取
 
@@ -330,7 +330,7 @@ brain-dsh 必须暴露 `brain_think`。其 tool description 必须明确要求�
 
 ## REQ-SEARCH-001 grep 是模型语义精化后的机械检索
 
-`brain_grep` 只做确定性 regex / literal 检索。同义改写、隐式意图、query refinement 由主模型判断；brain-dsh 不内嵌 LLM；v1 不引入 embedding / RAG / fuse。
+`brain_grep` 只做确定性 regex / literal 检索。同义改写、隐式意图、query refinement 由主模型判断；brain 不内嵌 LLM；v1 不引入 embedding / RAG / fuse。
 
 > `doc/06` 中早期 fuse 方案属于历史演进；现行需求以 `doc/05` 定稿的 grep + 主模型 query refinement 为准。
 
@@ -339,7 +339,7 @@ brain-dsh 必须暴露 `brain_think`。其 tool description 必须明确要求�
 **Given** memory A 含有目标 literal，memory B 只表达相近语义但不含该 literal  
 **When** 模型用 literal 模式调用 `brain_grep`  
 **Then** 返回机械匹配到的 memory A  
-**And** brain-dsh 不自行把相近语义扩展成额外匹配；若模型希望扩大语义范围，应由模型改写 query / pattern 后再次搜索。
+**And** brain 不自行把相近语义扩展成额外匹配；若模型希望扩大语义范围，应由模型改写 query / pattern 后再次搜索。
 
 ### Scenario SEARCH-001-B：regex grep 按表达式机械匹配
 
@@ -354,7 +354,7 @@ brain-dsh 必须暴露 `brain_think`。其 tool description 必须明确要求�
 
 ## REQ-WRITE-001 brain_write 对齐熟悉的 write：create 或整篇 overwrite
 
-`brain_write` 的模型可见语义应对齐 coding/file `write` 的训练先验：目标不存在时创建，目标已存在时以新的完整 Markdown 文档覆盖该 item。`brain_edit` 则用于对已有内容做局部、精确修改；brain-dsh 不人为把 `write` 收窄成“只能 create”。
+`brain_write` 的模型可见语义应对齐 coding/file `write` 的训练先验：目标不存在时创建，目标已存在时以新的完整 Markdown 文档覆盖该 item。`brain_edit` 则用于对已有内容做局部、精确修改；brain 不人为把 `write` 收窄成“只能 create”。
 
 覆盖已有 memory item 时，它仍然是同一条记忆的完整内容更新：必须保留已有 mechanism learning state，不得因为 overwrite 偷偷把它变成一条全新、未使用的记忆。具体内部 id 如何保存属于设计实现细节。
 
@@ -535,7 +535,7 @@ questioned item 仍可召回，但必须显示“存疑”，排序必须相对�
 
 ## REQ-FSRS-001 时间单位是有效认知事件，不是现实时间
 
-系统不依赖现实时间做遗忘。retrievability 的衰减依据有效 brain event tick；每次成功 `brain_think` 调用推进一次 think event。正常调用纪律是每条用户消息立即调用一次，但 brain-dsh 不按 user turn 做去重。
+系统不依赖现实时间做遗忘。retrievability 的衰减依据有效 brain event tick；每次成功 `brain_think` 调用推进一次 think event。正常调用纪律是每条用户消息立即调用一次，但 brain 不按 user turn 做去重。
 
 ### Scenario FSRS-001-A [Invariant]：墙上时间本身不构成记忆事件
 
@@ -626,7 +626,7 @@ candidate 被 L0 展示时：exposure +1；retrievability 按当前 tick 的时�
 **When** 模型执行 `brain_mv @core/... <archival-item-path>`  
 **Then** 必须在清空 source core 或创建 destination 前拒绝  
 **And** 提示模型先通过 `brain_edit` 为该 core 补齐合法 archival frontmatter，再重试 `brain_mv`  
-**But** brain-dsh 不得替模型猜测 type、summary 或 importance。
+**But** brain 不得替模型猜测 type、summary 或 importance。
 
 ### Scenario MOVE-002-B：archival 移入 core 替换目标 core
 
@@ -666,7 +666,7 @@ candidate 被 L0 展示时：exposure +1；retrievability 按当前 tick 的时�
 
 `brain_mv` 的命名与基础行为应尽量保持模型对 shell/file `mv` 的训练先验，不人为发明不必要的 memory-specific 操作习惯。对 archival file → file move，若 destination 已存在普通 file item，则表现为 `mv` 的 replace 语义：source 移到 destination，原 destination 内容被替换，source 路径消失。
 
-brain-dsh 额外负责的是**记忆系统一致性**：原 destination 不得继续作为另一条 active memory 出现，source 的有效学习历史必须随移动结果继续生效，且不得出现 phantom/duplicate memory 或一条 memory 的学习历史错误作用到另一条。具体内部 metadata / identity / audit 表示属于 Design。
+brain 额外负责的是**记忆系统一致性**：原 destination 不得继续作为另一条 active memory 出现，source 的有效学习历史必须随移动结果继续生效，且不得出现 phantom/duplicate memory 或一条 memory 的学习历史错误作用到另一条。具体内部 metadata / identity / audit 表示属于 Design。
 
 ### Scenario MOVE-004-A：目标 item 已存在
 
@@ -799,7 +799,7 @@ brain-dsh 额外负责的是**记忆系统一致性**：原 destination 不得�
 **When** 模型按设计定义的确认流程重试  
 **Then** 才执行真正修改。
 
-> brain-dsh 本体的信任边界到“调用方提供确认”截止：在 `protect` 下，没有符合工具契约的确认输入就不得产生长期写副作用；收到确认重试后才可执行。该确认是否由真实用户操作产生，属于外部调用方/宿主集成的责任，不由 brain-dsh 本体验证。
+> brain 本体的信任边界到“调用方提供确认”截止：在 `protect` 下，没有符合工具契约的确认输入就不得产生长期写副作用；收到确认重试后才可执行。该确认是否由真实用户操作产生，属于外部调用方/宿主集成的责任，不由 brain 本体验证。
 
 ---
 
@@ -841,7 +841,7 @@ brain-dsh 额外负责的是**记忆系统一致性**：原 destination 不得�
 ### Scenario CONSISTENCY-003-A：MCP server 重启后新增
 
 **Given** 某 layer 已存在一条具有自己学习历史的 memory  
-**And** brain-dsh 进程重启  
+**And** brain 进程重启  
 **When** 在同一 layer 新增另一条 memory  
 **Then** 两条 memory 必须继续作为彼此独立的实体存在  
 **And** 对其中一条进行 read/edit/feedback 不得错误影响另一条  
@@ -861,17 +861,17 @@ BDD 不规定具体事务实现，但“成功意味着一致、失败不会静�
 
 ## REQ-CONSISTENCY-005 强制终止不提供 durable transaction 保证
 
-brain-dsh 本体只保证正常运行期间的同步 success 一致性，以及可捕获失败时的同调用 rollback；不承担 SIGKILL、宿主崩溃、机器断电等强制终止下的 durable transaction / 自动 crash recovery。
+brain 本体只保证正常运行期间的同步 success 一致性，以及可捕获失败时的同调用 rollback；不承担 SIGKILL、宿主崩溃、机器断电等强制终止下的 durable transaction / 自动 crash recovery。
 
 ### Scenario CONSISTENCY-005-A [Boundary]：持久状态更新中进程被强制终止
 
 **Given** 系统正在更新持久机制状态  
 **When** 进程在 mutation 完成前被强制终止  
-**Then** 当前未完成的 brain-dsh mutation 允许丢失  
+**Then** 当前未完成的 brain mutation 允许丢失  
 **And** 下一次启动不要求重建、rollback 或识别所有跨文件部分提交窗口  
 **But** 若落盘表示本身不可解析或明确违反既有 invariant，仍按数据损坏规则 fail loud。
 
-> brain-dsh 不是会话事实的唯一持久化来源；DSH / Codex 等宿主侧会话记录承担对话事实恢复，因此 core runtime 不为 crash durability 引入额外 WAL/journal 复杂度。
+> brain 不是会话事实的唯一持久化来源；DSH / Codex 等宿主侧会话记录承担对话事实恢复，因此 core runtime 不为 crash durability 引入额外 WAL/journal 复杂度。
 
 ---
 
@@ -882,7 +882,7 @@ brain-dsh 本体只保证正常运行期间的同步 success 一致性，以及�
 ### Scenario CORRUPT-001-A [Fault]：已存在持久机制状态不可解析
 
 **Given** 已存在持久机制状态，但其表示已损坏或不可解析  
-**When** brain-dsh 加载 layer  
+**When** brain 加载 layer  
 **Then** 必须明确报错  
 **But** 不得把它当成“文件不存在”并自动初始化为空覆盖。
 
@@ -909,7 +909,7 @@ brain_ls / grep / cat / think / signals / mutation result 中，凡是需要向�
 ### Scenario OUTPUT-001-A：物理路径不得外泄
 
 **Given** 内部处理结果或异常中包含物理定位信息  
-**When** brain-dsh 把结果返回给模型  
+**When** brain 把结果返回给模型  
 **Then** 必须重写为等价 @-path  
 **And** 机制文件路径应被隐藏。
 
@@ -932,7 +932,7 @@ A1~A9 与本轮修订后的 A10 均已写回对应 REQ。此表只用于追溯�
 
 | ID | 已确认结论 |
 |---|---|
-| **A1** | `brain_think` description 要求收到每条用户消息后立即调用一次，并基于返回记忆继续思考；brain-dsh 不对重复调用做特殊处理，每次实际成功调用都推进一次 tick/exposure。 |
+| **A1** | `brain_think` description 要求收到每条用户消息后立即调用一次，并基于返回记忆继续思考；brain 不对重复调用做特殊处理，每次实际成功调用都推进一次 tick/exposure。 |
 | **A2** | 渐进披露为 L0 目录 → L1 摘要 → L2 正文；L1 不默认展开正文 preview。 |
 | **A3 / D4** | `brain_write` 最终对齐熟悉的 write 训练先验：目标不存在时 create，已存在时整篇 overwrite；overwrite 保留已有 mechanism learning state。 |
 | **A4** | frontmatter type 必须与路径类型目录一致。 |
