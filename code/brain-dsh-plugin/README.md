@@ -1,6 +1,6 @@
 # @dsh-external/brain-dsh-plugin
 
-DSH 的 brain v2 A2 host adapter。插件按项目根启动并复用一个 brain MCP
+DSH 的 brain v2 A2 host adapter。插件按source root启动并复用一个brain MCP
 stdio process；它不拥有 memory schema、工具 contract 或 cognition workflow。
 
 ## 行为边界
@@ -11,7 +11,7 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
   原样作为 plugin message 注入下一次模型输入；任何 warning 或失败只进入日志。
 - 工具与 AutoThink 都把 DSH `agent.id` 作为可信 MCP invocation metadata 传递。手动
   `brain_think` 保留模型显式的 `session_id`，否则才注入该 id；缺少 session 时不创建默认值。
-- `InstanceManager` 负责按项目 root 的 lazy process、timeout、abort、崩溃冷却和 plugin
+- `InstanceManager`负责按source root的lazy process、timeout、abort、崩溃冷却和plugin
   卸载清理。brain 负责所有 cognition semantics。
 
 ## 配置
@@ -21,8 +21,6 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 | `server.command` | `node` | MCP server 启动命令；`node` 使用当前 Node。 |
 | `server.args` | `[]` | 为空时解析 profile 已安装的匹配 `brain` package entry。 |
 | `server.timeoutMs` | `30000` | MCP initialize、list 与 call 的超时。 |
-| `brain.projectRoot` | 当前会话 cwd | 当前 agent 没有 cwd 时的显式项目根 fallback。 |
-| `brain.home` | `~/.brain-data` | brain global cognition home。 |
 | `exposeThink` | `true` | 仅当 AutoThink 关闭时公开 `brain_think`。 |
 | `autoThink.enabled` | `true` | 在用户消息边界 anchor 并注入 context。 |
 | `autoThink.timeoutMs` | `5000` | 单次 hook anchor 超时；失败不阻塞 agent step。 |

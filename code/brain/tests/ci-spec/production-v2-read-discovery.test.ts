@@ -504,11 +504,9 @@ describe("T5 read/discovery application", () => {
 describe("T5 real filesystem enumeration and direct Pi Tool adapter", () => {
   it("uses Pi ls/find/read/grep while brain keeps cognition membership outside", async () => {
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-t5-pi-"));
-    const projectRoot = path.join(temp, "project");
     const brainRoot = path.join(temp, "brain");
-    await fs.mkdir(projectRoot, { recursive: true });
     try {
-      const binding = await createStorageBinding({ projectRoot, brainRoot });
+      const binding = await createStorageBinding({ projectId: "project-1", brainRoot });
       const scope: ScopeRef = { kind: "project" };
       const root = scopeRoot(binding, scope);
       const item = archival("@project/memories/skill/report/workflow.md");
@@ -604,11 +602,9 @@ describe("T5 real filesystem enumeration and direct Pi Tool adapter", () => {
 
   it("dedupes direct and same-scope aliases to one canonical archival identity and skips broken aliases", async () => {
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-t5-alias-"));
-    const projectRoot = path.join(temp, "project");
     const brainRoot = path.join(temp, "brain");
-    await fs.mkdir(projectRoot, { recursive: true });
     try {
-      const binding = await createStorageBinding({ projectRoot, brainRoot });
+      const binding = await createStorageBinding({ projectId: "project-1", brainRoot });
       const scope: ScopeRef = { kind: "project" };
       const root = scopeRoot(binding, scope);
       await fs.mkdir(path.join(root, "memories", "decision", "real"), { recursive: true });

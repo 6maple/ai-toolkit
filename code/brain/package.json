@@ -20,6 +20,7 @@
   },
   "scripts": {
     "build": "vp pack && pnpm run types",
+    "stub": "unbuild --stub --config build.stub.config.ts && pnpm run types",
     "types": "tsc -p tsconfig.public-tools.json --emitDeclarationOnly --outDir dist && node -e \"require('node:fs').copyFileSync('dist/public-tools.d.ts', 'dist/public-tools.d.mts')\"",
     "dev": "vp pack --watch",
     "test": "vp test",
@@ -38,8 +39,10 @@
   "devDependencies": {
     "@types/node": "^26.1.1",
     "@types/picomatch": "^4.0.3",
+    "@typescript/typescript6": "^6.0.0",
     "bumpp": "^11.1.0",
     "typescript": "^7.0.2",
+    "unbuild": "3.6.1",
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "vitest": "catalog:"

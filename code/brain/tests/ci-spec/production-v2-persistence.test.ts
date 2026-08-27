@@ -483,15 +483,15 @@ class FakeCognitionFs implements CognitionStoreFs, RepositoryFs {
 
 const repositoryBinding = {
   brainRoot: "/brain",
-  projectRoot: "/work/project",
+  projectId: "project-1",
   platform: "posix" as const,
 } as never;
 
-const projectRoot = "/brain/projects/root=posix/p=work/p=project/scope";
-const projectCorePath = `${projectRoot}/core.md`;
-const documentPath = `${projectRoot}/memories/knowledge/a.md`;
-const companionPath = `${projectRoot}/.state/memories/knowledge/a.json`;
-const scopeStatePath = `${projectRoot}/.state/scope.json`;
+const projectScopePath = "/brain/projects/project-1";
+const projectCorePath = `${projectScopePath}/core.md`;
+const documentPath = `${projectScopePath}/memories/knowledge/a.md`;
+const companionPath = `${projectScopePath}/.state/memories/knowledge/a.json`;
+const scopeStatePath = `${projectScopePath}/.state/scope.json`;
 const item = archival("@project/memories/knowledge/a.md");
 const documentText = normalizeMarkdownInput(
   "---\nsummary: current truth\nimportance: medium\n---\nbody\n",
@@ -572,10 +572,10 @@ describe("T3 cognition store truth/fallback boundary", () => {
 
   it("preflight mutates the E1 canonical target rather than an alias locator", async () => {
     const { fs, store } = seededStore();
-    fs.file(`${projectRoot}/memories/decision/real.md`, encodeMarkdown(documentText));
+    fs.file(`${projectScopePath}/memories/decision/real.md`, encodeMarkdown(documentText));
     fs.symlink(
-      `${projectRoot}/memories/knowledge/alias.md`,
-      `${projectRoot}/memories/decision/real.md`,
+      `${projectScopePath}/memories/knowledge/alias.md`,
+      `${projectScopePath}/memories/decision/real.md`,
     );
     const alias = archival("@project/memories/knowledge/alias.md");
     const prepared = await store.preflight({
@@ -583,7 +583,7 @@ describe("T3 cognition store truth/fallback boundary", () => {
       ref: persistentArchivalRef(alias),
       bytes: encodeMarkdown(documentText),
     });
-    expect(prepared.absolutePath).toBe(`${projectRoot}/memories/decision/real.md`);
+    expect(prepared.absolutePath).toBe(`${projectScopePath}/memories/decision/real.md`);
     expect(prepared.ref).toEqual(
       persistentArchivalRef(archival("@project/memories/decision/real.md")),
     );
@@ -705,9 +705,8 @@ describe("T3 runtime bootstrap composition", () => {
     const lease = new FakeLease();
     const runtime = await bootstrapBrainRuntimeInfrastructure(
       {
-        projectRoot: "/work/project",
         brainRoot: "/brain",
-        homeDir: "/home/test",
+        projectId: "project-1",
         platform: "posix",
       },
       { storeFs: fs, historyFs: fs, gitRunner: runner, globalLease: lease },
@@ -730,9 +729,8 @@ describe("T3 runtime bootstrap composition", () => {
     runner.throwOnRun = true;
     const runtime = await bootstrapBrainRuntimeInfrastructure(
       {
-        projectRoot: "/work/project",
         brainRoot: "/brain",
-        homeDir: "/home/test",
+        projectId: "project-1",
         platform: "posix",
       },
       { storeFs: fs, historyFs: fs, gitRunner: runner, globalLease: new FakeLease() },

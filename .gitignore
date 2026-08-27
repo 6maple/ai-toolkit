@@ -1,6 +1,8 @@
 *.zip
 .cache
+node_modules
 __pycache__
 .claude/skills
 .pnpm-store
 .brain-data
+dist

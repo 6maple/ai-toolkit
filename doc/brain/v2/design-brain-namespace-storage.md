@@ -5,7 +5,7 @@
 > **Parent:** `design-brain-system.md`。
 > **Frozen inputs:** `bdd-brain-behavior-requirements.md`、`brain-tools-contract.md`、`acceptance-spec-brain.md`。
 > **Supersedes:** `design-brain-runtime.md` 中 B1/E1 path/layout 的旧综合设计；旧文只保留摘要和本文件链接。
-> **Status:** **Design Frozen (2026-08-24, evidence-corrected re-freeze)**；canonical v2 Detailed Design baseline。
+> **Status:** **Design Frozen (2026-08-26, project-mapping re-freeze)**；canonical v2 Detailed Design baseline。
 
 ---
 
@@ -43,10 +43,11 @@ public brain string
 
 ## 2. Concrete module boundary
 
-当前 implementation baseline 采用两个模块：
+当前implementation baseline采用三个模块：
 
 ```text
 src/brain/namespace.ts       # B1
+src/persistence/project-mapping.ts # E1 project metadata/source-root mapping
 src/persistence/storage.ts  # E1 path/layout/containment portion
 ```
 
@@ -56,21 +57,22 @@ src/persistence/storage.ts  # E1 path/layout/containment portion
 
 - 不 import `node:fs`；
 - 不调用 `realpath/stat/exists`；
-- 不持有 `brainRoot/projectRoot`；
+- 不持有 `brainRoot/projectId/sourceRoots`；
 - 不返回 absolute filesystem path；
 - 不根据 physical existence 判断 object kind。
 
 它只依赖普通字符串/TypeScript 数据结构。
 
-### 2.2 `src/persistence/storage.ts`
+### 2.2 E1 persistence modules
 
-负责：
+`project-mapping.ts`负责project metadata/source-root mapping；`storage.ts`负责binding、projection与containment。两者共同负责：
 
-- canonical `brainRoot / projectRoot` physical binding；
+- canonical `brainRoot / projectId` physical binding；
+- source roots ↔ ProjectId metadata mapping；
 - logical scope → scope root；
 - public document/directory → physical target；
 - scope state / archival companion → hidden physical target；
-- project-root deterministic projection；
+- stable ProjectId projection；
 - canonical/realpath containment；
 - create target 的 nearest-existing-parent containment proof。
 
@@ -391,11 +393,11 @@ E1 process/runtime 初始化后形成：
 
 ```ts
 export type CanonicalBrainRoot = string & { readonly __brand: "CanonicalBrainRoot" }
-export type CanonicalProjectRoot = string & { readonly __brand: "CanonicalProjectRoot" }
+export type ProjectId = string & { readonly __brand: "ProjectId" }
 
 export interface StorageBinding {
   readonly brainRoot: CanonicalBrainRoot
-  readonly projectRoot: CanonicalProjectRoot
+  readonly projectId: ProjectId
   readonly platform: "win32" | "posix"
 }
 ```
@@ -404,49 +406,49 @@ export interface StorageBinding {
 
 ### 6.2 `brainRoot` baseline
 
-配置名称继续使用现有 `BRAIN_HOME`，不新增 `BRAIN_ROOT` 第二配置：
+composition root内部继续使用 `BRAIN_HOME` 表示固定Brain repository path：
 
 ```text
-configured BRAIN_HOME
-→ canonical unified v2 brain repository root
-
-when omitted
-→ <user-home>/.brain-data
+BRAIN_HOME = join(homedir(), ".brain-data")
+→ 作为必填 brainRoot 传入 E1
 ```
 
-该目录是整个 canonical v2 repository root。
+当前production不读取同名环境变量。E1不读取环境变量、`homedir()`或默认路径；`brainRoot`是必填外部依赖。未来若恢复可配置路径，只修改composition root如何计算 `BRAIN_HOME`。
 
 Canonical v2 state只按本文 `global/` / `projects/` physical tree解释；brainRoot中的其他历史/未知布局不自动映射成 cognition state。
 
-### 6.3 projectRoot normalization
+### 6.3 Project identity 与 source roots
 
-`projectRoot` 必须是 host/server 提供的真实 existing project/workspace directory。
+Brain project identity是稳定 `ProjectId`，不是filesystem path。每个project metadata保存一个可变source root集合：
 
-E1 runtime 初始化：
-
-```text
-raw projectRoot
-→ path.resolve(raw)
-→ fs.realpath.native(existing directory)
-→ platform path normalization
-→ CanonicalProjectRoot
+```json
+{
+  "schemaVersion": 1,
+  "projectId": "<project-id>",
+  "name": "ai-toolkit",
+  "sourceRoots": [
+    "D:\\Workspace\\ai-projects\\ai-toolkit",
+    "D:\\Workspace\\shared\\brain-assets"
+  ]
+}
 ```
 
 规则：
 
-- projectRoot 不存在 / 不是 directory → startup/binding failure；
-- Windows drive letter canonicalize 为 uppercase；
-- 不做 Unicode NFC/NFD rewrite；
-- 不 case-fold普通 path segments；以 `realpath.native` 返回的 canonical existing path 为 identity；
-- symlinked workspace path 因 realpath 指向同一真实 directory，所以映射到同一个 project state；
-- 当前没有 relocation protocol：project 实际 canonical path 变化后就是新的 project identity。
+- 一个project可以映射零个或多个source directory；
+- 一个canonical source root最多属于一个project；
+- 添加/移除source root只修改 `project.json`，不改变ProjectId或移动cognition；
+- display name不拥有identity；重命名不改变physical project directory；
+- 当前source directory经 `path.resolve → fs.realpath` canonicalize后，与 `sourceRoots`匹配；
+- 未匹配的source directory创建新的ProjectId和project metadata；
+- 不读取或迁移legacy `.brain-data` layout。
 
-`projectRoot` normalization 只在 binding 建立时做一次；每个 Tool 不重复 realpath project root。
+`project.json`位于 `<brainRoot>/projects/<projectId>/project.json`。项目数量当前有限，baseline直接扫描 `projects/*/project.json`，不增加第二份registry/index truth。
 
 ### 6.4 brainRoot normalization
 
 ```text
-raw/default brainRoot
+required brainRoot
 → path.resolve
 → ensure root directory exists
 → fs.realpath.native(root)
@@ -457,143 +459,16 @@ E1 可以在 runtime bootstrap 时创建 `brainRoot` 本身；创建后再取 re
 
 ---
 
-## 7. Deterministic project projection
+## 7. Stable project projection
 
-不使用 projectKey、UUID、registry 或 hash。`CanonicalProjectRoot` 本身是 project identity，E1 只做可诊断的 deterministic filesystem projection。
-
-### 7.1 Windows drive path
-
-例如：
+`ProjectId`直接拥有physical project directory：
 
 ```text
-D:\Workspace\ai-projects\c-skills
+projectScopeRoot(binding)
+→ join(binding.brainRoot, "projects", binding.projectId)
 ```
 
-映射为：
-
-```text
-<brainRoot>/projects/
-  root=win-drive/
-  p=D/
-  p=Workspace/
-  p=ai-projects/
-  p=c-skills/
-  scope/
-```
-
-规则：
-
-- drive letter uppercase；
-- drive colon 不进入 physical segment；
-- 每个 canonical source segment 原样加前缀 `p=`；
-- `scope/` 是 terminal marker，不属于 projectRoot segment。
-
-因此 source segment `scope` 变成 `p=scope`，不会与 terminal marker 冲突。
-
-### 7.2 Windows UNC path
-
-```text
-\\server\share\team\project
-```
-
-映射为：
-
-```text
-<brainRoot>/projects/
-  root=win-unc/
-  p=server/
-  p=share/
-  p=team/
-  p=project/
-  scope/
-```
-
-server/share 来自 canonical UNC root，不从 raw string 手写切割。
-
-### 7.3 POSIX path
-
-```text
-/home/maple/project
-```
-
-映射为：
-
-```text
-<brainRoot>/projects/
-  root=posix/
-  p=home/
-  p=maple/
-  p=project/
-  scope/
-```
-
-POSIX `/` 本身不产生 path segment；若 projectRoot 就是 `/`，project scope 为 `projects/root=posix/scope/`。
-
-### 7.4 `deriveProjectProjectionSegments`
-
-`projectScopeRoot` 必须通过一个 pure helper 得到 projection segments，不允许在多个调用点复制 platform parsing：
-
-```ts
-function deriveProjectProjectionSegments(
-  projectRoot: CanonicalProjectRoot,
-  platform: "win32" | "posix",
-): readonly string[]
-```
-
-返回值**不含** `<brainRoot>/projects`，也不含 terminal `scope`；只返回 project identity projection。
-
-#### win32 algorithm
-
-1. 使用 `path.win32.parse(projectRoot)` 得到 canonical root；
-2. 若 root 匹配 drive root `^[A-Za-z]:\\$`：
-   - `drive = root[0].toUpperCase()`；
-   - `relative = path.win32.relative(root, projectRoot)`；
-   - relative 为空则 source segments = `[]`，否则按 `\` split；
-   - 返回 `['root=win-drive', 'p=' + drive, ...segments.map(s => 'p=' + s)]`；
-3. 否则 root 必须是 canonical UNC root `\\server\share\`：
-   - 从 `path.win32.parse(...).root` 只解析 server/share 两个 root components；
-   - root 不满足 `^\\\\([^\\]+)\\([^\\]+)\\$` → `StorageBindingError(project-root-shape-unsupported)`；
-   - `relative = path.win32.relative(root, projectRoot)`；
-   - 按 `\` split remaining segments；
-   - 返回 `['root=win-unc', 'p=' + server, 'p=' + share, ...remaining.map(...)]`。
-
-#### posix algorithm
-
-1. 使用 `path.posix.parse(projectRoot)`；canonical absolute root 必须是 `/`；
-2. `relative = path.posix.relative('/', projectRoot)`；
-3. relative 为空则 segments = `[]`，否则按 `/` split；
-4. 返回 `['root=posix', ...segments.map(s => 'p=' + s)]`。
-
-#### invariant
-
-- helper 不访问 filesystem；projectRoot 已由 binding normalization 保证 canonical/existing；
-- split 后不允许 empty source segment；出现时视为 internal invariant failure，不 silent drop；
-- tests 可以显式传 `win32/posix` + synthetic canonical string，因此 Windows CI 也能验证 POSIX mapping，反之亦然；
-- production `StorageBinding.platform` 由当前 Node runtime platform 一次确定，project root flavor 与 platform 不匹配则 binding 失败，不尝试跨平台猜测。
-
-`projectScopeRoot(binding)` 最终：
-
-```text
-join(
-  binding.brainRoot,
-  'projects',
-  ...deriveProjectProjectionSegments(binding.projectRoot, binding.platform),
-  'scope',
-)
-```
-### 7.5 Segment encoding rule
-
-当前 baseline **不做 percent/base64/hash encoding**。原因是 canonical project path 与 brainRoot 位于同一 host filesystem：source segment 已经是该平台可用 filesystem name；增加固定 `p=` prefix 只用于与 E1 structural marker 分域。
-
-不得：
-
-- trim segment；
-- case-fold普通 segment；
-- replace spaces；
-- Unicode normalize；
-- 为“更短”改成 hash。
-
-如果未来真实 project path 证明 `p=` projection 存在平台长度/兼容 failure，再以 evidence 修改 Design；当前不预建 registry/hash fallback。
+ProjectId只允许安全单segment字符集；不得包含separator、`.`/`..` traversal或absolute path shape。sourceRoots不参与physical path projection。
 
 ---
 
@@ -618,7 +493,8 @@ join(
 ### 8.2 Project + sessions
 
 ```text
-<brainRoot>/projects/<project-projection>/scope/
+<brainRoot>/projects/<projectId>/
+├─ project.json
 ├─ core.md
 ├─ memories/
 │  └─ <role>/<relative>.md
@@ -713,32 +589,29 @@ export type PhysicalResourceRef =
 ### 10.1 `createStorageBinding`
 
 ```text
-function: createStorageBinding({ brainRoot?, projectRoot, homeDir })
+function: createStorageBinding({ brainRoot, projectId })
   -> Promise<StorageBinding>
 ```
 
 **Responsibility**
 
-建立一次 process/runtime 使用的 canonical physical roots。
+建立一次process/runtime使用的canonical brain root与稳定project binding。
 
 **Algorithm**
 
-1. `projectRoot` 必须提供；`path.resolve`；
-2. `realpath.native(projectRoot)`；
-3. stat canonical path，必须 directory；
-4. normalize platform root representation；
-5. `brainRoot = configured brainRoot ?? join(homeDir, ".brain-data")`；
-6. resolve brainRoot；若不存在，创建 directory；
-7. realpath.native brainRoot；必须 directory；
-8. 返回 immutable `StorageBinding`。
+1. `brainRoot`与 `projectId`必须提供；
+2. validate ProjectId为安全单segment identifier；
+3. resolve brainRoot；若不存在，创建directory；
+4. realpath.native brainRoot；必须directory；
+5. 返回immutable `StorageBinding`。
 
 **Side-effect boundary**
 
-步骤 6 是第一个允许 side effect 的位置；之前所有 projectRoot validation 不修改 state。
+步骤3是第一个允许side effect的位置。
 
 **Failure**
 
-- invalid/missing project → `StorageBindingError(project-root-invalid)`；
+- invalid/missing ProjectId → `StorageBindingError(project-id-invalid)`；
 - brainRoot 无法创建/读取 → `StorageBindingError(brain-root-unavailable)`。
 
 内部 error 可保留 physical diagnostic；model-visible mapping 不得输出这些 absolute paths。
@@ -748,10 +621,8 @@ function: createStorageBinding({ brainRoot?, projectRoot, homeDir })
 pure derivation：
 
 ```text
-CanonicalProjectRoot
-→ detect win-drive / win-unc / posix
-→ ordered projection segments
-→ <brainRoot>/projects/.../scope
+ProjectId
+→ <brainRoot>/projects/<projectId>
 ```
 
 不访问 filesystem，不创建目录。
@@ -1013,7 +884,7 @@ StorageIoError
 E1 error 可以携带 internal diagnostic fields，但 A/B public mapping 必须只返回 canonical public path / object-kind guidance，不泄露：
 
 - brainRoot；
-- projectRoot；
+- projectId / sourceRoots；
 - `.state`；
 - temp path；
 - realpath target。
@@ -1088,11 +959,9 @@ Detailed Design 本身不写 Acceptance tests，但 implementation 必须留下�
 
 至少覆盖：
 
-- Windows drive project root；
-- Windows UNC；
-- POSIX；
-- parent project vs nested project terminal `scope/` 不重叠；
-- project segment 名为 `scope` / `global` / `projects` 不碰撞；
+- ProjectId safe segment validation；
+- one project maps multiple canonical source roots；
+- one source root cannot map to multiple projects；
 - global/project/session scope root mapping；
 - companion `.md → .json` mirroring。
 
@@ -1100,7 +969,7 @@ Detailed Design 本身不写 Acceptance tests，但 implementation 必须留下�
 
 使用真实 temp filesystem 或符合通用 filesystem semantics 的 resource fake，覆盖：
 
-- projectRoot realpath normalization；
+- source root realpath normalization与project mapping；
 - existing contained file；
 - missing existing target；
 - create target existing-prefix validation；
@@ -1144,9 +1013,9 @@ B1/E1只支持本文 canonical public grammar 与 physical projection。
 - session id grammar；
 - slash/backslash/trailing slash 行为；
 - B1/E1 module dependency；
-- `BRAIN_HOME` 在 v2 的含义；
-- projectRoot canonicalization；
-- project path 怎样映射到 unified repo；
+- fixed composition-root `BRAIN_HOME` 与required `brainRoot` boundary；
+- sourceRoots怎样映射到稳定ProjectId；
+- ProjectId怎样映射到unified repo；
 - `.state` 名称；
 - scope/core/memory/companion physical path；
 - `.md → .json` companion mapping；

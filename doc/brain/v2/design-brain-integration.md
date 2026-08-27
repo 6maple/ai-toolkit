@@ -5,7 +5,7 @@
 > **Parent:** `design-brain-system.md` A. Integration Boundary。
 > **Inputs:** Frozen Requirements / Tool Contract / Acceptance + B1/B2/B3/B4 application contracts。
 > **Children:** none。
-> **Status:** **Design Frozen (2026-08-24, evidence-corrected re-freeze)**；canonical v2 Detailed Design baseline。
+> **Status:** **Design Frozen (2026-08-26, project-mapping re-freeze)**；canonical v2 Detailed Design baseline。
 > **Compatibility boundary:** 不为 v1 Tool schema、旧 plugin config、旧 metadata key 或旧 host wiring提供兼容；只有明确 compatibility requirement 才增加 adapter。
 
 ---
@@ -61,16 +61,16 @@ One brain runtime instance binds exactly one project identity：
 
 ```ts
 export interface RuntimeBindingFacts {
-  readonly projectRoot: string
+  readonly sourceRoot: string
 }
 ```
 
-Raw `projectRoot` 来自 server/host startup configuration or startup cwd；E1 `createStorageBinding` canonicalize 后成为 immutable runtime binding。
+Raw `sourceRoot`来自server/host startup cwd。E1通过 `<brainRoot>/projects/*/project.json`把canonical source root映射到稳定ProjectId；未匹配目录创建新project metadata。StorageBinding只持有brainRoot与projectId。
 
 Rules：
 
 - model/tool arguments不能切换 project；
-- 不用 project hash/key/registry替代 projectRoot identity；
+- sourceRoot不是project identity；一个ProjectId可以对应多个sourceRoots；
 - multi-project host如需同时服务多个 project，应运行/管理多个 project-bound runtime instances；具体 child-process/instance-manager实现不属于 brain semantic Design。
 
 ---
@@ -255,8 +255,9 @@ A1 不用 regexp 对 arbitrary raw exception“洗一遍再暴露”；unknown i
 Before Tool serving：
 
 ```text
-obtain raw projectRoot startup fact
-→ E1 createStorageBinding
+obtain raw sourceRoot startup fact
+→ E1 resolve/create ProjectId mapping
+→ E1 createStorageBinding({ brainRoot, projectId })
 → runtime composition ensures required global/project real core workspace through E2/E1
 → construct application services
 → best-effort E3 repository/history setup
@@ -319,7 +320,7 @@ A2 不自行发明 retry/dedupe/fail-open/fail-closed policy。B4 已经定义�
 Current DSH evidence说明 host可取得：
 
 ```text
-project root
+source root
 agent/session id
 pre-step/new-user boundary
 model context injection point
@@ -381,7 +382,7 @@ Design不通过在 MCP adapter内分析 latest user message来伪造 hook能力�
 
 Trusted：
 
-- runtime startup projectRoot source；
+- runtime startup sourceRoot；
 - host adapter提供的 current-session fact；
 - canonical in-code public Tool definitions。
 
@@ -392,7 +393,7 @@ Untrusted/model-controlled：
 
 Rules：
 
-- projectRoot不能由 public Tool任意覆盖；
+- project/source-root mapping不能由public cognition Tool任意覆盖；
 - session_id只是 opaque identifier，仍经 B1 validate；
 - raw host metadata不能直接成为 filesystem path；
 - public result/error不泄露 physical/Git/process internals；
@@ -429,7 +430,7 @@ Rules：
 
 ### Binding
 
-- startup projectRoot is immutable after E1 binding；
+- startup sourceRoot解析出的ProjectId在runtime binding后保持不变；
 - invalid project binding / required global-project core bootstrap fails before Tool serving；
 - Git unavailable/repository setup failure does **not** block Tool serving；
 - runtime required global/project scopes exist before first Tool call；

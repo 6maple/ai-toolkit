@@ -118,13 +118,14 @@ function renderCore(core: AnchorCoreProjection): string {
     `archive_when="${escapeXmlAttribute(guidance.archiveWhen)}"`,
     `archive_with="${escapeXmlAttribute(guidance.archiveWith)}"`,
   ].join(" ");
-  return `    <core ${attrs}>\n${core.text}</core>`;
+  const empty = core.text.length === 0 ? ' empty="true"' : "";
+  return `    <core ${attrs}${empty}>\n${core.text}</core>`;
 }
 
 function renderCoreMemory(cores: readonly AnchorCoreProjection[]): string {
   const rendered = cores.map(renderCore).join("\n");
   return [
-    '  <core_memory purpose="Resident working cognition restored every applicable turn so ongoing work can continue without depending on archival retrieval.">',
+    '  <core_memory purpose="Resident working cognition restored every applicable turn so ongoing work can continue without depending on archival retrieval." read_policy="Each core document is fully restored inside its core element. Use that content directly; brain_cat cannot read core.md. An empty=true core is present and intentionally empty, not omitted or truncated.">',
     rendered,
     "  </core_memory>",
   ]

@@ -1,0 +1,18 @@
+{
+  "description": "Restore Brain cognition before every user prompt.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"D:/Workspace/ai-projects/ai-toolkit/code/brain-codex-plugin/dist/user-prompt-submit.mjs\"",
+            "commandWindows": "node \"D:\\Workspace\\ai-projects\\ai-toolkit\\code\\brain-codex-plugin\\dist\\user-prompt-submit.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Restoring Brain context"
+          }
+        ]
+      }
+    ]
+  }
+}

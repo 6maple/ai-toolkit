@@ -1,13 +1,12 @@
 /**
  * @dsh-external/brain-dsh-plugin — brain 记忆系统 DSH 原生插件。
  *
- * 薄包装：按项目根懒 spawn brain（MCP stdio），把 core 唯一 public
+ * 薄包装：按source root懒spawn brain（MCP stdio），把core唯一public
  * contract 注册进 dsh-tools，并转发可信的 DSH session fact。
  *
  * 会话/项目解析（宿主直读，无需 _meta）：
  * - 会话 id：exec.agent.id
- * - 项目根：exec.agent.session.header.cwd（DSH 会话创建时校验写入），
- *   缺失时回退 config.brain.projectRoot
+ * - source root：exec.agent.session.header.cwd（DSH 会话创建时校验写入）
  *
  * 资源注册全部挂 ctx.effect（热重载/卸载自动清理）。
  */
@@ -15,8 +14,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { PUBLIC_BRAIN_TOOLS, type BrainToolDefinition } from 'brain/public-tools'
@@ -40,12 +37,6 @@ export interface Config {
     args: string[]
     timeoutMs: number
   }
-  brain: {
-    /** Fixed project root override; default resolves from the session cwd per call. */
-    projectRoot?: string
-    /** Global memory root; default ~/.brain-data. */
-    home: string
-  }
   /**
    * 是否把 brain_think 注册给模型（默认开放）。
    * 注意：当 autoThink.enabled 开启（宿主自动注入）时，brain_think 自动对模型隐藏
@@ -66,10 +57,6 @@ export const Config = z.object({
     command: z.string().default('node'),
     args: z.array(z.string()).default([]),
     timeoutMs: z.number().default(30_000),
-  }),
-  brain: z.object({
-    projectRoot: z.string().default(''),
-    home: z.string().default(''),
   }),
   exposeThink: z.boolean().default(true),
   autoThink: z.object({
@@ -99,14 +86,11 @@ export function visibleToolDefinitions(
   )
 }
 
-/** Per-call project root: session cwd first, config override as fallback. */
-export function resolveProjectRoot(agent: Agent | undefined, config: Config): string {
+/** Per-call source root comes from the trusted session cwd. */
+export function resolveSourceRoot(agent: Agent | undefined): string {
   const cwd = agent?.session?.header?.cwd
   if (cwd) return cwd
-  if (config.brain.projectRoot) return config.brain.projectRoot
-  throw new Error(
-    'brain: cannot determine project root — no session cwd available and brain.projectRoot is not configured',
-  )
+  throw new Error('brain: cannot determine source root — no session cwd available')
 }
 
 /**
@@ -138,13 +122,10 @@ export function apply(ctx: Context, config: Config): void {
     )
   }
   const command = config.server.command === 'node' ? process.execPath : config.server.command
-  const home = config.brain.home || join(homedir(), '.brain-data')
-
   const manager = new InstanceManager({
     command,
     args: serverArgs,
     timeoutMs: config.server.timeoutMs,
-    home,
   })
   ctx.effect(() => () => manager.dispose(), 'brain: instances')
 
@@ -169,9 +150,9 @@ export function apply(ctx: Context, config: Config): void {
             ],
           },
           async execute(args: unknown, exec: ToolRunContext) {
-            const projectRoot = resolveProjectRoot(exec.agent, config)
+            const sourceRoot = resolveSourceRoot(exec.agent)
             const callArgs = buildCallArgs(args, exec.agent, injectable)
-            const result = await manager.call(projectRoot, definition.name, callArgs, exec.signal, {
+            const result = await manager.call(sourceRoot, definition.name, callArgs, exec.signal, {
               ...(exec.agent?.id === undefined ? {} : { threadId: exec.agent.id }),
             })
             if (result.isError === true) throw new Error(extractText(result.content, definition.name))
@@ -189,14 +170,14 @@ export function apply(ctx: Context, config: Config): void {
         ctx,
         manager,
         { enabled: config.autoThink.enabled, timeoutMs: config.autoThink.timeoutMs },
-        (agent) => resolveProjectRoot(agent, config),
+        (agent) => resolveSourceRoot(agent),
       ),
     'brain: auto-think',
   )
 
   ctx.logger.info(
     `brain-dsh-plugin: ${registered.length} tools registered (${registered.join(', ')}); ` +
-      `server ${command} ${serverArgs.join(' ')}, home=${home}, ` +
+      `server ${command} ${serverArgs.join(' ')}, ` +
       `exposeThink=${exposeThink}, autoThink=${config.autoThink.enabled}`,
   )
 }

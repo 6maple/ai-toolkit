@@ -1,16 +1,15 @@
 # MCP 挂载与验证清单（DSH / Codex / ZCode）
 
 > 目标：验证 brain 在 DSH、Codex、ZCode 三个宿主上的挂载方式，以及“每项目一个 MCP 实例”和“当前会话 id 获取”是否可行。
-> 当前结论：项目根用 `BRAIN_PROJECT_ROOT` 固定可行。Codex 的原生 MCP 调用可通过 `_meta.threadId` 提供会话 id；若直接使用 DSH 原生 `mcp-client`，仍需要 bridge 注入会话信息。仓库中的独立 `brain-dsh-plugin` 已提供 DSH 侧 session 注入/AutoThink 增强，它属于宿主适配层，不改变 brain 核心契约。
+> 当前结论：Brain repository固定为 `~/.brain-data`；进程cwd作为source root映射到稳定ProjectId。Codex 的原生 MCP 调用可通过 `_meta.threadId` 提供会话 id；若直接使用 DSH 原生 `mcp-client`，仍需要 bridge 注入会话信息。仓库中的独立 `brain-dsh-plugin` 已提供 DSH 侧 session 注入/AutoThink 增强，它属于宿主适配层，不改变 brain 核心契约。
 
 ## 1. 每项目一个实例的配置原则
 
 - 每个项目启动一个 brain 进程；
-- 通过环境变量固定：
-  - `BRAIN_PROJECT_ROOT` = 当前项目根（`@/` 与 `@core/project.md` 的解析基准）
-  - `BRAIN_HOME` = 全局记忆根（默认 `~/.brain-data`）
-  - `BRAIN_ASK_LONG_TERM` = `none`（默认）或 `protect`
-- `brain_think` 不再暴露 `project_root`；项目根在 MCP server 启动时通过 `BRAIN_PROJECT_ROOT` / cwd 固定，模型可见参数只保留 `session_id?`。
+- 从一个已登记的source directory cwd启动；未登记目录会自动创建project mapping；
+- 同一ProjectId可在 `project.json` 中登记多个source roots；
+- `BRAIN_ASK_LONG_TERM` = `none`（默认）或 `protect`；
+- `brain_think`不暴露project/source参数，模型可见参数只保留 `session_id?`。
 
 ## 2. DSH（DeepSeek Harness）
 
@@ -24,8 +23,6 @@ mcp-client:
     args: ["D:/Workspace/ai-projects/c-skills/code/brain/dist/index.mjs"]
     cwd: D:/Workspace/ai-projects/c-skills
     env:
-      BRAIN_PROJECT_ROOT: D:/Workspace/ai-projects/c-skills
-      BRAIN_HOME: C:/Users/<you>/.brain-data
       BRAIN_ASK_LONG_TERM: none
 ```
 
@@ -45,10 +42,7 @@ mcp-client:
     "brain": {
       "command": "node",
       "args": ["/path/to/brain/dist/index.mjs"],
-      "env": {
-        "BRAIN_PROJECT_ROOT": "/path/to/project",
-        "BRAIN_HOME": "/home/<you>/.brain-data"
-      }
+      "cwd": "/path/to/source-directory"
     }
   }
 }
@@ -67,7 +61,7 @@ Codex 使用 `config.toml` 配置 MCP server（本地 stdio 示例）：
 [mcp_servers.brain]
 command = "node"
 args = ["/path/to/brain/dist/index.mjs"]
-env = { BRAIN_PROJECT_ROOT = "/path/to/project", BRAIN_HOME = "/home/<you>/.brain-data" }
+cwd = "/path/to/source-directory"
 ```
 
 > 具体字段名以当前 Codex 版本为准；本地源码见 `codex-rs/codex-mcp` 的 `McpServerTransportConfig::Stdio`。

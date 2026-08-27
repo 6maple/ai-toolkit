@@ -287,6 +287,10 @@ describe("T6 anchor renderer", () => {
     const rendered = renderAnchorContext(projection);
     expect(rendered.endsWith("\n")).toBe(true);
     expect(rendered).toContain("<tag>&value\n</core>");
+    expect(rendered).toContain('read_policy="Each core document is fully restored');
+    expect(rendered).toContain('path="@session/s1/core.md"');
+    expect(rendered).toContain('empty="true">\n</core>');
+    expect(rendered).toContain("brain_cat cannot read core.md");
     expect(rendered).toContain('summary="a &quot;quote&quot; &amp; &lt;fact&gt;&#10;next"');
     expect(rendered).toContain('roots="{@session/s1,@project,@global}"');
     expect(rendered).not.toContain("<sid>");

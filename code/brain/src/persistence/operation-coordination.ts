@@ -1,5 +1,6 @@
-import { createRequire } from "node:module";
 import path from "node:path";
+
+import properLockfile from "proper-lockfile";
 
 import type { ScopeRef } from "../brain/namespace.ts";
 import type {
@@ -8,21 +9,6 @@ import type {
   ResourceBeforeState,
   ResourceMutation,
 } from "./cognition-state-store.ts";
-
-const require = createRequire(import.meta.url);
-const properLockfile = require("proper-lockfile") as {
-  lock(
-    file: string,
-    options: {
-      readonly lockfilePath: string;
-      readonly retries: number;
-      readonly stale: number;
-      readonly update: number;
-      readonly realpath: boolean;
-      readonly onCompromised: (error: Error) => void;
-    },
-  ): Promise<() => Promise<void>>;
-};
 
 export type SemanticOperationName = string;
 

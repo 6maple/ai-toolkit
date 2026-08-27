@@ -5,7 +5,7 @@
 > **Parent:** Frozen v2 Requirements / Public Contract / Acceptance。
 > **Inputs:** `bdd-brain-behavior-requirements.md`、`brain-tools-contract.md`、`acceptance-spec-brain.md`、`../../design-rule.md`、`../../ai-mds/agent-dev-rules.md`。
 > **Children:** 只在对应 black box 完成独立 Detailed Design review 后创建；当前迁移状态见 §9。
-> **Status:** **Design Frozen (2026-08-24, evidence-corrected re-freeze)**；canonical v2 System Design baseline。
+> **Status:** **Design Frozen (2026-08-26, project-mapping re-freeze)**；canonical v2 System Design baseline。
 
 ---
 
@@ -117,11 +117,11 @@ A parent 统一定义最小 invocation facts contract：
 
 ```text
 InvocationFacts
-  projectRoot
+  sourceRoot
   sessionId?
 ```
 
-`projectRoot / sessionId?` 是 host/runtime 提供的当前调用事实；它们怎样映射成 logical scope 由 B1 解释。`brainRoot` 不属于 invocation fact，而属于 E1 runtime/storage configuration。
+`sourceRoot / sessionId?` 是host/runtime提供的当前调用事实；E1把sourceRoot映射到稳定ProjectId，B1继续解释logical scope。`brainRoot`不属于invocation fact，而是composition root传给E1的必填runtime/storage配置。
 
 #### A1. MCP Tool Adapter
 

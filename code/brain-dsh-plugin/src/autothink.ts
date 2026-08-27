@@ -62,7 +62,7 @@ export function setupAutoThink(
   ctx: Context,
   manager: InstanceManager,
   config: AutoThinkConfig,
-  resolveProjectRoot: (agent: Agent | undefined) => string,
+  resolveSourceRoot: (agent: Agent | undefined) => string,
 ): () => void {
   if (!config.enabled) return () => {}
   /** 上次已注入的用户消息 splice seq（新消息 seq 更大才触发；同一条消息只注入一次）。 */
@@ -87,7 +87,7 @@ export function setupAutoThink(
     try {
       const signal = timeoutSignal(context.signal, config.timeoutMs)
       const result = await manager.call(
-          resolveProjectRoot(agent),
+          resolveSourceRoot(agent),
           'brain_think',
           { session_id: agent.id },
           signal,

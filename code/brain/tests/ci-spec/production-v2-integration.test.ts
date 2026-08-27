@@ -28,12 +28,10 @@ function textOf(result: { content?: unknown }): string {
 describe("v2 real runtime + MCP integration", () => {
   it("serves write/cat/think on real storage even when Git history is unavailable", async () => {
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v2-integration-"));
-    const projectRoot = path.join(temp, "project");
     const brainRoot = path.join(temp, "brain");
-    await fs.mkdir(projectRoot, { recursive: true });
 
     const infrastructure = await bootstrapBrainRuntimeInfrastructure(
-      { projectRoot, brainRoot },
+      { projectId: "project-1", brainRoot },
       {
         gitRunner: {
           async run() {

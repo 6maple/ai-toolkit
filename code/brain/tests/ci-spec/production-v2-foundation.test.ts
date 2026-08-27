@@ -42,14 +42,12 @@ import {
   StorageNotFoundError,
   companionRef,
   createStorageBinding,
-  deriveProjectProjectionSegments,
   projectAbsoluteLocation,
   projectPhysicalResource,
   projectScopeRoot,
   resolveCreateTarget,
   resolveExistingResource,
   scopeRoot,
-  type CanonicalProjectRoot,
   type StorageFs,
   type StorageStat,
 } from "../../src/persistence/storage.ts";
@@ -329,73 +327,53 @@ class FakePosixStorageFs implements StorageFs {
 }
 
 describe("v2 storage projection and containment", () => {
-  it("derives deterministic win-drive, UNC and POSIX project projections", () => {
-    expect(
-      deriveProjectProjectionSegments(
-        "d:\\Workspace\\ai-projects\\c-skills" as CanonicalProjectRoot,
-        "win32",
-      ),
-    ).toEqual(["root=win-drive", "p=D", "p=Workspace", "p=ai-projects", "p=c-skills"]);
-    expect(
-      deriveProjectProjectionSegments(
-        "\\\\server\\share\\team\\project" as CanonicalProjectRoot,
-        "win32",
-      ),
-    ).toEqual(["root=win-unc", "p=server", "p=share", "p=team", "p=project"]);
-    expect(
-      deriveProjectProjectionSegments("/home/maple/project" as CanonicalProjectRoot, "posix"),
-    ).toEqual(["root=posix", "p=home", "p=maple", "p=project"]);
-  });
-
   it("binds a project and projects public/hidden resources without raw hidden paths", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
-      homeDir: "/home/test",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
-    expect(projectScopeRoot(binding)).toBe("/brain/projects/root=posix/p=work/p=project/scope");
+    expect(projectScopeRoot(binding)).toBe("/brain/projects/project-1");
     expect(scopeRoot(binding, { kind: "global" })).toBe("/brain/global");
 
     const item = parsePublicPath(
       "@session/s1/memories/skill/coding/refactor.md",
     ) as LogicalArchivalPath;
     expect(projectPhysicalResource(binding, { kind: "public", path: item }).absolutePath).toBe(
-      "/brain/projects/root=posix/p=work/p=project/scope/sessions/s1/memories/skill/coding/refactor.md",
+      "/brain/projects/project-1/sessions/s1/memories/skill/coding/refactor.md",
     );
     expect(projectPhysicalResource(binding, companionRef(item)).absolutePath).toBe(
-      "/brain/projects/root=posix/p=work/p=project/scope/sessions/s1/.state/memories/skill/coding/refactor.json",
+      "/brain/projects/project-1/sessions/s1/.state/memories/skill/coding/refactor.json",
     );
   });
 
   it("maps permissive brain workspace locations to absolute paths without requiring existence", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
-      homeDir: "/home/test",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
 
     expect(projectAbsoluteLocation(binding, parseResourceLocation("@project"))).toBe(
-      "/brain/projects/root=posix/p=work/p=project/scope",
+      "/brain/projects/project-1",
     );
     expect(
       projectAbsoluteLocation(
         binding,
         parseResourceLocation("@project/memories/skill/report/template.xlsx"),
       ),
-    ).toBe("/brain/projects/root=posix/p=work/p=project/scope/memories/skill/report/template.xlsx");
+    ).toBe("/brain/projects/project-1/memories/skill/report/template.xlsx");
     expect(
       projectAbsoluteLocation(
         binding,
         parseResourceLocation("@session/s1/memories/skill/report/future/run.py"),
       ),
     ).toBe(
-      "/brain/projects/root=posix/p=work/p=project/scope/sessions/s1/memories/skill/report/future/run.py",
+      "/brain/projects/project-1/sessions/s1/memories/skill/report/future/run.py",
     );
 
     expect(() => parseResourceLocation("@project/.state/scope.json")).toThrow(NamespaceParseError);
@@ -411,8 +389,8 @@ describe("v2 storage projection and containment", () => {
   it("rejects a symlink in an absent-scope managed structural chain", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -427,8 +405,8 @@ describe("v2 storage projection and containment", () => {
   it("rejects an existing scope when a managed parent structural directory is a symlink", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -442,12 +420,12 @@ describe("v2 storage projection and containment", () => {
   it("rejects create into an existing scope when a managed parent structural directory is a symlink", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
-    fs.dir("/outside/projects/root=posix/p=work/p=project/scope");
+    fs.dir("/outside/projects/project-1");
     fs.symlink("/brain/projects", "/outside/projects");
     const item = parsePublicPath("@project/memories/knowledge/new.md");
     await expect(
@@ -457,8 +435,8 @@ describe("v2 storage projection and containment", () => {
   it("rejects an existing target whose real path escapes its scope", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -493,53 +471,26 @@ describe("v2 frozen foundation seam coverage", () => {
     );
   });
 
-  it("keeps project projection segments collision-free by structural prefixes", () => {
-    const parent = deriveProjectProjectionSegments(
-      "D:\\scope\\global\\projects" as CanonicalProjectRoot,
-      "win32",
-    );
-    const child = deriveProjectProjectionSegments(
-      "D:\\scope\\global\\projects\\scope" as CanonicalProjectRoot,
-      "win32",
-    );
-    expect(parent).toEqual(["root=win-drive", "p=D", "p=scope", "p=global", "p=projects"]);
-    expect(child).toEqual([...parent, "p=scope"]);
-  });
-
   it("maps global, project and session roots symmetrically", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
     expect(scopeRoot(binding, { kind: "global" })).toBe("/brain/global");
-    expect(scopeRoot(binding, { kind: "project" })).toBe(
-      "/brain/projects/root=posix/p=work/p=project/scope",
-    );
+    expect(scopeRoot(binding, { kind: "project" })).toBe("/brain/projects/project-1");
     expect(scopeRoot(binding, { kind: "session", sessionId: parseSessionId("s1") })).toBe(
-      "/brain/projects/root=posix/p=work/p=project/scope/sessions/s1",
+      "/brain/projects/project-1/sessions/s1",
     );
-  });
-
-  it("normalizes projectRoot through realpath once", async () => {
-    const fs = new FakePosixStorageFs();
-    fs.symlink("/work/link", "/work/project");
-    const binding = await createStorageBinding({
-      projectRoot: "/work/link",
-      brainRoot: "/brain",
-      platform: "posix",
-      fs,
-    });
-    expect(binding.projectRoot).toBe("/work/project");
   });
 
   it("resolves an existing contained file and rejects a missing existing file", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -562,20 +513,20 @@ describe("v2 frozen foundation seam coverage", () => {
   it("resolves create targets from the nearest contained parent and rejects cross-scope parent symlinks", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
-    const projectRoot = projectScopeRoot(binding);
-    fs.dir(projectRoot);
+    const projectScopePath = projectScopeRoot(binding);
+    fs.dir(projectScopePath);
     const item = parsePublicPath("@project/memories/knowledge/nested/new.md");
     expect(
       (await resolveCreateTarget(binding, { kind: "public", path: item }, fs)).absolutePath,
-    ).toBe(`${projectRoot}/memories/knowledge/nested/new.md`);
+    ).toBe(`${projectScopePath}/memories/knowledge/nested/new.md`);
 
     fs.dir("/brain/global/memories");
-    fs.symlink(`${projectRoot}/memories`, "/brain/global/memories");
+    fs.symlink(`${projectScopePath}/memories`, "/brain/global/memories");
     await expect(
       resolveCreateTarget(binding, { kind: "public", path: item }, fs),
     ).rejects.toBeInstanceOf(StorageContainmentError);
@@ -584,8 +535,8 @@ describe("v2 frozen foundation seam coverage", () => {
   it("follows same-scope public aliases and returns the resolved canonical cognition identity", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -611,8 +562,8 @@ describe("v2 frozen foundation seam coverage", () => {
   it("follows a same-scope public directory alias for create targets", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -635,8 +586,8 @@ describe("v2 frozen foundation seam coverage", () => {
   it("keeps the resolved target object kind instead of the alias entry shape", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -659,8 +610,8 @@ describe("v2 frozen foundation seam coverage", () => {
   it("reports a broken public alias as an alias-resolution failure", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -679,8 +630,8 @@ describe("v2 frozen foundation seam coverage", () => {
   it("keeps hidden companion paths strict even when the public workspace allows aliases", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });
@@ -700,8 +651,8 @@ describe("v2 frozen foundation seam coverage", () => {
   it("rejects a materialized scope root that is itself a symlink", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
-      projectRoot: "/work/project",
       brainRoot: "/brain",
+      projectId: "project-1",
       platform: "posix",
       fs,
     });

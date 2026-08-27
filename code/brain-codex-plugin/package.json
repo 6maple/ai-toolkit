@@ -1,0 +1,25 @@
+{
+  "name": "brain-codex-plugin",
+  "version": "0.1.0",
+  "description": "Persistent Brain cognition for Codex with automatic turn restoration.",
+  "author": {
+    "name": "Maple"
+  },
+  "license": "MIT",
+  "keywords": [
+    "brain",
+    "memory",
+    "codex",
+    "context"
+  ],
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/stub.mjs",
+    "stub": "node scripts/stub.mjs",
+    "test": "node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "unbuild": "3.6.1"
+  }
+}

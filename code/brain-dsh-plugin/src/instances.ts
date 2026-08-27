@@ -1,7 +1,7 @@
 /**
- * InstanceManager — one brain process per project root, lazily spawned.
+ * InstanceManager — one brain process per source root, lazily spawned.
  *
- * - First `brain_*` call for a project root spawns its server (initialize +
+ * - First `brain_*` call for a source root spawns its server (initialize +
  *   tools/list), later calls reuse it.
  * - Unexpected exits mark the instance dead: a 1s cooldown prevents respawn
  *   storms, and >3 restarts within 10s refuse to respawn with a clear error.
@@ -16,7 +16,6 @@ export interface InstanceConfig {
   command: string
   args: readonly string[]
   timeoutMs: number
-  home: string
 }
 
 interface Instance {
@@ -46,20 +45,20 @@ export class InstanceManager {
     this.config = config
   }
 
-  /** Tools advertised by the live server for a project root (spawning on demand). */
-  async tools(projectRoot: string): Promise<Map<string, McpToolInfo>> {
-    return (await this.ensure(projectRoot)).tools
+  /** Tools advertised by the live server for a source root (spawning on demand). */
+  async tools(sourceRoot: string): Promise<Map<string, McpToolInfo>> {
+    return (await this.ensure(sourceRoot)).tools
   }
 
-  /** Forward one tool call to the instance owning the project root. */
+  /** Forward one tool call to the instance running from the source root. */
   async call(
-    projectRoot: string,
+    sourceRoot: string,
     name: string,
     args: unknown,
     signal?: AbortSignal,
     meta?: McpInvocationMeta,
   ): Promise<McpCallResult> {
-    const instance = await this.ensure(projectRoot)
+    const instance = await this.ensure(sourceRoot)
     return instance.client.call(name, args, signal, meta)
   }
 
@@ -71,13 +70,13 @@ export class InstanceManager {
     this.instances.clear()
   }
 
-  private async ensure(projectRoot: string): Promise<Instance> {
+  private async ensure(sourceRoot: string): Promise<Instance> {
     if (this.disposed) throw new Error('brain: plugin disposed')
-    const existing = this.instances.get(projectRoot)
+    const existing = this.instances.get(sourceRoot)
     if (existing?.client.running) return existing
     if (existing?.starting) return existing.starting
     this.guardRestart(existing)
-    return this.spawnInstance(projectRoot, existing)
+    return this.spawnInstance(sourceRoot, existing)
   }
 
   /** Enforce cooldown and crash-storm limits before respawning a dead instance. */
@@ -96,19 +95,15 @@ export class InstanceManager {
     }
   }
 
-  private spawnInstance(projectRoot: string, previous: Instance | undefined): Promise<Instance> {
+  private spawnInstance(sourceRoot: string, previous: Instance | undefined): Promise<Instance> {
     const client = new McpClient({
       command: this.config.command,
       args: [...this.config.args],
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        BRAIN_PROJECT_ROOT: projectRoot,
-        BRAIN_HOME: this.config.home,
-      },
+      cwd: sourceRoot,
+      env: { ...process.env },
       timeoutMs: this.config.timeoutMs,
       onExit: () => {
-        const current = this.instances.get(projectRoot)
+        const current = this.instances.get(sourceRoot)
         if (current?.client === client && !current.recordedFailure) {
           current.recordedFailure = true
           current.deadUntil = Date.now() + RESPAWN_COOLDOWN_MS
@@ -145,7 +140,7 @@ export class InstanceManager {
       }
     })()
     instance.starting = starting
-    this.instances.set(projectRoot, instance)
+    this.instances.set(sourceRoot, instance)
     return starting
   }
 }

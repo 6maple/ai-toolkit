@@ -205,7 +205,15 @@ AI 负责完成调查、比较和专业取舍，并完成所有不依赖缺失�
 → 仍然只能由用户补充的 context（如有）
 ```
 
-以上内容统一写入 Design Evidence & Alignment，不拆成多个辅助 artifact。Material Design 必须让用户实际看见；展示后，只有该方向尚未完成对齐、不能由上下文唯一确定且没有明确委托时，才保持 Gate 打开等待用户纠正或允许继续。已经看过并允许继续、通过 `core.md` §4.1 唯一推断测试，或已在明确范围内委托给 AI 的内容，记录成立依据后可以推进，不机械重复提问。同一次讨论可以覆盖相邻 Design 阶段，但不能以“AI 能独立设计”为由静默跳过对齐。只有未解决的 user-owned context 会 materially 改变 Design 时，才把问题作为 `decision owner` blocker 请求最小充分补充；普通设计讨论不把专业决定转交给用户。
+以上内容统一写入 Design Evidence & Alignment，不拆成多个辅助 artifact。对应 Gate 分别检查三项义务：
+
+- **可见义务**：Material Design、关键依据、precedent 关系和影响必须在依赖它的 implementation 开始前让用户实际看见；AI 能独立完成专业设计、上下文能够唯一推出或已有专业委托，都不取消该义务。
+- **等待义务**：用户要求 intent-first / 逐步确认，或当前 material 方向既不能由上下文唯一确定、也没有落在已展示的明确委托内时，展示后保持 Gate 打开，等待用户纠正或允许继续；否则可以在完成展示后推进，不机械重复提问。
+- **裁决义务**：只有未解决的 user-owned context 会 materially 改变 Design 时，才请求 decision owner 补充或裁决；普通技术方案继续由 solution owner 完成。
+
+Design Gate 能够在展示后通过，只说明专业设计可以继续形成或转换阶段，不授予任何新的 artifact mutation 权。具体 mutation 是否可以执行，仍由 [`software-workflow.md` §1.3](software-workflow.md#13-在-material-move-前对齐在-gate-前审查实际产物) 的 Authorized Execution Boundary 决定。
+
+已经看过并允许继续、通过 `core.md` §4.1 唯一推断测试，或已在明确范围内委托给 AI 的内容，都必须记录各自真实的成立依据；后两者只能称为“有依据继续”，不能称为“用户已经明确确认”或“已与用户达成一致”。同一次展示可以覆盖多个已明确列出的相邻 Design 阶段，但不能覆盖之后新出现的 material 方向、偏离或影响。
 
 ---
 

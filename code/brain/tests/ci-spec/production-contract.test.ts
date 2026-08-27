@@ -4,8 +4,12 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import { registerBrainTools, type BrainApplicationServices } from "../../src/index.ts";
-import { PUBLIC_BRAIN_TOOLS } from "../../src/public-tools.ts";
+import {
+  registerBrainTools,
+  type BrainApplicationServices,
+  type BrainToolRegistrationOptions,
+} from "../../src/index.ts";
+import { PUBLIC_BRAIN_TOOLS, type BrainToolName } from "../../src/public-tools.ts";
 import { parsePublicPath } from "../../src/brain/namespace.ts";
 
 const EXPECTED_TOOLS = [
@@ -27,7 +31,7 @@ function fakeServices() {
   const services = {
     binding: {
       brainRoot: "/brain",
-      projectRoot: "/work/project",
+      projectId: "project-1",
       platform: "posix",
     },
     anchor: {
@@ -84,7 +88,10 @@ function fakeServices() {
   return { services, calls };
 }
 
-function captureRegistration(services: BrainApplicationServices) {
+function captureRegistration(
+  services: BrainApplicationServices,
+  options: BrainToolRegistrationOptions = {},
+) {
   const registered = new Map<
     string,
     {
@@ -103,7 +110,7 @@ function captureRegistration(services: BrainApplicationServices) {
       registered.set(name, { config: config as never, handler });
     }),
   };
-  registerBrainTools(server as never, services);
+  registerBrainTools(server as never, services, undefined, options);
   return registered;
 }
 
@@ -120,6 +127,15 @@ describe("brain v2 generic MCP public contract", () => {
     }
   });
 
+  test("a host-owned lifecycle operation can be omitted without changing the canonical tool source", () => {
+    const { services } = fakeServices();
+    const registered = captureRegistration(services, { exclude: ["brain_think"] });
+    expect([...registered.keys()].sort()).toEqual(
+      EXPECTED_TOOLS.filter((name) => name !== "brain_think"),
+    );
+    expect(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOLS]);
+  });
+
   test("the real MCP SDK can list and call the registered v2 tools", async () => {
     const { services, calls } = fakeServices();
     const server = new McpServer({ name: "brain-test", version: "0.0.0" });
@@ -130,6 +146,11 @@ describe("brain v2 generic MCP public contract", () => {
       await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOLS]);
+      const listedCat = listed.tools.find((tool) => tool.name === "brain_cat")!;
+      expect(listedCat.description).toContain("cannot read core.md");
+      expect(listedCat.inputSchema).toMatchObject({
+        properties: { path: { type: "string", pattern: expect.any(String) } },
+      });
       const called = await client.callTool({
         name: "brain_write",
         arguments: {
@@ -147,8 +168,10 @@ describe("brain v2 generic MCP public contract", () => {
 
   test("schemas expose only current arguments and reject hidden/legacy arguments", () => {
     const byName = new Map(PUBLIC_BRAIN_TOOLS.map((tool) => [tool.name, tool]));
-    const keys = (name: string) =>
-      Object.keys((byName.get(name)?.inputSchema as { shape: Record<string, unknown> }).shape);
+    const keys = (name: BrainToolName) =>
+      Object.keys(
+        (byName.get(name)!.inputSchema as unknown as { shape: Record<string, unknown> }).shape,
+      );
     expect(keys("brain_think")).toEqual(["session_id"]);
     expect(keys("brain_absolute_path")).toEqual(["path"]);
     expect(keys("brain_ls")).toEqual(["path"]);
@@ -222,6 +245,73 @@ describe("brain v2 generic MCP public contract", () => {
     expect(
       feedback.safeParse({ path: "@project/memories/knowledge/a.md", feedback: "correct" }).success,
     ).toBe(false);
+  });
+
+  test("schemas distinguish resident core, archival documents, and memories directories", () => {
+    const byName = new Map(PUBLIC_BRAIN_TOOLS.map((tool) => [tool.name, tool]));
+    const validMemory = "@project/memories/knowledge/tool-contracts.md";
+    const validDirectory = "@project/memories/knowledge/";
+
+    expect(byName.get("brain_cat")!.inputSchema.safeParse({ path: validMemory }).success).toBe(
+      true,
+    );
+    expect(
+      byName.get("brain_cat")!.inputSchema.safeParse({ path: "@project/core.md" }).success,
+    ).toBe(false);
+    expect(byName.get("brain_cat")!.inputSchema.safeParse({ path: "@project" }).success).toBe(
+      false,
+    );
+
+    expect(byName.get("brain_ls")!.inputSchema.safeParse({ path: validDirectory }).success).toBe(
+      true,
+    );
+    expect(
+      byName.get("brain_ls")!.inputSchema.safeParse({ path: "@project/memories" }).success,
+    ).toBe(true);
+    expect(byName.get("brain_ls")!.inputSchema.safeParse({ path: "@project" }).success).toBe(false);
+    expect(byName.get("brain_ls")!.inputSchema.safeParse({ path: validMemory }).success).toBe(
+      false,
+    );
+
+    expect(
+      byName.get("brain_write")!.inputSchema.safeParse({ path: "@project/core.md", content: "x" })
+        .success,
+    ).toBe(false);
+    expect(
+      byName.get("brain_edit")!.inputSchema.safeParse({
+        path: "@project/core.md",
+        content: "project cognition",
+      }).success,
+    ).toBe(true);
+  });
+
+  test("tool descriptions state object boundaries and the core read policy", () => {
+    const byName = new Map(PUBLIC_BRAIN_TOOLS.map((tool) => [tool.name, tool]));
+    expect(byName.get("brain_cat")!.description).toContain("cannot read core.md");
+    expect(byName.get("brain_cat")!.description).toContain("already fully restored");
+    expect(byName.get("brain_ls")!.description).toContain("Do not pass a bare scope");
+    expect(byName.get("brain_edit")!.description).toContain("do not call brain_cat first");
+    expect(byName.get("brain_write")!.description).toContain("fully overwrites");
+  });
+
+  test("path errors include tool-specific recovery guidance", async () => {
+    const { services } = fakeServices();
+    const registered = captureRegistration(services);
+
+    const lsResult = await registered.get("brain_ls")!.handler({ path: "@project" });
+    expect(lsResult.isError).toBe(true);
+    expect(lsResult.content[0].text).toContain("@project/memories/");
+    expect(lsResult.content[0].text).toContain("Do not pass @project");
+
+    services.reads.cat = vi.fn(async () => {
+      const error = new Error("wrong kind") as Error & { code: string };
+      error.code = "wrong-object-kind";
+      throw error;
+    }) as never;
+    const catResult = await registered.get("brain_cat")!.handler({ path: "@project/core.md" });
+    expect(catResult.isError).toBe(true);
+    expect(catResult.content[0].text).toContain("cannot read core.md");
+    expect(catResult.content[0].text).toContain("already fully present");
   });
 
   test("think uses explicit session first, trusted host session second, and never invents default", async () => {

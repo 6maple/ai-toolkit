@@ -48,6 +48,11 @@ export const CODEX_THREAD_HOST_INVOCATION: HostInvocationAdapter = {
 
 export type BrainToolResult = CallToolResult;
 
+export interface BrainToolRegistrationOptions {
+  /** Tools owned by a host lifecycle integration and therefore hidden from the model. */
+  readonly exclude?: readonly BrainToolName[];
+}
+
 function textResult(text: string, warnings: readonly string[] = []): BrainToolResult {
   return {
     content: [
@@ -62,13 +67,54 @@ function typedCode(error: unknown): string | undefined {
   return typeof error.code === "string" ? error.code : undefined;
 }
 
-function errorResult(error: unknown): BrainToolResult {
+const OBJECT_PATH_GUIDANCE: Partial<Record<BrainToolName, string>> = {
+  brain_ls:
+    "brain_ls accepts only a memories directory, for example @project/memories/ or @project/memories/knowledge/. Do not pass @project, core.md, or a concrete .md document.",
+  brain_glob:
+    "When path is provided, brain_glob accepts only a memories directory such as @project/memories/. Omit path to search all applicable memories; core.md is already resident and is not discoverable.",
+  brain_grep:
+    "When path is provided, brain_grep accepts only a memories directory such as @project/memories/. Omit path to search all applicable memories; core.md is already resident and is not searchable here.",
+  brain_cat:
+    "brain_cat accepts only a concrete archival .md path under <scope-root>/memories/{decision,knowledge,intention,skill}/. It cannot read core.md because applicable core content is already fully present in <brain_think_context>.",
+  brain_write:
+    "brain_write accepts only a concrete archival .md path under a memories role. It cannot write core.md; maintain an existing core with brain_edit.",
+  brain_edit:
+    "brain_edit accepts one existing core.md or one concrete archival .md document, not a bare scope or memories directory.",
+  brain_rm:
+    "brain_rm accepts only a concrete archival .md path under a memories role; it cannot remove core.md or a directory.",
+  brain_mv:
+    "brain_mv requires concrete archival .md paths under memories roles for both src and dst; core.md and directories are invalid.",
+  brain_feedback:
+    "brain_feedback accepts only a concrete archival .md path under a memories role; core.md and directories are invalid.",
+};
+
+const PATH_ERROR_CODES = new Set([
+  "invalid-root",
+  "invalid-separator",
+  "invalid-session-id",
+  "invalid-role",
+  "traversal-segment",
+  "invalid-segment",
+  "invalid-object-shape",
+  "wrong-object-kind",
+]);
+
+function errorResult(toolName: BrainToolName, error: unknown): BrainToolResult {
   if (error instanceof DOMException && error.name === "AbortError") {
     return { content: [{ type: "text", text: "error: aborted" }], isError: true };
   }
   const code = typedCode(error);
   if (code !== undefined) {
-    return { content: [{ type: "text", text: `error: ${code}` }], isError: true };
+    const guidance = PATH_ERROR_CODES.has(code) ? OBJECT_PATH_GUIDANCE[toolName] : undefined;
+    return {
+      content: [
+        {
+          type: "text",
+          text: guidance === undefined ? `error: ${code}` : `error: ${code}\n${guidance}`,
+        },
+      ],
+      isError: true,
+    };
   }
   console.error("brain infrastructure failure", error);
   return {
@@ -248,7 +294,7 @@ function handlerFor(
         }
       }
     } catch (error) {
-      return errorResult(error);
+      return errorResult(name, error);
     }
   };
 }
@@ -257,8 +303,11 @@ export function registerBrainTools(
   server: McpServer,
   services: BrainApplicationServices,
   hostInvocation: HostInvocationAdapter = CODEX_THREAD_HOST_INVOCATION,
+  options: BrainToolRegistrationOptions = {},
 ): void {
+  const excluded = new Set(options.exclude ?? []);
   for (const definition of PUBLIC_BRAIN_TOOLS) {
+    if (excluded.has(definition.name)) continue;
     server.registerTool(
       definition.name,
       {

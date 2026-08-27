@@ -4,11 +4,11 @@
 
 ## 当前基线
 
-2026-08-20 已完成 Frozen BDD / Acceptance → Engineering Design → Fake Green → Production CI Red/Green → Compliance Review：
+2026-08-26 已完成 Frozen BDD / Acceptance → Engineering Design → Production CI Red/Green → project-mapping re-freeze：
 
 ```text
 pnpm test
-→ 9 test files / 60 tests passed
+→ 9 test files / 144 tests passed
 
 pnpm run typecheck
 → passed
@@ -36,7 +36,7 @@ pnpm run typecheck
 session_id?
 ```
 
-project root 不由模型逐次传入，而是在 MCP server 启动时固定。
+project不由模型逐次选择；MCP server启动时用cwd source root解析稳定ProjectId。
 
 ### 7 个熟悉动作工具
 
@@ -101,7 +101,7 @@ feedback 必须显式提供；普通 edit/write overwrite 不会根据 importanc
 - project — 项目目标/架构/约定；
 - session — 当前会话状态/承诺/进度。
 
-core 可正常 `brain_cat` / `brain_edit` / `brain_mv`；写入 core 有长度保护。core→archival 时，源 core 必须已经具备合法 archival frontmatter，brain 不替模型生成 summary/type/importance。
+适用 core 会在每轮 `<brain_think_context>` 中完整恢复；直接使用其中内容，并通过 `brain_edit` 维护，不使用 `brain_cat` 重读，也不使用 `brain_write` 创建。写入 core 有长度保护。当前 v2 的 `brain_mv` 仅移动 archival cognition，不支持 core→archival；需要归档 core 内容时，先用 `brain_write` 创建具备合法 archival frontmatter 的 memory，再用 `brain_edit` 清理 core。
 
 ## 审批
 
@@ -125,19 +125,27 @@ BRAIN_ASK_LONG_TERM=protect
 
 ## 环境变量
 
-| 变量                  | 默认            | 说明                                   |
-| --------------------- | --------------- | -------------------------------------- |
-| `BRAIN_PROJECT_ROOT`  | process cwd     | 当前项目根；每个 MCP server 启动时固定 |
-| `BRAIN_HOME`          | `~/.brain-data` | 共享 global memory root                |
-| `BRAIN_ASK_LONG_TERM` | `none`          | `none` / `protect`                     |
+| 变量                  | 默认   | 说明               |
+| --------------------- | ------ | ------------------ |
+| `BRAIN_ASK_LONG_TERM` | `none` | `none` / `protect` |
+
+Brain repository固定为 `~/.brain-data`。入口层以内部 `BRAIN_HOME`常量计算该路径，并作为必填 `brainRoot`传给storage；当前不读取同名环境变量。当前进程cwd作为source root，通过 `projects/*/project.json`映射到稳定ProjectId。一个project可以对应多个source roots。
 
 ## 开发与运行
 
 ```bash
 pnpm install
+vp run stub
+node dist/index.mjs
+```
+
+`stub` 使用 unbuild/Jiti 把开发入口写到与 production 相同的 `dist/index.mjs`。源码变化后不需要
+重新 build；重启 MCP process 即会加载当前 `src`。正式 `pnpm run build` 会重新生成 production
+bundle 并覆盖 stub。MCP从source directory cwd执行该文件的绝对路径；Brain会查找或创建该目录对应的project mapping。
+
+```bash
 pnpm exec vitest run --configLoader native
 pnpm exec tsc --noEmit
-node src/index.ts
 ```
 
 发布/打包方式按项目现有 package scripts 执行。

@@ -45,6 +45,7 @@
   },
   "scripts": {
     "build": "unbuild",
+    "stub": "unbuild --stub",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node scripts/verify.mjs"
   },

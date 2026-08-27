@@ -72,6 +72,8 @@ rl.on('line', (line) => {
 
 async function main() {
   const VERIFY_DIR = mkdtempSync(join(tmpdir(), 'brain-dsh-plugin-verify-'))
+  process.env.HOME = VERIFY_DIR
+  process.env.USERPROFILE = VERIFY_DIR
   const fakeServer = join(VERIFY_DIR, 'fake-server.mjs')
   writeFakeServer(fakeServer)
   const fakeRoot = join(VERIFY_DIR, 'fake-root')
@@ -82,7 +84,6 @@ async function main() {
     command: process.execPath,
     args: [fakeServer],
     timeoutMs: 2000,
-    home: join(VERIFY_DIR, 'fake-home'),
   })
 
   try {
@@ -102,7 +103,6 @@ async function main() {
   // timeout: separate manager with a small budget
   const mgrTimeout = new InstanceManager({
     command: process.execPath, args: [fakeServer], timeoutMs: 300,
-    home: join(VERIFY_DIR, 'fake-home'),
   })
   try {
     await mgrTimeout.call(fakeRoot, 'brain_slow', {})
@@ -233,7 +233,6 @@ async function main() {
     mkdirSync(realRoot, { recursive: true })
     const mgrReal = new InstanceManager({
       command: process.execPath, args: [dist], timeoutMs: 15_000,
-      home: join(VERIFY_DIR, 'real-home'),
     })
     try {
       const tools = await mgrReal.tools(realRoot)

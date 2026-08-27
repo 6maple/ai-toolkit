@@ -1,6 +1,5 @@
 import * as nodeFs from "node:fs";
 import { promises as fsPromises } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 
 import {
@@ -13,12 +12,12 @@ import {
 } from "../brain/namespace.ts";
 
 export type CanonicalBrainRoot = string & { readonly __brand: "CanonicalBrainRoot" };
-export type CanonicalProjectRoot = string & { readonly __brand: "CanonicalProjectRoot" };
+export type ProjectId = string & { readonly __brand: "ProjectId" };
 export type StoragePlatform = "win32" | "posix";
 
 export interface StorageBinding {
   readonly brainRoot: CanonicalBrainRoot;
-  readonly projectRoot: CanonicalProjectRoot;
+  readonly projectId: ProjectId;
   readonly platform: StoragePlatform;
 }
 
@@ -72,9 +71,8 @@ export const nodeStorageFs: StorageFs = {
 };
 
 export type StorageBindingErrorCode =
-  | "project-root-invalid"
   | "brain-root-unavailable"
-  | "project-root-shape-unsupported";
+  | "project-id-invalid";
 
 export class StorageBindingError extends Error {
   readonly code: StorageBindingErrorCode;
@@ -174,52 +172,18 @@ function isContained(platform: StoragePlatform, root: string, target: string): b
   return relative !== ".." && !relative.startsWith(`..${p.sep}`);
 }
 
-function splitRelative(relative: string, platform: StoragePlatform): string[] {
-  if (relative === "") return [];
-  const segments = relative.split(pathApi(platform).sep);
-  if (segments.some((segment) => segment.length === 0)) {
-    throw new StorageBindingError("project-root-shape-unsupported");
+const PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+export function parseProjectId(value: string): ProjectId {
+  if (!PROJECT_ID_PATTERN.test(value)) {
+    throw new StorageBindingError("project-id-invalid");
   }
-  return segments;
-}
-
-export function deriveProjectProjectionSegments(
-  projectRoot: CanonicalProjectRoot,
-  platform: StoragePlatform,
-): readonly string[] {
-  if (platform === "win32") {
-    const parsed = path.win32.parse(projectRoot);
-    const root = parsed.root;
-    if (/^[A-Za-z]:\\$/.test(root)) {
-      const drive = root[0]!.toUpperCase();
-      const relative = path.win32.relative(root, projectRoot);
-      const segments = splitRelative(relative, platform);
-      return ["root=win-drive", `p=${drive}`, ...segments.map((segment) => `p=${segment}`)];
-    }
-
-    const unc = /^\\\\([^\\]+)\\([^\\]+)\\$/.exec(root);
-    if (!unc) throw new StorageBindingError("project-root-shape-unsupported");
-    const relative = path.win32.relative(root, projectRoot);
-    const segments = splitRelative(relative, platform);
-    return [
-      "root=win-unc",
-      `p=${unc[1]!}`,
-      `p=${unc[2]!}`,
-      ...segments.map((segment) => `p=${segment}`),
-    ];
-  }
-
-  const parsed = path.posix.parse(projectRoot);
-  if (parsed.root !== "/") throw new StorageBindingError("project-root-shape-unsupported");
-  const relative = path.posix.relative("/", projectRoot);
-  const segments = splitRelative(relative, platform);
-  return ["root=posix", ...segments.map((segment) => `p=${segment}`)];
+  return value as ProjectId;
 }
 
 export interface CreateStorageBindingOptions {
-  readonly brainRoot?: string;
-  readonly projectRoot: string;
-  readonly homeDir?: string;
+  readonly brainRoot: string;
+  readonly projectId: string;
   /** Internal test seam; production omits this. */
   readonly fs?: StorageFs;
   /** Internal test seam; production uses the current Node platform. */
@@ -232,24 +196,12 @@ export async function createStorageBinding(
   const fs = options.fs ?? nodeStorageFs;
   const platform = options.platform ?? currentStoragePlatform();
   const p = pathApi(platform);
-
-  let canonicalProjectRoot: string;
-  try {
-    if (!options.projectRoot) throw new Error("missing project root");
-    const resolved = p.resolve(options.projectRoot);
-    canonicalProjectRoot = normalizeCanonicalPath(await fs.realpathNative(resolved), platform);
-    const stat = await fs.stat(canonicalProjectRoot);
-    if (!stat.isDirectory()) throw new Error("project root is not a directory");
-    deriveProjectProjectionSegments(canonicalProjectRoot as CanonicalProjectRoot, platform);
-  } catch (error) {
-    if (error instanceof StorageBindingError) throw error;
-    throw new StorageBindingError("project-root-invalid", { cause: error });
-  }
+  const projectId = parseProjectId(options.projectId);
 
   let canonicalBrainRoot: string;
   try {
-    const configured = options.brainRoot ?? p.join(options.homeDir ?? homedir(), ".brain-data");
-    const resolved = p.resolve(configured);
+    if (!options.brainRoot) throw new Error("missing brain root");
+    const resolved = p.resolve(options.brainRoot);
     await fs.mkdir(resolved, { recursive: true });
     canonicalBrainRoot = normalizeCanonicalPath(await fs.realpathNative(resolved), platform);
     const stat = await fs.stat(canonicalBrainRoot);
@@ -260,19 +212,14 @@ export async function createStorageBinding(
 
   return {
     brainRoot: canonicalBrainRoot as CanonicalBrainRoot,
-    projectRoot: canonicalProjectRoot as CanonicalProjectRoot,
+    projectId,
     platform,
   };
 }
 
 export function projectScopeRoot(binding: StorageBinding): string {
   const p = pathApi(binding.platform);
-  return p.join(
-    binding.brainRoot,
-    "projects",
-    ...deriveProjectProjectionSegments(binding.projectRoot, binding.platform),
-    "scope",
-  );
+  return p.join(binding.brainRoot, "projects", binding.projectId);
 }
 
 export function scopeRoot(binding: StorageBinding, scope: ScopeRef): string {
