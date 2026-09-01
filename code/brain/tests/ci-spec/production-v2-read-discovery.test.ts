@@ -364,6 +364,21 @@ describe("T5 read/discovery application", () => {
     expect(ops.calls).toBe(0);
   });
 
+  it("returns explicit non-error text when discovery finds no cognition", async () => {
+    const { app } = setup();
+    const ls = await app.ls(directory("@project/memories/decision/"));
+    const glob = await app.glob({ pattern: "**/absent-*.md" });
+    const grep = await app.grep({ pattern: "absent", literal: true });
+
+    expect(ls).toMatchObject({ records: [], truncated: false });
+    expect(glob).toMatchObject({ records: [], truncated: false });
+    expect(grep).toMatchObject({ records: [], truncated: false });
+    for (const result of [ls, glob, grep]) {
+      expect(result.text.trim().length).toBeGreaterThan(0);
+      expect(result.text).not.toMatch(/^error:/);
+    }
+  });
+
   it("ls and glob honor an already-aborted internal execution signal", async () => {
     const { app } = setup();
     const controller = new AbortController();
@@ -453,6 +468,11 @@ describe("T5 read/discovery application", () => {
     const read = await app.cat({ path: alias, offset: 1, limit: 2 });
     expect(read.page.path).toEqual(target);
     expect(read.page.lines).toHaveLength(2);
+    expect(read.page.nextOffset).toBe(3);
+    expect(read.text).toContain("next_offset: 3");
+    expect(read.text).toContain(
+      "continue_with: brain_cat(path=@project/memories/decision/a.md, offset=3)",
+    );
     expect(ops.calls).toBe(1);
     expect(state.companionWrites).toHaveLength(1);
     expect(state.companionWrites[0]?.path).toEqual(target);
@@ -463,6 +483,8 @@ describe("T5 read/discovery application", () => {
     const before = ops.calls;
     const beyond = await app.cat({ path: alias, offset: 999, limit: 1 });
     expect(beyond.page.lines).toEqual([]);
+    expect(beyond.text).not.toContain("next_offset:");
+    expect(beyond.text).not.toContain("continue_with:");
     expect(ops.calls).toBe(before);
   });
 

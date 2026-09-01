@@ -1,12 +1,12 @@
 # MCP 挂载与验证清单（DSH / Codex / ZCode）
 
-> 目标：验证 brain 在 DSH、Codex、ZCode 三个宿主上的挂载方式，以及“每项目一个 MCP 实例”和“当前会话 id 获取”是否可行。
-> 当前结论：Brain repository固定为 `~/.brain-data`；进程cwd作为source root映射到稳定ProjectId。Codex 的原生 MCP 调用可通过 `_meta.threadId` 提供会话 id；若直接使用 DSH 原生 `mcp-client`，仍需要 bridge 注入会话信息。仓库中的独立 `brain-dsh-plugin` 已提供 DSH 侧 session 注入/AutoThink 增强，它属于宿主适配层，不改变 brain 核心契约。
+> 目标：记录 Brain 在 DSH、Codex、Claude Code 等宿主中的真实挂载方式，以及 project/source binding 与 current session identity 分别从哪里取得。
+> 当前结论：Brain repository 固定为 `~/.brain-data`。独立、project-scoped MCP 可以用启动 cwd 作为 source root；能提供 trusted per-invocation binding 的宿主 adapter 可以让一个长驻 MCP server 安全服务多个 projects/sessions，不能再回退到进程 cwd。Codex plugin 用 `UserPromptSubmit.session_id + cwd` 建立 binding，并用后续 `tools/call` 的 `_meta.threadId` 解析；直接使用 DSH 原生 `mcp-client` 时仍需要 bridge 注入 session 信息。
 
-## 1. 每项目一个实例的配置原则
+## 1. Project/source binding 原则
 
-- 每个项目启动一个 brain 进程；
-- 从一个已登记的source directory cwd启动；未登记目录会自动创建project mapping；
+- standalone/project-scoped MCP 从一个已登记的 source directory cwd启动；未登记目录会自动创建 project mapping；
+- multiplexed host MCP 必须为每次调用提供 trusted source/session binding，不得把长驻进程 cwd 当成当前 project；
 - 同一ProjectId可在 `project.json` 中登记多个source roots；
 - `BRAIN_ASK_LONG_TERM` = `none`（默认）或 `protect`；
 - `brain_think`不暴露project/source参数，模型可见参数只保留 `session_id?`。
@@ -28,7 +28,7 @@ mcp-client:
 
 ### 会话 id / AutoThink 现状
 
-- **推荐 DSH 集成**：使用仓库中的独立 `brain-dsh-plugin`。它作为 DSH adapter 按当前 agent/session 注入 `session_id`，并可在用户消息边界自动调用/注入 `brain_think`；这部分能力不进入 brain BDD/design。
+- **推荐 DSH 集成**：使用仓库中的独立 `brain-dsh-plugin`。它作为 DSH adapter 按当前 agent/session 注入 `session_id`，并可在用户消息边界自动调用/注入 `brain_think`。自动 restore 的跨宿主行为由 Brain BDD/Design 定义；DSH event/metadata/process wiring 只属于该 adapter。
 - 若不使用 plugin、而是直接挂原生 DSH `mcp-client`，则 bridge 仍需要把 `exec.agent.id` 作为会话信息传给 brain（例如 `_meta.dshSessionId`）。
 - brain 本体兼容 `_meta.dshSessionId` / `com.example.dsh/sessionId` 等 fallback，但模型也可以显式传 `session_id`。
 
@@ -68,8 +68,9 @@ cwd = "/path/to/source-directory"
 
 ### 会话 id 现状（已确认）
 
-- Codex 会在 MCP `tools/call` 的 `params._meta.threadId` 自动注入当前 thread/session id。
-- brain 会读取 `_meta.threadId` 作为 `brain_think` 的默认 session id，开箱即用。
+- Codex plugin 的同步 `UserPromptSubmit` hook 从官方 hook input读取 `session_id`与 `cwd`，将二者作为同一条宿主调用绑定保存，并直接执行与`brain_think`相同的恢复逻辑。
+- hook 将完整恢复结果作为 developer context 返回；plugin MCP entry不再暴露`brain_think`，避免模型重复恢复。
+- plugin MCP entry使用每次 `tools/call` 的 `params._meta.threadId`查找该绑定，一次性向 brain 的通用 invocation resolver提供project services与trusted session id；不得回退到长驻MCP进程cwd。
 
 ## 5. ZCode
 
@@ -80,10 +81,10 @@ cwd = "/path/to/source-directory"
 
 - [ ] DSH plugin：在实际 DSH 环境验证 session 注入 + AutoThink 端到端行为
 - [ ] DSH raw `mcp-client`（若仍需要）：验证 bridge 会话信息透传
-- [ ] Codex：项目级 MCP 配置挂载成功，`brain_think` 能从 `_meta.threadId` 拿到当前 session id
-- [ ] 若某个宿主无法提供 session id，回退到 `default` 会话
+- [ ] Codex plugin：`UserPromptSubmit` 使用当前 `session_id + cwd` 直接恢复完整 context；plugin MCP surface隐藏 `brain_think`，其余工具调用通过 `_meta.threadId` 解析同一 host binding
+- [ ] 若宿主无法提供可靠 session id，只使用可确认的 project/global scope；不得伪造或回退到 `default` session
 
 ## 7. TODO（宿主集成验证）
 
 - [ ] 在真实 DSH 项目中验证 `brain-dsh-plugin` 的 AutoThink/session 行为
-- [ ] 在真实 Codex 项目中验证 `_meta.threadId` 透传与项目级挂载
+- [ ] 在真实 Codex tasks 中验证 `session_id + cwd` hook binding、`_meta.threadId` per-call resolution 与跨 project 隔离

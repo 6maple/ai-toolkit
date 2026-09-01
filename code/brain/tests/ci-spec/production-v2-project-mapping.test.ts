@@ -2,8 +2,10 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import properLockfile from "proper-lockfile";
 import { describe, expect, it } from "vite-plus/test";
 
+import { FileGlobalSemanticLease } from "../../src/persistence/operation-coordination.ts";
 import {
   ProjectMappingError,
   addProjectSourceRoot,
@@ -12,6 +14,31 @@ import {
 } from "../../src/persistence/project-mapping.ts";
 
 describe("v2 project mapping", () => {
+  it("keeps project-mapping and semantic lock ownership independent in one process", async () => {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-independent-locks-"));
+    const brainRoot = path.join(temp, "brain");
+    await fs.mkdir(brainRoot, { recursive: true });
+    let releaseMapping: (() => Promise<void>) | undefined;
+    try {
+      releaseMapping = await properLockfile.lock(brainRoot, {
+        lockfilePath: path.join(brainRoot, ".brain-project-mapping.lock"),
+        retries: 0,
+        stale: 10_000,
+        update: 5_000,
+        realpath: true,
+        onCompromised: () => undefined,
+      });
+
+      const semantic = new FileGlobalSemanticLease(brainRoot);
+      await expect(semantic.runExclusive(undefined, async () => "ok")).resolves.toBe("ok");
+      await expect(releaseMapping()).resolves.toBeUndefined();
+      releaseMapping = undefined;
+    } finally {
+      await releaseMapping?.().catch(() => undefined);
+      await fs.rm(temp, { recursive: true, force: true });
+    }
+  });
+
   it("creates one stable project mapping for a source directory", async () => {
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-project-mapping-"));
     const brainRoot = path.join(temp, "brain");
@@ -31,6 +58,24 @@ describe("v2 project mapping", () => {
         ),
       ) as unknown;
       expect(stored).toEqual(created);
+    } finally {
+      await fs.rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent project creation for the same source directory", async () => {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-project-mapping-race-"));
+    const brainRoot = path.join(temp, "brain");
+    const sourceRoot = path.join(temp, "source");
+    await fs.mkdir(sourceRoot, { recursive: true });
+    try {
+      const resolved = await Promise.all(
+        Array.from({ length: 12 }, () => resolveOrCreateProject({ brainRoot, sourceRoot })),
+      );
+
+      expect(new Set(resolved.map((project) => project.projectId)).size).toBe(1);
+      const projectDirectories = await fs.readdir(path.join(brainRoot, "projects"));
+      expect(projectDirectories).toEqual([resolved[0]!.projectId]);
     } finally {
       await fs.rm(temp, { recursive: true, force: true });
     }
@@ -71,9 +116,9 @@ describe("v2 project mapping", () => {
       await expect(
         addProjectSourceRoot(brainRoot, secondProject.projectId, first),
       ).rejects.toBeInstanceOf(ProjectMappingError);
-      expect(
-        (await resolveOrCreateProject({ brainRoot, sourceRoot: first })).projectId,
-      ).toBe(firstProject.projectId);
+      expect((await resolveOrCreateProject({ brainRoot, sourceRoot: first })).projectId).toBe(
+        firstProject.projectId,
+      );
     } finally {
       await fs.rm(temp, { recursive: true, force: true });
     }

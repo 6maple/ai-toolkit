@@ -26,12 +26,12 @@ const EXPECTED_TOOLS = [
   "brain_write",
 ] as const;
 
-function fakeServices() {
+function fakeServices(projectId = "project-1") {
   const calls: Array<{ name: string; args: unknown }> = [];
   const services = {
     binding: {
       brainRoot: "/brain",
-      projectId: "project-1",
+      projectId,
       platform: "posix",
     },
     anchor: {
@@ -101,6 +101,12 @@ function captureRegistration(
           shape?: Record<string, unknown>;
         };
         description: string;
+        annotations?: {
+          readOnlyHint?: boolean;
+          destructiveHint?: boolean;
+          idempotentHint?: boolean;
+          openWorldHint?: boolean;
+        };
       };
       handler: Function;
     }
@@ -124,7 +130,18 @@ describe("brain v2 generic MCP public contract", () => {
     for (const tool of PUBLIC_BRAIN_TOOLS) {
       expect(tool.description.length).toBeGreaterThan(0);
       expect(registered.get(tool.name)?.config.inputSchema).toBe(tool.inputSchema);
+      expect(registered.get(tool.name)?.config.annotations).toBe(tool.annotations);
     }
+  });
+
+  test("declares brain_think as closed-world and non-destructive without claiming read-only or idempotent behavior", () => {
+    const think = PUBLIC_BRAIN_TOOLS.find((tool) => tool.name === "brain_think")!;
+    expect(think.annotations).toEqual({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    });
   });
 
   test("a host-owned lifecycle operation can be omitted without changing the canonical tool source", () => {
@@ -146,8 +163,15 @@ describe("brain v2 generic MCP public contract", () => {
       await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOLS]);
+      const listedThink = listed.tools.find((tool) => tool.name === "brain_think")!;
+      expect(listedThink.annotations).toEqual({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      });
       const listedCat = listed.tools.find((tool) => tool.name === "brain_cat")!;
-      expect(listedCat.description).toContain("cannot read core.md");
+      expect(listedCat.description?.length).toBeGreaterThan(0);
       expect(listedCat.inputSchema).toMatchObject({
         properties: { path: { type: "string", pattern: expect.any(String) } },
       });
@@ -243,6 +267,26 @@ describe("brain v2 generic MCP public contract", () => {
       }).success,
     ).toBe(true);
     expect(
+      feedback.safeParse({
+        path: "@project/memories/knowledge/a.md",
+        feedback: "question",
+      }).success,
+    ).toBe(false);
+    expect(
+      feedback.safeParse({
+        path: "@project/memories/knowledge/a.md",
+        feedback: "question",
+        challenge: "   ",
+      }).success,
+    ).toBe(false);
+    expect(
+      feedback.safeParse({
+        path: "@project/memories/knowledge/a.md",
+        feedback: "adopt",
+        challenge: "ignored by the frozen signature",
+      }).success,
+    ).toBe(true);
+    expect(
       feedback.safeParse({ path: "@project/memories/knowledge/a.md", feedback: "correct" }).success,
     ).toBe(false);
   });
@@ -285,13 +329,15 @@ describe("brain v2 generic MCP public contract", () => {
     ).toBe(true);
   });
 
-  test("tool descriptions state object boundaries and the core read policy", () => {
-    const byName = new Map(PUBLIC_BRAIN_TOOLS.map((tool) => [tool.name, tool]));
-    expect(byName.get("brain_cat")!.description).toContain("cannot read core.md");
-    expect(byName.get("brain_cat")!.description).toContain("already fully restored");
-    expect(byName.get("brain_ls")!.description).toContain("Do not pass a bare scope");
-    expect(byName.get("brain_edit")!.description).toContain("do not call brain_cat first");
-    expect(byName.get("brain_write")!.description).toContain("fully overwrites");
+  test("every public argument has model-facing schema guidance without locking copy", () => {
+    for (const tool of PUBLIC_BRAIN_TOOLS) {
+      const shape = (
+        tool.inputSchema as unknown as { shape: Record<string, { description?: string }> }
+      ).shape;
+      for (const schema of Object.values(shape)) {
+        expect(schema.description?.length).toBeGreaterThan(0);
+      }
+    }
   });
 
   test("path errors include tool-specific recovery guidance", async () => {
@@ -314,19 +360,120 @@ describe("brain v2 generic MCP public contract", () => {
     expect(catResult.content[0].text).toContain("already fully present");
   });
 
-  test("think uses explicit session first, trusted host session second, and never invents default", async () => {
+  test("model-correctable errors retain their code and include an actionable affordance", async () => {
+    const { services } = fakeServices();
+    services.reads.grep = vi.fn(async () => {
+      const error = new Error("bad regex") as Error & { code: string };
+      error.code = "invalid-regex";
+      throw error;
+    }) as never;
+    const registered = captureRegistration(services);
+    const regex = await registered.get("brain_grep")!.handler({ pattern: "(" });
+    expect(regex.isError).toBe(true);
+    expect(regex.content[0].text).toMatch(/^error: invalid-regex\n/);
+    expect(regex.content[0].text).toContain("literal=true");
+
+    services.maintenance.edit = vi.fn(async () => {
+      const error = new Error("ambiguous edit") as Error & { code: string };
+      error.code = "old-text-not-unique";
+      throw error;
+    }) as never;
+    const edit = await registered.get("brain_edit")!.handler({
+      path: "@project/core.md",
+      edits: [{ oldText: "a", newText: "b" }],
+    });
+    expect(edit.content[0].text).toMatch(/^error: old-text-not-unique\n/);
+    expect(edit.content[0].text).toContain("unique region");
+
+    services.maintenance.write = vi.fn(async () => {
+      const error = new Error("missing metadata") as Error & { code: string };
+      error.code = "missing-importance";
+      throw error;
+    }) as never;
+    const write = await registered.get("brain_write")!.handler({
+      path: "@project/memories/knowledge/a.md",
+      content: "---\nsummary: a\n---\n",
+    });
+    expect(write.content[0].text).toMatch(/^error: missing-importance\n/);
+    expect(write.content[0].text).toContain("summary and importance frontmatter");
+  });
+
+  test("maintenance results describe execution facts without implying cognition adoption", async () => {
+    const { services } = fakeServices();
+    services.maintenance.feedback = vi.fn(async (path, feedback) =>
+      feedback === "question"
+        ? { action: "questioned", path, changed: false }
+        : { action: "adopted", path },
+    ) as never;
+    services.maintenance.edit = vi.fn(async (request) => ({
+      action: "edited",
+      path: request.path,
+      changed: false,
+    })) as never;
+    const registered = captureRegistration(services);
+    const path = "@project/memories/knowledge/a.md";
+
+    const adopt = await registered.get("brain_feedback")!.handler({ path, feedback: "adopt" });
+    expect(adopt.content[0].text).toContain("validated use");
+    expect(adopt.content[0].text).toContain(path);
+
+    const question = await registered
+      .get("brain_feedback")!
+      .handler({ path, feedback: "question", challenge: "basis" });
+    expect(question.content[0].text).toContain("challenge unchanged");
+    expect(question.content[0].text).toContain(path);
+
+    const edit = await registered.get("brain_edit")!.handler({ path, content: "same" });
+    expect(edit.content[0].text).toMatch(/^no changes:/);
+    expect(edit.content[0].text).toContain(path);
+  });
+
+  test("trusted host session wins, conflicts are rejected, and explicit session remains a fallback", async () => {
     const { services, calls } = fakeServices();
     const registered = captureRegistration(services);
     const think = registered.get("brain_think")!.handler;
 
-    await think({ session_id: "explicit" }, { _meta: { threadId: "trusted" } });
+    await think({ session_id: "trusted" }, { _meta: { threadId: "trusted" } });
     await think({}, { _meta: { threadId: "trusted" } });
+    await think({ session_id: "explicit" }, {});
     await think({}, {});
+    const conflict = await think({ session_id: "different" }, { _meta: { threadId: "trusted" } });
     expect(calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([
-      { currentSessionId: "explicit" },
       { currentSessionId: "trusted" },
+      { currentSessionId: "trusted" },
+      { currentSessionId: "explicit" },
       {},
     ]);
+    expect(conflict.isError).toBe(true);
+    expect(conflict.content[0].text).toMatch(/^error: session-id-conflict\n/);
+    expect(conflict.content[0].text).toContain("session_id");
+  });
+
+  test("an invocation resolver keeps project services and trusted session identity together", async () => {
+    const first = fakeServices("project-1");
+    const second = fakeServices("project-2");
+    const registered = captureRegistration(first.services, {
+      resolveInvocation: async (extra) => {
+        const route = (extra as { route?: unknown }).route;
+        return route === "second"
+          ? { services: second.services, currentSessionId: "session-2" as never }
+          : { services: first.services, currentSessionId: "session-1" as never };
+      },
+    });
+
+    await registered.get("brain_think")!.handler({}, { route: "first" });
+    await registered.get("brain_think")!.handler({}, { route: "second" });
+    await registered.get("brain_glob")!.handler({ pattern: "**/*.md" }, { route: "second" });
+
+    expect(first.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([
+      { currentSessionId: "session-1" },
+    ]);
+    expect(second.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([
+      { currentSessionId: "session-2" },
+    ]);
+    expect(second.calls.find((call) => call.name === "glob")?.args).toMatchObject({
+      context: { currentSessionId: "session-2" },
+    });
   });
 
   test("omitted glob/grep path can consume trusted current session without mutating model args", async () => {

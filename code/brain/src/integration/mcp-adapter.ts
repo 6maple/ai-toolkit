@@ -27,11 +27,21 @@ export interface BrainApplicationServices {
   >;
 }
 
+export interface BrainToolInvocation {
+  readonly services: BrainApplicationServices;
+  readonly currentSessionId?: SessionId;
+}
+
+export type BrainToolInvocationResolver = (
+  extra: unknown,
+) => BrainToolInvocation | Promise<BrainToolInvocation>;
+
 export interface HostInvocationAdapter {
   currentSessionId(extra: unknown): SessionId | undefined;
 }
 
-export const CODEX_THREAD_HOST_INVOCATION: HostInvocationAdapter = {
+/** Compatibility adapter for hosts that forward a trusted thread id in MCP request metadata. */
+export const THREAD_META_HOST_INVOCATION: HostInvocationAdapter = {
   currentSessionId(extra: unknown): SessionId | undefined {
     if (typeof extra !== "object" || extra === null || !("_meta" in extra)) return undefined;
     const meta = (extra as { _meta?: unknown })._meta;
@@ -51,6 +61,8 @@ export type BrainToolResult = CallToolResult;
 export interface BrainToolRegistrationOptions {
   /** Tools owned by a host lifecycle integration and therefore hidden from the model. */
   readonly exclude?: readonly BrainToolName[];
+  /** Resolve project services and trusted session identity together for each tool invocation. */
+  readonly resolveInvocation?: BrainToolInvocationResolver;
 }
 
 function textResult(text: string, warnings: readonly string[] = []): BrainToolResult {
@@ -97,7 +109,58 @@ const PATH_ERROR_CODES = new Set([
   "invalid-segment",
   "invalid-object-shape",
   "wrong-object-kind",
+  "not-found",
+  "target-not-found",
+  "write-requires-archival",
+  "rm-requires-archival",
+  "feedback-requires-archival",
+  "mv-requires-archival-source",
+  "mv-requires-archival-destination",
 ]);
+
+const ACTION_GUIDANCE: Readonly<Record<string, string>> = {
+  "invalid-glob": "Fix the glob pattern and try again.",
+  "invalid-regex":
+    "pattern is parsed as a regular expression by default; fix the expression or set literal=true to search ordinary text.",
+  "invalid-offset": "offset must be a positive 1-based document line.",
+  "invalid-limit": "limit must be a positive integer.",
+  "invalid-context": "context must be a non-negative integer.",
+  "session-id-conflict":
+    "Omit session_id to use the trusted host session, or provide that exact same current session identifier.",
+  "core-capacity-exceeded":
+    "Curate or compress the complete core document before retrying; archive durable cognition first when it no longer needs to remain resident.",
+  "edit-mode": "Provide exactly one of edits or content.",
+  "empty-edits": "Provide at least one exact replacement.",
+  "empty-old-text": "Each edits[].oldText must be non-empty.",
+  "old-text-not-found":
+    "Read the current document and use text that exists exactly in that document.",
+  "old-text-not-unique": "Include more surrounding text so oldText identifies one unique region.",
+  "overlapping-edits":
+    "Merge overlapping changes into one replacement or make the edited regions disjoint.",
+  "same-source-destination": "Choose a dst path different from src.",
+  "question-challenge-required":
+    "feedback=question requires a non-empty complete current unresolved challenge.",
+  "empty-challenge":
+    "feedback=question requires a non-empty complete current unresolved challenge.",
+  "no-current-challenge":
+    "feedback=resolve is valid only for a cognition that currently has an unresolved challenge.",
+  "missing-frontmatter":
+    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+  "unterminated-frontmatter":
+    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+  "invalid-frontmatter-yaml":
+    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+  "frontmatter-not-map":
+    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+  "missing-summary":
+    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+  "invalid-summary":
+    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+  "missing-importance":
+    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+  "invalid-importance":
+    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+};
 
 function errorResult(toolName: BrainToolName, error: unknown): BrainToolResult {
   if (error instanceof DOMException && error.name === "AbortError") {
@@ -105,7 +168,9 @@ function errorResult(toolName: BrainToolName, error: unknown): BrainToolResult {
   }
   const code = typedCode(error);
   if (code !== undefined) {
-    const guidance = PATH_ERROR_CODES.has(code) ? OBJECT_PATH_GUIDANCE[toolName] : undefined;
+    const guidance = PATH_ERROR_CODES.has(code)
+      ? OBJECT_PATH_GUIDANCE[toolName]
+      : ACTION_GUIDANCE[code];
     return {
       content: [
         {
@@ -129,8 +194,15 @@ function errorResult(toolName: BrainToolName, error: unknown): BrainToolResult {
 }
 
 function optionalSession(explicit: unknown, host: SessionId | undefined): SessionId | undefined {
-  if (typeof explicit === "string") return parseSessionId(explicit);
-  return host;
+  const parsed = typeof explicit === "string" ? parseSessionId(explicit) : undefined;
+  if (host !== undefined && parsed !== undefined && host !== parsed) {
+    const error = new Error("explicit session conflicts with trusted host session") as Error & {
+      code: string;
+    };
+    error.code = "session-id-conflict";
+    throw error;
+  }
+  return host ?? parsed;
 }
 
 function invocationSignal(extra: unknown): AbortSignal | undefined {
@@ -156,15 +228,19 @@ function renderMaintenanceResult(result: MaintenanceResult): string {
     case "overwrote":
       return `overwrote ${formatPublicPath(result.path)}`;
     case "edited":
-      return `${result.changed ? "edited" : "no changes to"} ${formatPublicPath(result.path)}`;
+      return result.changed
+        ? `edited ${formatPublicPath(result.path)}`
+        : `no changes: ${formatPublicPath(result.path)}`;
     case "moved":
       return `moved ${formatPublicPath(result.from)} -> ${formatPublicPath(result.to)}${result.replacedExistingDestination ? "; replaced existing destination" : ""}`;
     case "removed":
       return `removed ${formatPublicPath(result.path)}`;
     case "adopted":
-      return `adopted ${formatPublicPath(result.path)}`;
+      return `recorded validated use for ${formatPublicPath(result.path)}`;
     case "questioned":
-      return `${result.changed ? "questioned" : "no change to question on"} ${formatPublicPath(result.path)}`;
+      return result.changed
+        ? `questioned ${formatPublicPath(result.path)}`
+        : `current challenge unchanged for ${formatPublicPath(result.path)}`;
     case "resolved":
       return `resolved ${formatPublicPath(result.path)}`;
   }
@@ -191,18 +267,36 @@ function editPath(raw: string) {
 
 function handlerFor(
   name: BrainToolName,
-  services: BrainApplicationServices,
+  services: BrainApplicationServices | undefined,
   hostInvocation: HostInvocationAdapter,
+  resolveInvocation?: BrainToolInvocationResolver,
 ): (args: unknown, extra?: unknown) => Promise<BrainToolResult> {
   return async (rawArgs: unknown, extra) => {
     try {
       const args = toolArgsRecord(rawArgs);
-      const hostSession = hostInvocation.currentSessionId(extra);
+      const invocation =
+        resolveInvocation === undefined
+          ? services === undefined
+            ? undefined
+            : {
+                services,
+                currentSessionId: hostInvocation.currentSessionId(extra),
+              }
+          : await resolveInvocation(extra);
+      if (invocation === undefined) {
+        const error = new Error("brain invocation context is unavailable") as Error & {
+          code: string;
+        };
+        error.code = "invocation-context-unavailable";
+        throw error;
+      }
+      const invocationServices = invocation.services;
+      const hostSession = invocation.currentSessionId;
       const signal = invocationSignal(extra);
       switch (name) {
         case "brain_think": {
           const session = optionalSession(args.session_id, hostSession);
-          const result = await services.anchor.runAnchor(
+          const result = await invocationServices.anchor.runAnchor(
             session === undefined ? {} : { currentSessionId: session },
           );
           return textResult(
@@ -212,10 +306,10 @@ function handlerFor(
         }
         case "brain_absolute_path": {
           const location = parseResourceLocation(String(args.path));
-          return textResult(projectAbsoluteLocation(services.binding, location));
+          return textResult(projectAbsoluteLocation(invocationServices.binding, location));
         }
         case "brain_ls": {
-          const result = await services.reads.ls(
+          const result = await invocationServices.reads.ls(
             parsePublicPath(String(args.path)),
             discoveryContext(hostSession, signal),
           );
@@ -226,7 +320,10 @@ function handlerFor(
             pattern: String(args.pattern),
             ...(typeof args.path === "string" ? { path: parsePublicPath(args.path) } : {}),
           };
-          const result = await services.reads.glob(request, discoveryContext(hostSession, signal));
+          const result = await invocationServices.reads.glob(
+            request,
+            discoveryContext(hostSession, signal),
+          );
           return textResult(result.text);
         }
         case "brain_grep": {
@@ -239,11 +336,14 @@ function handlerFor(
             ...(typeof args.context === "number" ? { context: args.context } : {}),
             ...(signal === undefined ? {} : { signal }),
           };
-          const result = await services.reads.grep(request, discoveryContext(hostSession, signal));
+          const result = await invocationServices.reads.grep(
+            request,
+            discoveryContext(hostSession, signal),
+          );
           return textResult(result.text);
         }
         case "brain_cat": {
-          const result = await services.reads.cat({
+          const result = await invocationServices.reads.cat({
             path: parsePublicPath(String(args.path)),
             ...(typeof args.offset === "number" ? { offset: args.offset } : {}),
             ...(typeof args.limit === "number" ? { limit: args.limit } : {}),
@@ -252,14 +352,14 @@ function handlerFor(
           return textResult(result.text);
         }
         case "brain_write": {
-          const result = await services.maintenance.write(
+          const result = await invocationServices.maintenance.write(
             parsePublicPath(String(args.path)),
             String(args.content),
           );
           return textResult(renderMaintenanceResult(result));
         }
         case "brain_edit": {
-          const result = await services.maintenance.edit({
+          const result = await invocationServices.maintenance.edit({
             path: editPath(String(args.path)),
             ...(Array.isArray(args.edits)
               ? {
@@ -274,18 +374,20 @@ function handlerFor(
           return textResult(renderMaintenanceResult(result));
         }
         case "brain_rm": {
-          const result = await services.maintenance.remove(parsePublicPath(String(args.path)));
+          const result = await invocationServices.maintenance.remove(
+            parsePublicPath(String(args.path)),
+          );
           return textResult(renderMaintenanceResult(result));
         }
         case "brain_mv": {
-          const result = await services.maintenance.move(
+          const result = await invocationServices.maintenance.move(
             parsePublicPath(String(args.src)),
             parsePublicPath(String(args.dst)),
           );
           return textResult(renderMaintenanceResult(result));
         }
         case "brain_feedback": {
-          const result = await services.maintenance.feedback(
+          const result = await invocationServices.maintenance.feedback(
             parsePublicPath(String(args.path)),
             args.feedback as "adopt" | "question" | "resolve",
             typeof args.challenge === "string" ? args.challenge : undefined,
@@ -301,8 +403,8 @@ function handlerFor(
 
 export function registerBrainTools(
   server: McpServer,
-  services: BrainApplicationServices,
-  hostInvocation: HostInvocationAdapter = CODEX_THREAD_HOST_INVOCATION,
+  services: BrainApplicationServices | undefined,
+  hostInvocation: HostInvocationAdapter = THREAD_META_HOST_INVOCATION,
   options: BrainToolRegistrationOptions = {},
 ): void {
   const excluded = new Set(options.exclude ?? []);
@@ -314,8 +416,9 @@ export function registerBrainTools(
         title: definition.name,
         description: definition.description,
         inputSchema: definition.inputSchema,
+        annotations: definition.annotations,
       },
-      handlerFor(definition.name, services, hostInvocation),
+      handlerFor(definition.name, services, hostInvocation, options.resolveInvocation),
     );
   }
 }

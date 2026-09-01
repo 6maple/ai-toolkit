@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import properLockfile from "proper-lockfile";
 
 import { parseProjectId, type ProjectId } from "./storage.ts";
 
@@ -14,6 +15,7 @@ export interface ProjectMetadata {
 export type ProjectMappingErrorCode =
   | "source-root-invalid"
   | "project-metadata-invalid"
+  | "project-mapping-unavailable"
   | "project-not-found"
   | "source-root-conflict";
 
@@ -70,13 +72,18 @@ function parseMetadata(value: unknown, expectedProjectId: string): ProjectMetada
   if (typeof record.name !== "string" || record.name.trim() === "") {
     throw new ProjectMappingError("project-metadata-invalid");
   }
-  if (!Array.isArray(record.sourceRoots) || record.sourceRoots.some((root) => typeof root !== "string")) {
+  if (
+    !Array.isArray(record.sourceRoots) ||
+    record.sourceRoots.some((root) => typeof root !== "string")
+  ) {
     throw new ProjectMappingError("project-metadata-invalid");
   }
   const sourceRoots = record.sourceRoots as string[];
   if (
     sourceRoots.some((root) => !path.isAbsolute(root)) ||
-    sourceRoots.some((root, index) => sourceRoots.slice(0, index).some((seen) => samePath(seen, root)))
+    sourceRoots.some((root, index) =>
+      sourceRoots.slice(0, index).some((seen) => samePath(seen, root)),
+    )
   ) {
     throw new ProjectMappingError("project-metadata-invalid");
   }
@@ -94,6 +101,78 @@ function projectsRoot(brainRoot: string): string {
 
 function metadataPath(brainRoot: string, projectId: string): string {
   return path.join(projectsRoot(brainRoot), projectId, "project.json");
+}
+
+const PROJECT_MAPPING_LOCK_STALE_MS = 10_000;
+const PROJECT_MAPPING_LOCK_UPDATE_MS = 5_000;
+const PROJECT_MAPPING_LOCK_RETRIES = 100;
+const PROJECT_MAPPING_LOCK_RETRY_MS = 25;
+
+async function withProjectMappingLock<T>(
+  brainRootValue: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const brainRoot = path.resolve(brainRootValue);
+  try {
+    await fs.mkdir(brainRoot, { recursive: true });
+  } catch (error) {
+    throw new ProjectMappingError("project-mapping-unavailable", { cause: error });
+  }
+
+  let compromised: Error | undefined;
+  let release: (() => Promise<void>) | undefined;
+  let acquireError: unknown;
+  const lockPath = path.join(brainRoot, ".brain-project-mapping.lock");
+  for (let attempt = 0; attempt < PROJECT_MAPPING_LOCK_RETRIES; attempt += 1) {
+    try {
+      release = await properLockfile.lock(lockPath, {
+        lockfilePath: lockPath,
+        retries: 0,
+        stale: PROJECT_MAPPING_LOCK_STALE_MS,
+        update: PROJECT_MAPPING_LOCK_UPDATE_MS,
+        realpath: false,
+        onCompromised: (error) => {
+          compromised = error;
+        },
+      });
+      break;
+    } catch (error) {
+      acquireError = error;
+      if (!isErrno(error, "ELOCKED")) break;
+      if (attempt + 1 < PROJECT_MAPPING_LOCK_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, PROJECT_MAPPING_LOCK_RETRY_MS));
+      }
+    }
+  }
+  if (!release) {
+    throw new ProjectMappingError("project-mapping-unavailable", { cause: acquireError });
+  }
+
+  let result: T | undefined;
+  let operationError: unknown;
+  try {
+    result = await operation();
+  } catch (error) {
+    operationError = error;
+  }
+
+  let releaseError: unknown;
+  try {
+    if (compromised) throw compromised;
+    await release();
+  } catch (error) {
+    releaseError = error;
+  }
+
+  if (operationError !== undefined) throw operationError;
+  if (releaseError !== undefined) {
+    throw new ProjectMappingError("project-mapping-unavailable", { cause: releaseError });
+  }
+  return result as T;
+}
+
+function isErrno(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
 async function readMetadata(brainRoot: string, projectId: string): Promise<ProjectMetadata> {
@@ -129,21 +208,23 @@ export async function resolveOrCreateProject(
   options: ResolveProjectOptions,
 ): Promise<ProjectMetadata> {
   const sourceRoot = await canonicalExistingDirectory(options.sourceRoot);
-  const projects = await listProjectMetadata(options.brainRoot);
-  const matches = projects.filter((project) =>
-    project.sourceRoots.some((candidate) => samePath(candidate, sourceRoot)),
-  );
-  if (matches.length > 1) throw new ProjectMappingError("source-root-conflict");
-  if (matches.length === 1) return matches[0]!;
+  return withProjectMappingLock(options.brainRoot, async () => {
+    const projects = await listProjectMetadata(options.brainRoot);
+    const matches = projects.filter((project) =>
+      project.sourceRoots.some((candidate) => samePath(candidate, sourceRoot)),
+    );
+    if (matches.length > 1) throw new ProjectMappingError("source-root-conflict");
+    if (matches.length === 1) return matches[0]!;
 
-  const metadata: ProjectMetadata = {
-    schemaVersion: 1,
-    projectId: parseProjectId(randomUUID()),
-    name: path.basename(sourceRoot) || sourceRoot,
-    sourceRoots: [sourceRoot],
-  };
-  await writeMetadata(options.brainRoot, metadata);
-  return metadata;
+    const metadata: ProjectMetadata = {
+      schemaVersion: 1,
+      projectId: parseProjectId(randomUUID()),
+      name: path.basename(sourceRoot) || sourceRoot,
+      sourceRoots: [sourceRoot],
+    };
+    await writeMetadata(options.brainRoot, metadata);
+    return metadata;
+  });
 }
 
 export async function addProjectSourceRoot(
@@ -152,20 +233,22 @@ export async function addProjectSourceRoot(
   sourceRootValue: string,
 ): Promise<ProjectMetadata> {
   const sourceRoot = await canonicalExistingDirectory(sourceRootValue);
-  const projects = await listProjectMetadata(brainRoot);
-  const target = projects.find((project) => project.projectId === projectId);
-  if (!target) throw new ProjectMappingError("project-not-found");
-  const owner = projects.find((project) =>
-    project.sourceRoots.some((candidate) => samePath(candidate, sourceRoot)),
-  );
-  if (owner && owner.projectId !== target.projectId) {
-    throw new ProjectMappingError("source-root-conflict");
-  }
-  if (owner) return target;
+  return withProjectMappingLock(brainRoot, async () => {
+    const projects = await listProjectMetadata(brainRoot);
+    const target = projects.find((project) => project.projectId === projectId);
+    if (!target) throw new ProjectMappingError("project-not-found");
+    const owner = projects.find((project) =>
+      project.sourceRoots.some((candidate) => samePath(candidate, sourceRoot)),
+    );
+    if (owner && owner.projectId !== target.projectId) {
+      throw new ProjectMappingError("source-root-conflict");
+    }
+    if (owner) return target;
 
-  const updated = { ...target, sourceRoots: [...target.sourceRoots, sourceRoot] };
-  await writeMetadata(brainRoot, updated);
-  return updated;
+    const updated = { ...target, sourceRoots: [...target.sourceRoots, sourceRoot] };
+    await writeMetadata(brainRoot, updated);
+    return updated;
+  });
 }
 
 export async function removeProjectSourceRoot(
@@ -173,14 +256,16 @@ export async function removeProjectSourceRoot(
   projectId: string,
   sourceRootValue: string,
 ): Promise<ProjectMetadata> {
-  const projects = await listProjectMetadata(brainRoot);
-  const target = projects.find((project) => project.projectId === projectId);
-  if (!target) throw new ProjectMappingError("project-not-found");
   const resolved = normalizeCanonicalPath(path.resolve(sourceRootValue));
-  const updated = {
-    ...target,
-    sourceRoots: target.sourceRoots.filter((candidate) => !samePath(candidate, resolved)),
-  };
-  await writeMetadata(brainRoot, updated);
-  return updated;
+  return withProjectMappingLock(brainRoot, async () => {
+    const projects = await listProjectMetadata(brainRoot);
+    const target = projects.find((project) => project.projectId === projectId);
+    if (!target) throw new ProjectMappingError("project-not-found");
+    const updated = {
+      ...target,
+      sourceRoots: target.sourceRoots.filter((candidate) => !samePath(candidate, resolved)),
+    };
+    await writeMetadata(brainRoot, updated);
+    return updated;
+  });
 }

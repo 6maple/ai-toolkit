@@ -271,7 +271,11 @@ export class ReadDiscovery {
       records: packed.records,
       truncated,
       text: this.withDiagnostics(
-        appendTruncation(packed.renderedText, pi.truncated && !packed.truncated, trailer),
+        appendTruncation(
+          packed.renderedText || "no archival cognition entries",
+          pi.truncated && !packed.truncated,
+          trailer,
+        ),
         listing.diagnostics,
       ),
     };
@@ -319,7 +323,11 @@ export class ReadDiscovery {
     return {
       records: packed.records,
       truncated,
-      text: appendTruncation(packed.renderedText, pi.truncated && !packed.truncated, trailer),
+      text: appendTruncation(
+        packed.renderedText || "no matching archival cognition paths",
+        pi.truncated && !packed.truncated,
+        trailer,
+      ),
     };
   }
 
@@ -413,7 +421,7 @@ export class ReadDiscovery {
     const packed = packGrepRecords(sequence);
     const truncated = piTruncated || packed.truncated;
     const text = appendTruncation(
-      renderGrepRecords(packed.records),
+      renderGrepRecords(packed.records) || "no matching archival cognition content",
       truncated,
       "narrow pattern/path/glob and search again",
     );

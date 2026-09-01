@@ -287,12 +287,32 @@ describe("T6 anchor renderer", () => {
     const rendered = renderAnchorContext(projection);
     expect(rendered.endsWith("\n")).toBe(true);
     expect(rendered).toContain("<tag>&value\n</core>");
-    expect(rendered).toContain('read_policy="Each core document is fully restored');
+    expect(rendered).toContain("<core_memory ");
+    expect(rendered).toContain('restore_policy="');
     expect(rendered).toContain('path="@session/s1/core.md"');
     expect(rendered).toContain('empty="true">\n</core>');
-    expect(rendered).toContain("brain_cat cannot read core.md");
     expect(rendered).toContain('summary="a &quot;quote&quot; &amp; &lt;fact&gt;&#10;next"');
-    expect(rendered).toContain('roots="{@session/s1,@project,@global}"');
+    expect(rendered).toContain('continuity_roots="{@session/s1,@project,@global}"');
+    const coreOpeningLines = rendered.split("\n").filter((line) => line.startsWith("    <core "));
+    expect(coreOpeningLines).toHaveLength(3);
+    for (const opening of coreOpeningLines) {
+      expect(opening).toContain('update_when="');
+      expect(opening).toContain('update_with="');
+      expect(opening).toContain('archive_when="');
+      expect(opening).toContain('archive_with="');
+    }
+    const candidateCollection = rendered
+      .split("\n")
+      .find((line) => line.startsWith("    <memory_candidates "));
+    const archivalOpeningLines = rendered
+      .split("\n")
+      .filter((line) => line.startsWith("  <archival_memory "));
+    expect(archivalOpeningLines).toHaveLength(1);
+    expect(archivalOpeningLines[0]).toContain('maintenance_rule="');
+    expect(rendered.match(/maintenance_rule=/g) ?? []).toHaveLength(1);
+    expect(candidateCollection).toContain('when_to_use="');
+    expect(candidateCollection).toContain('use_as="');
+    expect(candidateCollection).toContain('inspect_only_when="');
     expect(rendered).not.toContain("<sid>");
     expect(rendered).not.toContain("importance=");
     expect(rendered).not.toContain("challenge=");
@@ -326,7 +346,7 @@ describe("T6 anchor restore", () => {
       result.context.indexOf("@project/core.md"),
     );
     expect(result.context).not.toContain("@session/");
-    expect(result.context).toContain('roots="{@project,@global}"');
+    expect(result.context).toContain('continuity_roots="{@project,@global}"');
     expect(operations.auxiliaryScopes).toEqual(["global", "project"]);
   });
 
@@ -336,7 +356,7 @@ describe("T6 anchor restore", () => {
 
     const result = await app.runAnchor({ currentSessionId: parseSessionId("s1") });
     expect(result.context).toContain('path="@session/s1/core.md"');
-    expect(result.context).toContain('roots="{@session/s1,@project,@global}"');
+    expect(result.context).toContain('continuity_roots="{@session/s1,@project,@global}"');
     expect(operations.semanticMutations).toHaveLength(1);
     expect(operations.semanticMutations[0]).toHaveLength(1);
     expect(operations.semanticMutations[0]?.[0]?.ref).toMatchObject({

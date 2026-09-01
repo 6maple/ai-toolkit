@@ -1,14 +1,14 @@
-# brain Acceptance Specification v2
+# brain Acceptance Specification v3
 
-> **状态：Frozen Acceptance Specification v2（2026-08-24，evidence-corrected BDD + Public Contract 同步后重新冻结）。**
+> **状态：Frozen Acceptance Specification v3（2026-08-30，v3 BDD + Public Contract 同步后重新冻结）。**
 > **输入：** `bdd-brain-behavior-requirements.md` + `brain-tools-contract.md`。
 > **Current converged structure：** 62 REQ / 140 BDD Scenario / 59 Acceptance cases。原始 Phase 4 Freeze 记录保留在 §20；本轮新增/改判只扩展 observable expectations，不把 Engineering Design 细节反推为需求。
 > **变更控制：** Engineering Design、CI Draft 或 production implementation 必须满足本文；若 observable expectation 需要改变，先重新打开受影响 BDD / public contract / Acceptance，而不是从实现反推修改 expectation。
-> **禁止反推：** 当前 production internals、v1 acceptance/contract、现有 state/index/lock/FSRS 实现都不能反向成为 v2 expectation。
+> **禁止反推：** 当前 production internals、v2 acceptance/contract、现有 state/index/lock/FSRS 实现都不能反向成为 v3 expectation。
 
 ## 1. 目的
 
-本文把 v2 BDD 的稳定 What 展开成可审查的完整 Examples，并为每个 case 标记合适的 Verification Method。它不是测试代码，也不决定 Engineering Design。
+本文把 v3 BDD 的稳定 What 展开成可审查的完整 Examples，并为每个 case 标记合适的 Verification Method。它不是测试代码，也不决定 Engineering Design。
 
 原则：
 
@@ -39,13 +39,13 @@
 
 ### AI Semantic Review candidate
 
-用于检查“restored prior context”“candidate 是 recall cue”等自然语言/model-facing 语义是否清楚；它补充 Contract 检查，但不替代确定性行为测试。
+用于检查“restored cognition 是 user-requested working context”“candidate summary 可直接使用但不是 relevance/validity proof”等自然语言/model-facing 语义是否清楚；它补充 Contract 检查，但不替代确定性行为测试。
 
 ---
 
 # 3. Public Contract 与 Cognition Anchor
 
-## AC2-CONTRACT-001：v2 logical tool surface
+## AC3-CONTRACT-001：v3 logical tool surface
 
 **来源：** `brain-tools-contract.md` §5  
 **类型：** Contract  
@@ -59,20 +59,20 @@
 **And** `brain_edit.edits` 表达同一 document 内的一条或多条 exact replacements，空数组不是合法 edit
 **And** Git history 不要求任何 model-visible rationale/commit-message 参数。
 
-## AC2-ANCHOR-001：Generic MCP 的 read-before-think guidance
+## AC3-ANCHOR-001：Generic MCP 的 read-before-think guidance
 
-**来源：** ANCHOR2-001-A  
+**来源：** ANCHOR3-001-A  
 **类型：** Contract  
 **Verification：** CI Contract + AI Semantic Review candidate
 
 **Given** host 没有可靠 pre-reasoning hook  
 **When** 暴露 `brain_think`  
-**Then** tool guidance 清楚表达“收到新 user message 后立即恢复 prior cognition，再 substantive reasoning”  
+**Then** tool guidance 清楚表达“收到新 user message 后立即恢复 persistent cognition，再 substantive reasoning”  
 **And** contract 不声称 MCP 能机械保证模型一定调用。
 
-## AC2-ANCHOR-002：Hook-backed integration 自动恢复 cognition
+## AC3-ANCHOR-002：Hook-backed integration 自动恢复 cognition
 
-**来源：** ANCHOR2-001-B；TIME2-001-A；CONTEXT-BOUNDARY2-001-B  
+**来源：** ANCHOR3-001-B；TIME3-001-A；CONTEXT-BOUNDARY3-001-B  
 **类型：** Acceptance / Integration Contract  
 **Verification：** CI Acceptance；真实 host 为 Manual/E2E candidate
 
@@ -82,25 +82,26 @@
 **And** model-visible tool surface 不暴露 `brain_think`，模型不需要再显式调用  
 **And** hook 与 explicit mode 中 restored memory 的 context role / authority 相同  
 
-## AC2-ANCHOR-003：Restored prior 与 latest user event 正确合并
+## AC3-ANCHOR-003：Restored cognition 与 latest user event 正确合并
 
-**来源：** ANCHOR2-003-A；AUTH2-001-A；AUTH2-001-B；AUTH2-001-C；CONTEXT-BOUNDARY2-001-A；CONTEXT-BOUNDARY2-001-C  
+**来源：** ANCHOR3-003-A；AUTH3-001-A；AUTH3-001-B；AUTH3-001-C；CONTEXT-BOUNDARY3-001-A；CONTEXT-BOUNDARY3-001-C  
 **类型：** Contract / Semantic Acceptance  
 **Verification：** CI Contract + AI Semantic Review candidate
 
-**Given** restored prior context 中有多个仍有效约束、一个旧 assistant next-step proposal，以及一个 tentative hypothesis  
+**Given** restored cognition 中有多个仍有效约束、一个旧 assistant next-step proposal，以及一个 tentative hypothesis\
 **And** latest user message 明确改变 next-step direction  
 **When** anchor presentation 被模型使用  
-**Then** presentation 将 injected block 明确标识为处理 latest message 时使用的 prior cognition，而不是对 latest message 的新分析  
+**Then** presentation 将 injected block 明确标识为 user-requested working context；它是本轮读取的 current persistent cognition snapshot，不是假定已经针对 latest message 生成的新分析，也不因 persistence 被整体解释成较旧或较低权重的背景\
 **And** latest message 改变受影响的 next-step cognition  
-**And** 未受影响的有效 prior constraints 继续保留  
+**And** 未受影响的有效 constraints 继续保留  
 **And** assistant proposal 仍是 proposal  
 **And** hypothesis 仍是 hypothesis  
+**And** 每条 cognition 所描述状态的时间、适用性与有效性按该 claim 的 meaning、scope 和 relevant evidence 判断  
 **And** 模型可根据当前 task 自己产生后续 ls/glob/grep/cat retrieval intent。
 
-## AC2-ANCHOR-004：restore 优先；auxiliary failure 局部降级，primary core failure 明确失败
+## AC3-ANCHOR-004：restore 优先；auxiliary failure 局部降级，primary core failure 明确失败
 
-**来源：** ANCHOR2-004-A；ANCHOR2-004-B；ANCHOR2-004-C；ANCHOR2-004-D\
+**来源：** ANCHOR3-004-A；ANCHOR3-004-B；ANCHOR3-004-C；ANCHOR3-004-D\
 **类型：** Acceptance / Fault / Invariant\
 **Verification：** CI Acceptance + deterministic fault seams
 
@@ -114,9 +115,9 @@
 
 # 4. Scope、Core 与 Archival
 
-## AC2-SCOPE-001：scope 只表达 future applicability
+## AC3-SCOPE-001：scope 只表达 cognition continuity boundary
 
-**来源：** SCOPE2-001-A；SCOPE2-001-B；LIFECYCLE2-001-C  
+**来源：** SCOPE3-001-A；SCOPE3-001-B；LIFECYCLE3-001-C  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -125,9 +126,9 @@
 **Then** 跨项目 cognition 可以直接写 `@global/...`，无需先积累 promotion evidence  
 **And** session cognition 保持在 `@session/<sid>/...`，不会因 project 相同自动外溢到另一 session。
 
-## AC2-CORE-001：适用 core resident，archival 按需
+## AC3-CORE-001：适用 core resident，archival 按需
 
-**来源：** RESIDENCY2-001-A；RESIDENCY2-001-B；CORE2-001-A  
+**来源：** RESIDENCY3-001-A；RESIDENCY3-001-B；CORE3-001-A  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -139,9 +140,9 @@
 **And** core 与 L0 都保持各自 bounded；不为增加 L0 而 silent truncate core
 **And** core 已完整 resident，后续维护直接使用 `brain_edit`，不要求再 `brain_cat` 读取。
 
-## AC2-CORE-002：session 同时有 resident 与 archival cognition
+## AC3-CORE-002：session 同时有 resident 与 archival cognition
 
-**来源：** SESSION2-001-A；SESSION2-001-B  
+**来源：** SESSION3-001-A；SESSION3-001-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -151,9 +152,9 @@
 **And** fresh session 初始化时已有空 `core.md`，anchor 将其作为 resident core 恢复，可直接用 `brain_edit(..., content=...)` 维护，不要求先 `brain_cat` 或 `brain_write`
 **And** 历史细节可以进入 `@session/<sid>/memories/...` 并按需检索。
 
-## AC2-CORE-003：core 超容量先失败再整理
+## AC3-CORE-003：core 超容量先失败再整理
 
-**来源：** CORE2-001-B  
+**来源：** CORE3-001-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -167,9 +168,9 @@
 
 # 5. Passive Cues、Active Discovery 与 Exact Read
 
-## AC2-DISCLOSURE-001：L0 是 gist，可直接跳 exact read
+## AC3-DISCLOSURE-001：L0 是 gist，可直接跳 exact read
 
-**来源：** DISCLOSURE2-001-A；DISCLOSURE2-001-B；DISCLOSURE2-002-A  
+**来源：** DISCLOSURE3-001-A；DISCLOSURE3-001-B；DISCLOSURE3-002-A  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -180,9 +181,9 @@
 **And** ls/glob/grep 不是固定 pipeline；模型可按已有 directory/path-name/content clue 直接选择适合的 discovery primitive  
 **And** L0 本身不自动展开 archival body。
 
-## AC2-DISCLOSURE-002：active discovery 保留 gist；grep 额外保留 evidence
+## AC3-DISCLOSURE-002：active discovery 保留 gist；grep 额外保留 evidence
 
-**来源：** DISCLOSURE2-003-A；DISCLOSURE2-003-B  
+**来源：** DISCLOSURE3-003-A；DISCLOSURE3-003-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -192,10 +193,11 @@
 **And** directory node 不伪造 memory summary  
 **And** grep 还保留真实 matching line/context evidence，不用 summary 冒充 content match  
 **And** matching line number 与 `brain_cat` 使用同一 1-based logical-document line coordinate  
+**And** 合法 ls/glob/grep 无结果时分别返回明确的非错误文本，不返回空 ToolResult。
 
-## AC2-CAT-001：一个 Markdown document 只有一个稳定坐标系
+## AC3-CAT-001：一个 Markdown document 只有一个稳定坐标系
 
-**来源：** READ2-001-A；READ2-002-A  
+**来源：** READ3-001-A；READ3-002-A  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -205,20 +207,21 @@
 **And** frontmatter/body 属于同一 1-based document-line coordinate  
 **And** 不存在首次读取与 continuation 使用不同 offset 语义的私有协议。
 
-## AC2-CAT-002：长文档 continuation 稳定
+## AC3-CAT-002：长文档 continuation 稳定
 
-**来源：** READ2-003-A；READ2-003-B  
+**来源：** READ3-003-A；READ3-003-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
 **Given** document 超过单次 read budget 且读取期间 document 未修改  
 **When** 模型按返回 affordance 连续读取后续页  
-**Then** 每页明确是否还有后续  
+**Then** 非末页返回 `next_offset` 与包含 canonical path/同一 offset 的 `continue_with`  
+**And** EOF、空文档、out-of-range 与 blocked line 不返回假的 continuation  
 **And** stable document content 不无故跳过或重复。
 
-## AC2-CAT-003：超长 logical line 不被截断后伪装成 exact read
+## AC3-CAT-003：超长 logical line 不被截断后伪装成 exact read
 
-**来源：** READ2-003-C；public contract §9\
+**来源：** READ3-003-C；public contract §9\
 **类型：** Acceptance / Contract\
 **Verification：** CI Acceptance + Contract
 
@@ -232,9 +235,9 @@
 
 # 6. Archival Semantic Contract
 
-## AC2-MEMORY-001：summary 始终代表 current cognition，短 memory 不重复 body
+## AC3-MEMORY-001：summary 始终代表 current cognition，短 memory 不重复 body
 
-**来源：** MEMORY2-001-A；MEMORY2-001-B；MEMORY2-005-A  
+**来源：** MEMORY3-001-A；MEMORY3-001-B；MEMORY3-005-A  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -243,9 +246,9 @@
 **Then** 返回 current summary，不长期展示与新正文冲突的旧 gist  
 **And** 若 summary 已无损表达一条很短 cognition，body 可以为空。
 
-## AC2-MEMORY-002：cognitive role 由 path 单一拥有，并保留真实 behavioral meaning
+## AC3-MEMORY-002：cognitive role 由 path 单一拥有，并保留真实 behavioral meaning
 
-**来源：** MEMORY2-002-A；MEMORY2-002-B；PATH2-003-A；PATH2-003-B  
+**来源：** MEMORY3-002-A；MEMORY3-002-B；PATH3-003-A；PATH3-003-B  
 **类型：** Acceptance / Contract / Semantic Review  
 **Verification：** CI Acceptance + Contract + AI Semantic Review candidate
 
@@ -253,15 +256,17 @@
 **When** 判断 cognitive role 或基于新语义证据通过 `brain_mv` 重新分类  
 **Then** `memories/<role>/` 第一层决定 role，后续 nested directories 不改变 role  
 **And** `decision` 表示 established choice，`knowledge` 表示 fact/rule/constraint/established understanding，`intention` 表示 active goal/commitment，`skill` 表示 reusable method  
+**And** decision/intention 分别证明已选择的方向与仍然 intended 的工作，不证明 implementation/performance/completion 已发生  
+**And** knowledge 保留自身 certainty/scope/conditions，skill 只指导满足 prerequisites 的行动；二者都不从历史描述无依据泛化当前事实  
 **And** scope/root 与 role 正交组合，不建立 `skill→global` / `intention→session` 等机械映射  
 **And** move 到另一 role namespace 表达主模型已经完成的 semantic reclassification  
 **And** proposal 不因被放到 `decision/` / `knowledge/` 就获得 established/user-confirmed authority  
 **And** document metadata 不要求再重复 `type`  
 **And** archival Markdown 可保留其他普通 frontmatter / 正文内容；brain 只消费其明确 contract 的字段，不建立额外 reserved-key blacklist。
 
-## AC2-MEMORY-003：importance 是 omission consequence，不是 relevance
+## AC3-MEMORY-003：importance 是 omission consequence，不是 relevance
 
-**来源：** MEMORY2-003-A；MEMORY2-003-B；public contract PC2-MEMORY-002  
+**来源：** MEMORY3-003-A；MEMORY3-003-B；public contract PC3-MEMORY-002  
 **类型：** Contract / Semantic Acceptance  
 **Verification：** CI Contract + AI Semantic Review candidate
 
@@ -271,9 +276,9 @@
 **And** high importance 不把 non-match 变成 match  
 **And** usage/recency/scope/confidence/current relevance 本身不改变 importance。
 
-## AC2-MEMORY-004：持久化保留原 epistemic meaning
+## AC3-MEMORY-004：持久化保留原 epistemic meaning
 
-**来源：** MEMORY2-004-A；MEMORY2-004-B  
+**来源：** MEMORY3-004-A；MEMORY3-004-B  
 **类型：** Semantic Acceptance  
 **Verification：** AI Semantic Review candidate + CI content assertions where deterministic
 
@@ -287,9 +292,9 @@
 
 # 7. Mutation 与 Identity
 
-## AC2-WRITE-001：create 与 overwrite 是不同 identity 语义
+## AC3-WRITE-001：create 与 overwrite 是不同 identity 语义
 
-**来源：** WRITE2-001-A；WRITE2-001-B；WRITE2-001-C；IDENTITY2-001-C  
+**来源：** WRITE3-001-A；WRITE3-001-B；WRITE3-001-C；IDENTITY3-001-C  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -300,9 +305,9 @@
 **And** B 不继承 A 的 retrievability/reinforcement/usage learning history  
 **And** resulting document 满足 summary/importance/path epistemic contract。
 
-## AC2-EDIT-001：edit 表达 same cognition evolves
+## AC3-EDIT-001：edit 表达 same cognition evolves
 
-**来源：** EDIT2-001-A；EDIT2-001-B；IDENTITY2-001-A  
+**来源：** EDIT3-001-A；EDIT3-001-B；IDENTITY3-001-A  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -312,9 +317,9 @@
 **And** appropriate learning continuity 保留  
 **And** resulting summary/content 不冲突。
 
-## AC2-MV-001：archival mv 改地址但保持 identity；destination 使用 replace
+## AC3-MV-001：archival mv 改地址但保持 identity；destination 使用 replace
 
-**来源：** IDENTITY2-001-B；MV2-001-A；MV2-001-B；MV2-001-C；public contract §13  
+**来源：** IDENTITY3-001-B；MV3-001-A；MV3-001-B；MV3-001-C；public contract §13  
 **类型：** Acceptance / Contract  
 **Verification：** CI Acceptance
 
@@ -325,7 +330,7 @@
 **And** replacement 的成功不依赖 Git；若 B 之前已有 committed checkpoint，该 checkpoint 仍可作为额外历史依据\
 **And** core↔archival move 被拒绝并给 read/write/edit semantic guidance。
 
-## AC2-EDIT-002：edit schema 与 object-kind boundary 失败无副作用
+## AC3-EDIT-002：edit schema 与 object-kind boundary 失败无副作用
 
 **来源：** `brain-tools-contract.md` §10–13  
 **类型：** Contract / Boundary Acceptance  
@@ -337,9 +342,9 @@
 **And** failure 不改变 current cognition、identity 或 learning state  
 **And** 返回与目标 object kind 对应的合法下一步 affordance，而不是建议用私有参数绕过。
 
-## AC2-RM-001：rm 只让 archival cognition 退出 active memory
+## AC3-RM-001：rm 只让 archival cognition 退出 active memory
 
-**来源：** RM2-001-A；RM2-001-B  
+**来源：** RM3-001-A；RM3-001-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -352,9 +357,9 @@
 
 # 8. Feedback、Correction 与 Questioned State
 
-## AC2-FEEDBACK-001：read 不等于 adopt；validated use 才强化
+## AC3-FEEDBACK-001：read 不等于 adopt；validated use 才强化
 
-**来源：** FEEDBACK2-001-A；FEEDBACK2-001-B；FEEDBACK2-002-A；public contract `feedback=adopt`  
+**来源：** FEEDBACK3-001-A；FEEDBACK3-001-B；FEEDBACK3-002-A；public contract `feedback=adopt`  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -364,9 +369,9 @@
 **And** case B 只有在显式 `brain_feedback(..., adopt)` 后形成 positive evidence  
 **And** adopt 本身不机械提高 importance。
 
-## AC2-FEEDBACK-002：question / resolve 表达 current epistemic lifecycle
+## AC3-FEEDBACK-002：question / resolve 表达 current epistemic lifecycle
 
-**来源：** FEEDBACK2-002-B；CORRECTION2-001-A；CORRECTION2-001-B；QUESTIONED2-001-D；public contract §14  
+**来源：** FEEDBACK3-002-B；CORRECTION3-001-A；CORRECTION3-001-B；QUESTIONED3-001-D；public contract §14  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -376,11 +381,12 @@
 **And** B 为 questioned 且未来能恢复“在质疑什么、仍需解决什么”  
 **And** C 回到 active 且无需伪造 semantic edit  
 **And** correction/question/resolve 本身都不机械降低 importance。
+**And** `feedback=question` 在 schema/runtime boundary 拒绝缺失、空或全空白 challenge；adopt/resolve 仍按 frozen signature 忽略额外 challenge。
 
 
-## AC2-FEEDBACK-003：action failure 先做 causal attribution
+## AC3-FEEDBACK-003：action failure 先做 causal attribution
 
-**来源：** ATTRIBUTION2-001-A；ATTRIBUTION2-001-B  
+**来源：** ATTRIBUTION3-001-A；ATTRIBUTION3-001-B  
 **类型：** Semantic Acceptance  
 **Verification：** AI Semantic Review candidate；deterministic state effect 可 CI
 
@@ -390,7 +396,7 @@
 **And** case B 可以根据已知程度选择 question、edit+resolve 或 rm  
 **And** 工具不把“action failed”机械等同“memory wrong”。
 
-## AC2-FEEDBACK-004：feedback conditional schema 保持 current state 完整
+## AC3-FEEDBACK-004：feedback conditional schema 保持 current state 完整
 
 **来源：** `brain-tools-contract.md` §14  
 **类型：** Contract / Boundary Acceptance  
@@ -404,9 +410,9 @@
 **And** 三个结果都不要求 Git/audit rationale 参数。
 
 
-## AC2-QUESTIONED-001：questioned 降低 proactive trust，但不改变 retrieval truth
+## AC3-QUESTIONED-001：questioned 降低 proactive trust，但不改变 retrieval truth
 
-**来源：** QUESTIONED2-001-A；QUESTIONED2-001-B；QUESTIONED2-001-C  
+**来源：** QUESTIONED3-001-A；QUESTIONED3-001-B；QUESTIONED3-001-C  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -421,9 +427,9 @@
 
 # 9. Learning、Forgetting 与 Discoverability
 
-## AC2-LEARNING-001：forgetting 只使 broad discovery 更难，不使 memory 消失
+## AC3-LEARNING-001：forgetting 只使 broad discovery 更难，不使 memory 消失
 
-**来源：** LEARNING2-001-A；LEARNING2-001-B  
+**来源：** LEARNING3-001-A；LEARNING3-001-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance with deterministic learning-state fixture
 
@@ -432,9 +438,9 @@
 **Then** broad case 中 A 可以进入更深位置  
 **And** specific cue case 中 A 仍正常被发现/读取。
 
-## AC2-TIME-001：memory evolution 由 cognition events 驱动，不由墙钟驱动
+## AC3-TIME-001：memory evolution 由 cognition events 驱动，不由墙钟驱动
 
-**来源：** TIME2-001-B  
+**来源：** TIME3-001-B  
 **类型：** Fault / Invariant  
 **Verification：** CI Fault / Invariant
 
@@ -442,9 +448,9 @@
 **When** wall clock 从短间隔推进到很长间隔  
 **Then** 不只因为现实时间流逝产生额外 forgetting state change。
 
-## AC2-RETRIEVAL-001：exact read refresh；list/search discovery 不批量复习
+## AC3-RETRIEVAL-001：exact read refresh；list/search discovery 不批量复习
 
-**来源：** RETRIEVAL2-001-A；RETRIEVAL2-001-B  
+**来源：** RETRIEVAL3-001-A；RETRIEVAL3-001-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -454,9 +460,9 @@
 **And** 仅被 grep/ls/glob 展示的其他 items 不自动获得 retrieval refresh  
 **And** exact read 本身仍不等于 adopt。
 
-## AC2-REINFORCEMENT-001：validated successful use 比单纯 read 更 durable
+## AC3-REINFORCEMENT-001：validated successful use 比单纯 read 更 durable
 
-**来源：** REINFORCEMENT2-001-A  
+**来源：** REINFORCEMENT3-001-A  
 **类型：** Invariant  
 **Verification：** CI Fault / Invariant with deterministic learning model seam
 
@@ -465,9 +471,9 @@
 **Then** B 可以比 A 保持更 durable retrievability  
 **And** 不断言具体 stability/FSRS 数值。
 
-## AC2-EXPOSURE-001：L0 passive anti-monopoly 不污染 active search
+## AC3-EXPOSURE-001：L0 passive anti-monopoly 不污染 active search
 
-**来源：** EXPOSURE2-001-A；EXPOSURE2-001-B  
+**来源：** EXPOSURE3-001-A；EXPOSURE3-001-B  
 **类型：** Acceptance / Invariant  
 **Verification：** CI Acceptance
 
@@ -476,9 +482,9 @@
 **Then** A 在 passive L0 中逐渐让出 attention 机会  
 **And** 过去 exposure debt 不隐藏/惩罚当前真实 grep match。
 
-## AC2-DISCOVERABILITY-001：retrievability 与 importance 都是单调保护
+## AC3-DISCOVERABILITY-001：retrievability 与 importance 都是单调保护
 
-**来源：** DISCOVERABILITY2-003-A；DISCOVERABILITY2-003-B；DISCOVERABILITY2-003-C  
+**来源：** DISCOVERABILITY3-003-A；DISCOVERABILITY3-003-B；DISCOVERABILITY3-003-C  
 **类型：** Invariant  
 **Verification：** CI Fault / Invariant
 
@@ -493,9 +499,9 @@
 
 # 10. Namespace、Path 与 Object Kind
 
-## AC2-PATH-001：public path 是唯一 locator，scope roots 对称
+## AC3-PATH-001：public path 是唯一 locator，scope roots 对称
 
-**来源：** PATH2-001-A；PATH2-001-B；PATH2-002-A；PATH2-002-B  
+**来源：** PATH3-001-A；PATH3-001-B；PATH3-002-A；PATH3-002-B  
 **类型：** Acceptance / Contract  
 **Verification：** CI Acceptance
 
@@ -506,9 +512,9 @@
 **And** 同 scope 的 `core.md` 与 `memories/...` 共享同一 root  
 **And** session `<sid>` 只作为 opaque identity。
 
-## AC2-PATH-002：public namespace 只暴露合法 cognition object kinds
+## AC3-PATH-002：public namespace 只暴露合法 cognition object kinds
 
-**来源：** PATH2-004-A；PATH2-005-A；PATH2-005-B  
+**来源：** PATH3-004-A；PATH3-005-A；PATH3-005-B  
 **类型：** Acceptance / Contract  
 **Verification：** CI Acceptance
 
@@ -519,9 +525,9 @@
 **And** core 按 core contract 处理，不被当 archival item
 **And** standalone `@global/` / `@project/` / `@session/<sid>/` 只作为 applicability prefix，不成为可操作 public object。
 
-## AC2-PATH-003：所有工具共享同一 path parser，并保持 containment
+## AC3-PATH-003：所有工具共享同一 path parser，并保持 containment
 
-**来源：** PATH2-006-A；PATH2-007-A；PATH2-007-B\
+**来源：** PATH3-006-A；PATH3-007-A；PATH3-007-B\
 **类型：** Acceptance / Security Invariant
 **Verification：** CI Acceptance + Fault / Invariant
 
@@ -531,9 +537,9 @@
 **And** session id / nested item path 不能逃逸其 scope/role namespace
 **And** 不把 shared parser semantics 解释成 ls/glob/grep 必须接受 core 或 standalone scope prefix 等其他 input kind。
 
-## AC2-PATH-004：contained filesystem alias 跟随 real target；broken/越界 failure 局部化
+## AC3-PATH-004：contained filesystem alias 跟随 real target；broken/越界 failure 局部化
 
-**来源：** PATH2-007-C；PATH2-007-D；public contract PC2-PATH-004\
+**来源：** PATH3-007-C；PATH3-007-D；public contract PC3-PATH-004\
 **类型：** Acceptance / Security Invariant\
 **Verification：** CI Acceptance + filesystem-boundary fault seam；真实 symlink/junction 为 Manual/E2E candidate
 
@@ -545,9 +551,9 @@
 
 ---
 
-## AC2-ABSOLUTE-001：宽松映射 cognition/asset workspace location
+## AC3-ABSOLUTE-001：宽松映射 cognition/asset workspace location
 
-**来源：** PATH2-006A-A；PATH2-006A-B\
+**来源：** PATH3-006A-A；PATH3-006A-B\
 **类型：** Contract / Acceptance\
 **Verification：** CI Contract + CI Unit
 
@@ -560,9 +566,9 @@
 
 # 11. `brain_ls`
 
-## AC2-LS-001：只列 memories-directory direct children，真实 membership 不受 strength 改写
+## AC3-LS-001：只列 memories-directory direct children，真实 membership 不受 strength 改写
 
-**来源：** LS2-001-A；LS2-001-B  
+**来源：** LS3-001-A；LS3-001-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -572,9 +578,9 @@
 **And** 结果量在 budget 内时低-R direct child 仍真实出现
 **And** standalone scope prefix/core/concrete-item 不是合法 ls target。
 
-## AC2-LS-002：超预算显式 refine，不提供 page 2
+## AC3-LS-002：超预算显式 refine，不提供 page 2
 
-**来源：** LS2-002-A；LS2-002-B  
+**来源：** LS3-002-A；LS3-002-B  
 **类型：** Acceptance / Contract  
 **Verification：** CI Acceptance
 
@@ -588,9 +594,9 @@
 
 # 12. `brain_glob`
 
-## AC2-GLOB-001：glob 只按 path truth 匹配 archival memory
+## AC3-GLOB-001：glob 只按 path truth 匹配 archival memory
 
-**来源：** GLOB2-001-A；GLOB2-001-B  
+**来源：** GLOB3-001-A；GLOB3-001-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -602,9 +608,9 @@
 **And** omitted optional path 时，当前可访问 scopes 的 active archival memory paths 都属于搜索范围
 **And** standalone scope prefix/core 不是 glob search root，directory 也不是 glob result。
 
-## AC2-GLOB-002：glob 超预算只 refine，不分页
+## AC3-GLOB-002：glob 超预算只 refine，不分页
 
-**来源：** GLOB2-002-A  
+**来源：** GLOB3-002-A  
 **类型：** Acceptance / Contract  
 **Verification：** CI Acceptance
 
@@ -618,9 +624,9 @@
 
 # 13. `brain_grep`
 
-## AC2-GREP-001：literal/regex 只对 archival content 返回真实 evidence
+## AC3-GREP-001：literal/regex 只对 archival content 返回真实 evidence
 
-**来源：** GREP2-001-A；GREP2-001-B  
+**来源：** GREP3-001-A；GREP3-001-B  
 **类型：** Acceptance  
 **Verification：** CI Acceptance
 
@@ -628,12 +634,13 @@
 **When** 按 public grep contract 搜索  
 **Then** 返回真实 matching archival paths/lines/context
 **And** summary 仅作为 gist，不生成不存在的 content match  
+**And** `glob?` 作为相对于 selected search root 的 file glob 收窄 archival Markdown corpus  
 **And** omitted optional path 时只搜索当前可访问 scopes 的 active archival Markdown
 **And** standalone scope prefix/core/concrete-item 不是 grep search root。
 
-## AC2-GREP-003：invalid regex 是 input error，不是 no-match
+## AC3-GREP-003：invalid regex 是 input error，不是 no-match
 
-**来源：** GREP2-001-C；public contract §8\
+**来源：** GREP3-001-C；public contract §8\
 **类型：** Contract / Boundary Acceptance\
 **Verification：** CI Contract + Acceptance
 
@@ -642,9 +649,9 @@
 **Then** 返回明确 input/query error，不返回“合法搜索但 0 matches”\
 **And** guidance 指向修正 regex，或在确实想搜索这些普通字符时使用 `literal=true`。
 
-## AC2-GREP-002：grep 使用 bounded result，截断后 refine query，不建立分页状态
+## AC3-GREP-002：grep 使用 bounded result，截断后 refine query，不建立分页状态
 
-**来源：** GREP2-002-A；GREP2-002-B；GREP2-002-C  
+**来源：** GREP3-002-A；GREP3-002-B；GREP3-002-C  
 **类型：** Acceptance / Invariant  
 **Verification：** CI Acceptance
 
@@ -659,9 +666,9 @@
 
 # 14. Approval、Auxiliary Git History 与 Recoverability
 
-## AC2-HISTORY-001：current cognition success 不等待 Git；history failure 局部降级
+## AC3-HISTORY-001：current cognition success 不等待 Git；history failure 局部降级
 
-**来源：** APPROVAL2-001-A；HISTORY2-001-A；HISTORY2-001-B；HISTORY2-001-E；HISTORY2-002-A\
+**来源：** APPROVAL3-001-A；HISTORY3-001-A；HISTORY3-001-B；HISTORY3-001-E；HISTORY3-002-A\
 **类型：** Acceptance / Contract / Fault\
 **Verification：** CI Acceptance with Git resource port fake；真实 Git 为 Manual/E2E candidate
 
@@ -672,9 +679,9 @@
 **And** 已经真实存在的 committed checkpoint 仍可作为额外历史恢复依据\
 **And** rm 不额外维护 hidden recycle，也不维护 `history.jsonl` / `change_history.jsonl`，不创建 pending-history / recovery-commit 业务状态。
 
-## AC2-HISTORY-002：anchor 是 best-effort 轮次 checkpoint opportunity
+## AC3-HISTORY-002：anchor 是 best-effort 轮次 checkpoint opportunity
 
-**来源：** HISTORY2-001-C；HISTORY2-001-D  
+**来源：** HISTORY3-001-C；HISTORY3-001-D  
 **类型：** Acceptance / Contract  
 **Verification：** CI Acceptance with Git resource port fake；真实 Git 为 Manual/E2E candidate
 
@@ -689,9 +696,9 @@
 
 # 15. Consistency、Concurrency、Failure 与 Restart
 
-## AC2-CONSISTENCY-000：Markdown/core truth + disposable learning state
+## AC3-CONSISTENCY-000：Markdown/core truth + disposable learning state
 
-**来源：** CONSISTENCY2-000-A；CONSISTENCY2-000-B；CONSISTENCY2-000-C\
+**来源：** CONSISTENCY3-000-A；CONSISTENCY3-000-B；CONSISTENCY3-000-C\
 **类型：** Acceptance / Invariant  
 **Verification：** CI Acceptance
 
@@ -702,9 +709,9 @@
 **And** orphan companion 不产生 memory\
 **And** 普通 ls/glob/grep 不因 fresh fallback 被迫产生 repair write，也不猜测修改 cognition 内容。
 
-## AC2-CONSISTENCY-001：success boundary 跟随业务语义；auxiliary read-learning failure 不吞内容
+## AC3-CONSISTENCY-001：success boundary 跟随业务语义；auxiliary read-learning failure 不吞内容
 
-**来源：** CONSISTENCY2-001-A；CONSISTENCY2-001-B；CONSISTENCY2-001-C\
+**来源：** CONSISTENCY3-001-A；CONSISTENCY3-001-B；CONSISTENCY3-001-C\
 **类型：** Acceptance / Invariant / Fault\
 **Verification：** CI Acceptance + deterministic learning-state fault seam
 
@@ -714,9 +721,9 @@
 **And** B 不会出现 source 已退出而 destination 尚未成立等 public partial success\
 **And** C 仍返回已经正确读取的 document content，允许本次 auxiliary learning refresh 丢失并给 diagnostic warning。
 
-## AC2-CONCURRENCY-001：并发成功结果等价于某个合法顺序
+## AC3-CONCURRENCY-001：并发成功结果等价于某个合法顺序
 
-**来源：** CONCURRENCY2-001-A；CONCURRENCY2-001-B  
+**来源：** CONCURRENCY3-001-A；CONCURRENCY3-001-B  
 **类型：** Invariant  
 **Verification：** CI Fault / Invariant with deterministic coordination seam
 
@@ -725,19 +732,19 @@
 **Then** case A 两个独立成功结果都可观察，不因 stale read/write race 静默丢失  
 **And** case B 最终状态等价于某个 public contract 允许的 sequential order，或冲突被明确拒绝。
 
-## AC2-CONCURRENCY-002：只有共享 global scope 需要跨进程协调
+## AC3-CONCURRENCY-002：只有共享 global scope 需要跨进程协调
 
-**来源：** CONCURRENCY2-001-C  
+**来源：** CONCURRENCY3-001-C  
 **类型：** Invariant / Integration  
 **Verification：** CI coordination-port invariant；真实多进程为 Manual/E2E candidate
 
 **Given** 两个 project-level server instances 共享同一 global memory store  
 **When** 它们并发修改 shared global state  
-**Then** global guarantee 仍满足 AC2-CONCURRENCY-001 的 sequential / no silent lost update semantics  
+**Then** global guarantee 仍满足 AC3-CONCURRENCY-001 的 sequential / no silent lost update semantics  
 **And** 不要求 project/session scope 为不存在的 cross-process sharing 支付同样机制成本。
-## AC2-FAILURE-001：可处理 failure 不留下伪成功半状态
+## AC3-FAILURE-001：可处理 failure 不留下伪成功半状态
 
-**来源：** FAILURE2-001-A；FAILURE2-001-B  
+**来源：** FAILURE3-001-A；FAILURE3-001-B  
 **类型：** Fault / Invariant  
 **Verification：** CI Fault / Invariant
 
@@ -747,9 +754,9 @@
 **And** case B 不把 partial state 暴露成正常 success  
 **And** 当前 state 要么回到 prior valid state，要么显式 fail loud，具体 rollback mechanism 不属于 acceptance。
 
-## AC2-RESTART-001：普通 restart 保留已成功 cognition continuity
+## AC3-RESTART-001：普通 restart 保留已成功 cognition continuity
 
-**来源：** RESTART2-001-A  
+**来源：** RESTART3-001-A  
 **类型：** Integration Acceptance  
 **Verification：** Manual/E2E candidate；business-level persistence port contract 可 CI
 
@@ -758,15 +765,15 @@
 **Then** current cognition public semantics 保持  
 **And** edit/mv 所要求的 identity/learning continuity 不重置、不串到别的 cognition。
 
-## AC2-RESTART-002：强制终止中的未完成 mutation 是明确 non-goal
+## AC3-RESTART-002：强制终止中的未完成 mutation 是明确 non-goal
 
-**来源：** RESTART2-001-B  
+**来源：** RESTART3-001-B  
 **类型：** Contract / Boundary Review  
 **Verification：** Specification review；不要求 crash-recovery automated case
 
 **Given** operation 尚未到达 success boundary  
 **When** process 被 SIGKILL/host crash/power loss  
-**Then** v2 不承诺重放或完成这次 mutation  
+**Then** v3 不承诺重放或完成这次 mutation  
 **And** restart 后 normal active state 必须对应一个已完成的 persistent state；已成功但从未形成 Git checkpoint 的 current cognition 也不能仅因正常 restart 丢失，无法安全解释 current cognition 时才 fail loud\
 **And** 不因此要求 durable WAL/journal/roll-forward。
 
@@ -774,9 +781,9 @@
 
 # 16. Lifecycle 与 Generic Signals
 
-## AC2-LIFECYCLE-001：usage/retrievability 不自动推导 scope 或 semantic lifecycle
+## AC3-LIFECYCLE-001：usage/retrievability 不自动推导 scope 或 semantic lifecycle
 
-**来源：** LIFECYCLE2-001-A；LIFECYCLE2-001-B；DISCOVERY-LEARNING2-001-A  
+**来源：** LIFECYCLE3-001-A；LIFECYCLE3-001-B；DISCOVERY-LEARNING3-001-A  
 **类型：** Acceptance / Invariant  
 **Verification：** CI Acceptance
 
@@ -786,9 +793,9 @@
 **And** case B 可以更难发现，但不自动降低 importance、question、缩小 scope 或 rm  
 **And** learning 直接作用于 accessibility，不需要 promotion signal 才生效。
 
-## AC2-LIFECYCLE-002：brain_think 不再输出 generic promotion/demotion candidates
+## AC3-LIFECYCLE-002：brain_think 不再输出 generic promotion/demotion candidates
 
-**来源：** DISCOVERY-LEARNING2-001-B  
+**来源：** DISCOVERY-LEARNING3-001-B  
 **类型：** Contract  
 **Verification：** CI Contract
 
@@ -801,20 +808,20 @@
 
 # 17. Restored-context Presentation
 
-## AC2-PRESENTATION-001：presentation 表达真实 cognition relation，并把 guidance 放到真正的 semantic owner
+## AC3-PRESENTATION-001：presentation 表达真实 cognition relation，并把 guidance 放到真正的 semantic owner
 
-**来源：** PRESENTATION2-001-A；PRESENTATION2-001-B；PRESENTATION2-001-C；PRESENTATION2-001-D  
+**来源：** PRESENTATION3-001-A；PRESENTATION3-001-B；PRESENTATION3-001-C；PRESENTATION3-001-D  
 **类型：** Contract / Semantic Review  
 **Verification：** CI Contract + AI Semantic Review candidate
 
 **Given** anchor 同时包含 global/project/session 三个固定 core 与多个动态 L0 candidates，其中一条 questioned  
 **When** 渲染 model-visible context  
-**Then** outer wrapper 将 injected block 表达为处理 latest message 时使用的 prior cognition，并明确 reconcile/update/preserve relationship  
-**And** candidate 被表达为需模型自行判断是否有用的 recall cue，不声称 runtime 已证明 current-query relevance  
-**And** root/path guidance 表达 future applicability，不暗示更宽/更窄 scope 有更高 authority  
-**And** archival role rules 明确表达 `decision/knowledge/intention/skill` 被 recall 后怎样参与 reasoning/action，而不是只给四个分类 label  
+**Then** outer wrapper 将 injected block 表达为 user-requested working context，并明确 latest user message、applicable restored cognition 与 relevant evidence 共同形成 current understanding\
+**And** candidate summary 被表达为可直接使用的 bounded working context，同时不声称 runtime 已证明 current-query relevance 或 claim validity\
+**And** root/path guidance 表达 continuity scope，不暗示更宽/更窄 scope 有更高 authority\
+**And** archival role rules明确表达 `decision/knowledge/intention/skill` 恢复后怎样参与 current understanding/reasoning/decision/action，而不是只给四个分类 label\
 **And** 动态 candidate item 只重复真正随 item 变化的 path/summary/status 等 instance data，其 shared read/search guidance 由 `<memory_candidates>` 这类最小稳定 collection owner 表达  
-**And** 每个 concrete core 自己携带与其 path/applicability 对应的 `maintain_when` / `maintain_with` / `archive_when` / `archive_with`，不把 scope-specific action guidance 上提成需要模型重新映射的一坨通用规则  
+**And** 每个 concrete core 自己携带与其 path/continuity scope 对应的 `update_when` / `update_with` / `archive_when` / `archive_with`，不把 scope-specific action guidance 上提成需要模型重新映射的一坨通用规则\
 **And** root applicability 不在每个 core 上重复成第二份 `scope` / `applies_to` truth  
 **And** presentation 在需要 exact read/search/maintenance 的 decision point 暴露合法 `brain_*` next action  
 **And** 是否执行该 semantic action 仍由模型根据 current task/evidence 决定。
@@ -823,9 +830,9 @@
 
 # 18. Cognition Persistence Opportunity
 
-## AC2-PERSISTENCE-001：新 cognition 有 persistence judgment opportunity，但不形成强制 write workflow
+## AC3-PERSISTENCE-001：新 cognition 有 persistence judgment opportunity，但不形成强制 write workflow
 
-**来源：** PERSISTENCE2-001-A；PERSISTENCE2-001-B；PERSISTENCE2-001-C；PERSISTENCE2-001-D；PERSISTENCE2-001-E；`brain-tools-contract.md` PC2-THINK-005  
+**来源：** PERSISTENCE3-001-A；PERSISTENCE3-001-B；PERSISTENCE3-001-C；PERSISTENCE3-001-D；PERSISTENCE3-001-E；`brain-tools-contract.md` PC3-THINK-005  
 **类型：** Contract / Semantic Acceptance  
 **Verification：** CI Contract + representative Agent Replay / AI Semantic Review candidate
 
@@ -854,7 +861,7 @@
 - 替换内部 storage/ranking/Git wiring 而 public behavior 不变时，绝大多数 expectations 是否仍可保持。
 ---
 
-## 20. Acceptance Freeze Record
+## 20. Inherited v2 Acceptance Freeze Record
 
 **Freeze date：** 2026-08-22
 **Decision：** Phase 4 Acceptance Specification Freeze executed.
@@ -874,14 +881,23 @@ Duplicate AC IDs:        0
 Incomplete case metadata:0
 ```
 
-> 以上是 2026-08-22 原始 Freeze record。2026-08-24 经后续显式裁决与本轮 evidence-based BDD correction 后，当前 canonical Acceptance 为 59 cases；历史数字不改写为“当时已经包含”新行为。
+> 以上是从 v2 继承的 2026-08-22 原始 Freeze record。它只解释前代规格的形成过程，不声称当时已经冻结 v3。
 
-### 20.1 2026-08-24 Evidence-correction Re-freeze
+### 20.1 Inherited v2 2026-08-24 Evidence-correction Re-freeze
 
 **Decision：** BDD / Public Contract / Acceptance 上游行为重新冻结。\
 **Current structure：** 62 BDD requirements / 140 BDD scenarios / 59 Acceptance cases。\
 **Coverage：** 140 / 140 BDD scenarios mapped；missing 0；stale scenario refs 0；duplicate AC IDs 0。\
 **Reopened behavior domains：** anchor failure locality、exact-read lossless continuation、filesystem alias semantics、invalid regex error、mv/rm 与 Git 解耦、auxiliary learning/history degradation、current-state success boundary。\
 **Boundary：** 本次 re-freeze 不冻结 D1/D2 ranking/decay/calibration、Git/storage/coordination implementation、具体 output budget 数值或 host wiring；这些仍由 Phase 5 Engineering Design 从当前上游规格推导。
+
+### 20.2 2026-08-30 v3 Anchor-semantics Re-freeze
+
+**Decision：** v3 BDD / Public Contract / Acceptance 对 model-visible anchor 的表达与消费语义重新冻结。\
+**Current structure：** 62 BDD requirements / 140 BDD scenarios / 59 Acceptance cases。\
+**Coverage：** 140 / 140 BDD scenarios mapped；missing 0；stale scenario refs 0；duplicate AC IDs 0。\
+**Reopened behavior domains：** restored cognition 的 working-context role、claim-level time/authority evaluation、不同 claim 的 evidence boundary、cognitive-role consumption、candidate summary direct use、按需 exact read/search、shared guidance 与 concrete core guidance ownership。\
+**Unchanged domains：** scope、storage、mutation、learning、discovery、coordination 与 Git behavior 继续由 v3 完整文档集中的继承定义拥有；本次没有重新设计这些 subsystem。\
+**Verification boundary：** deterministic CI 验证 model-visible structure 和稳定 semantic relation，不锁整段英文；Representative Agent Replay / Eval 验证模型是否实际联合使用 latest user input、applicable cognition 与 relevant evidence。
 
 以下仍不是 Frozen Engineering Design：内部 state schema、ranking/learning 公式和数值、fixed output budget 数值、Git repository physical layout/commit granularity、lock/transaction mechanism、hook/plugin SDK wiring、具体 XML attribute wording。它们必须在 Phase 5 中从本 Frozen Acceptance 反推 How，而不能反向修改这里的 What。

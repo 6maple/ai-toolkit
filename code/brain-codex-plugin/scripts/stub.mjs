@@ -99,6 +99,7 @@ async function generatePluginFiles() {
               commandWindows: `node \"${hookEntry}\"`,
               timeout: pluginConfig.hook.timeout,
               statusMessage: pluginConfig.hook.statusMessage,
+              additionalContextLimit: pluginConfig.hook.additionalContextLimit,
             },
           ],
         },

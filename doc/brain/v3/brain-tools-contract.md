@@ -1,19 +1,19 @@
-# brain Public Tool Contract v2
+# brain Public Tool Contract v3
 
-> **状态：Frozen Public Tool Contract v2 / Re-synchronized with evidence-corrected BDD（2026-08-24）。**
+> **状态：Frozen Public Tool Contract v3 / Re-synchronized with v3 BDD（2026-08-30）。**
 > **需求源：** `bdd-brain-behavior-requirements.md`（current 62 REQ / 140 Scenario）以及本轮已经重新确认的模型可见工具裁决。\
 > **边界：** 本文冻结 public/model-visible surface；内部 state schema、Git repo 形态、ranking 公式、固定 output budget 数值、lock/transaction、FSRS-like 算法均不属于本文。
-> v1 [`../v1/brain-tools-contract.md`](../v1/brain-tools-contract.md) 保留为旧 baseline，不作为 v2 真相源。
-> **变更控制：** public/model-visible schema、tool semantics、路径语义或 model-facing guarantees 的行为性变化必须回到 v2 BDD / Acceptance 重新裁决；纯 wording calibration 只有在不改变冻结语义时才可在 Design 阶段调整。
+> v2 [`../v2/brain-tools-contract.md`](../v2/brain-tools-contract.md) 保留为冻结前代，不作为 v3 真相源。
+> **变更控制：** public/model-visible schema、tool semantics、路径语义或 model-facing guarantees 的行为性变化必须回到 v3 BDD / Acceptance 重新裁决；纯 wording calibration 只有在不改变冻结语义时才可在 Design 阶段调整。
 
 ---
 
 ## 1. Contract 目标
 
-v2 工具面优先复用模型已经熟悉的 filesystem/search/tool primitives，再只叠加 memory 所必需的语义：
+v3 工具面优先复用模型已经熟悉的 filesystem/search/tool primitives，再只叠加 memory 所必需的语义：
 
 ```text
-restore prior cognition → brain_think / host hook
+restore persistent cognition → brain_think / host hook
 browse one directory    → brain_ls
 locate by path shape    → brain_glob
 search by content       → brain_grep
@@ -31,7 +31,7 @@ report memory outcome   → brain_feedback
 
 ## 2. Public brain namespace
 
-### PC2-PATH-001 对称 scope roots
+### PC3-PATH-001 对称 scope roots
 
 ```text
 @global/
@@ -47,15 +47,15 @@ report memory outcome   → brain_feedback
 └── memories/...
 ```
 
-root 表示 future applicability：
+root 表示 cognition 的 continuity scope：
 
-- `@global/**`：跨 projects / future sessions 持续适用；
-- `@project/**`：当前 project 的 future sessions 持续适用；
-- `@session/<sid>/**`：只在该 session 中持续适用。
+- `@global/**`：跨 projects / sessions 延续；
+- `@project/**`：在当前 project 的 sessions 间延续；
+- `@session/<sid>/**`：只在该 session 中延续。
 
-scope 不是 priority 或 authority。`@global/`、`@project/`、`@session/<sid>/` 是 applicability prefix，不是 standalone public object。每个 valid scope 都实际包含一个 `core.md`；scope 初始化时创建空文件，适用 core 随 `brain_think` / hook-equivalent anchor 完整进入 current context，模型直接通过 `brain_edit` 维护，不使用 `brain_cat` 重新读取，也不使用 `brain_write` 创建 core。
+continuity scope 不是 current relevance、priority 或 authority。`@global/`、`@project/`、`@session/<sid>/` 是 continuity prefix，不是 standalone public object。每个 valid scope 都实际包含一个 `core.md`；scope 初始化时创建空文件，适用 core 随 `brain_think` / hook-equivalent anchor 完整进入 current context，模型直接通过 `brain_edit` 维护，不使用 `brain_cat` 重新读取，也不使用 `brain_write` 创建 core。
 
-### PC2-PATH-002 archival path grammar
+### PC3-PATH-002 archival path grammar
 
 ```text
 <scope-root>/memories/<role>/<relative-item-path>.md
@@ -74,21 +74,21 @@ skill
 
 root 与 role 是正交的组合语义：
 
-- root 表达 future applicability；
-- `memories/<role>/` 表达 recalled cognition 应怎样参与 reasoning/action；
+- root 表达 continuity scope；
+- `memories/<role>/` 表达 restored cognition 应怎样参与 current understanding/reasoning/decision/action；
 - 后续 relative path 只组织/标识 item，不改变 role；
 - 新增第五类 role 需要新的真实 category 需求先进入 Requirement/Design，再扩展该 enum。
 
 四个 role 的 model-facing meaning：
 
-- `decision`：an established choice that future work should continue from while its basis remains valid；
-- `knowledge`：a fact, rule, constraint, or established understanding to reason with when its conditions apply；
-- `intention`：an active goal or commitment whose remaining work should continue until fulfilled, cancelled, or replaced；
-- `skill`：a reusable method to apply when similar task conditions recur。
+- `decision`：an established choice that current work should continue from when applicable；它建立 chosen direction/constraint，不证明 implementation/completion；
+- `knowledge`：在 scope/conditions 适用时进入 current reasoning 的 fact/rule/constraint/established understanding，不超出原 certainty/scope 泛化；
+- `intention`：相关时继续推进、直到 fulfilled/cancelled/replaced 的 active goal/commitment；它建立 remaining intended work，不证明已经执行；
+- `skill`：当前任务满足 prerequisites/intended conditions 时用于指导行动的 reusable method/procedure/technique；prior outcome 不证明当前事实。
 
 role 由 path 单一拥有，document metadata 不再重复 `type`。role path 编码主模型已经判断出的 cognition meaning，不因存入 `decision/` / `knowledge/` 就自动升级 epistemic authority。model-facing namespace guidance 使用真实、glob-friendly 的 public path grammar，使模型能从 concrete path 自然泛化/收窄 discovery pattern；不另造 `scope + type + path` 三套并行 selector。
 
-### PC2-PATH-003 object kinds
+### PC3-PATH-003 object kinds
 
 public namespace 只暴露：
 
@@ -102,7 +102,7 @@ archival memory document
 
 internal ID、state/index/history/lock/temp、physical filesystem path 不属于 public path space。
 
-### PC2-PATH-004 existing filesystem alias follows the real target without creating a second cognition
+### PC3-PATH-004 existing filesystem alias follows the real target without creating a second cognition
 
 brain 的 public path 仍是 cognition/workspace locator，但 existing resource 可能经过 symlink/junction-style filesystem alias。对需要实际读取/枚举 existing resource 的 cognition tools：
 
@@ -131,11 +131,11 @@ body 可以为空；当 summary 已完整表达 cognition 时，不要求为了 
 
 Archival memory 保持普通 Markdown 语义。brain 当前只消费上述 `summary` / `importance` frontmatter；其他 frontmatter 或正文内容不因此获得额外 mechanism semantics，也不建立 reserved-key 黑名单。
 
-### PC2-MEMORY-001 `summary`
+### PC3-MEMORY-001 `summary`
 
 `summary` 是 L0 passive cue 与 active discovery 使用的 current gist。write/edit 后必须与 current cognition 保持一致。
 
-### PC2-MEMORY-002 `importance`
+### PC3-MEMORY-002 `importance`
 
 判断问题：
 
@@ -150,7 +150,7 @@ Archival memory 保持普通 Markdown 语义。brain 当前只消费上述 `summ
 
 使用合理预期后果，不沿遥远最坏链条推演。importance 只在新证据改变“适用时遗漏后果”时更新；频率、recency、retrievability、scope、confidence、当前 query relevance、adopt/question/resolve feedback 本身都不自动改变它。
 
-### PC2-MEMORY-003 epistemic meaning
+### PC3-MEMORY-003 epistemic meaning
 
 proposal、hypothesis、user-confirmed decision、verified fact、uncertain claim 等必须在 document 自身保留未来正确解释所需的 meaning / certainty / commitment / source context。保存本身不升级其 authority。
 
@@ -158,7 +158,7 @@ proposal、hypothesis、user-confirmed decision、verified fact、uncertain clai
 
 ## 4. Integration modes 与 `brain_think`
 
-### PC2-THINK-001 Generic MCP host
+### PC3-THINK-001 Generic MCP host
 
 没有可靠 pre-reasoning hook 的 host 暴露：
 
@@ -168,7 +168,7 @@ brain_think(session_id?)
 
 其 tool description 明确引导：收到每条新 user message 后立即调用一次，拿到 restored cognition 再进行 substantive reasoning。这是 best-effort model guidance，不是假装 MCP protocol 能机械强制。
 
-### PC2-THINK-002 Hook-backed host
+### PC3-THINK-002 Hook-backed host
 
 支持 pre-reasoning hook 的 integration 必须选择一条且仅一条 restore path：
 
@@ -179,96 +179,98 @@ brain_think(session_id?)
 
 `brain_think` 的 MCP annotations 必须如实声明其运行边界：`openWorldHint=false`、`destructiveHint=false`。由于 successful restore 会记录 passive exposure，不能声明为 read-only 或 idempotent，因此 `readOnlyHint=false`、`idempotentHint=false`。这些 annotations 用于向 host 提供机器可读的行为提示，不代替 host approval policy。
 
-### PC2-THINK-003 Context role
+### PC3-THINK-003 Context role
 
-无论来自 explicit tool 还是 hook，返回内容都是 **restored prior context**：
+无论来自 explicit tool 还是 hook，返回内容都是 **user-requested restored cognition working context**。它是本轮从 Brain 读取的 current persistent cognition snapshot，不是因为排列在 latest user event 之后就已针对该事件形成的新分析，也不因为来自 persistence 就整体变成较旧或较低权重的背景。每条 cognition 所描述状态的时间、适用性与有效性分别按该 claim 的 meaning、scope 和 relevant evidence 判断：
 
 ```text
-prior cognition
-+ latest user event
-+ current evidence
+latest user event
++ applicable restored cognition
++ relevant available evidence
 → current understanding
 ```
 
-注入位置较新不代表 brain 已经理解 latest user message。使用 remembered content 时保持它形成时的 meaning、certainty、commitment；只更新被最新输入/证据实际改变的部分。
+注入位置较新不代表 Brain 已经针对 latest user message 更新了其中 claim；persistence/restore 也不决定 claim 的新旧、authority 或 current relevance。使用时保持其 meaning、certainty、commitment、scope、cognitive role，以及它所描述状态的时间；只在 latest input / relevant evidence 为具体 claim 提供 material basis 时更新受影响部分，其他 applicable cognition 继续参与。
 
-### PC2-THINK-004 Presentation shape
+### PC3-THINK-004 Presentation shape
 
-`brain_think` 先用 human-readable preface 说明：这是用户要求 Brain 跨 turn 帮助记住的 context，可能包含用户偏好、既有决定、持续意图、约束和相关项目背景；为了准确理解用户、保持连续性并满足 current request，模型必须把其中相关内容主动结合进 reasoning 和 answer，而不是只确认收到或忽略。latest user message 仍定义 current request。随后使用 XML/HTML-like structural boundary。目标不是把 memory 数据库序列化给模型，而是利用模型已有的 Markdown heading、tagged-context / filesystem / tool-call 训练先验形成一个可直接操作的 cognition work surface。稳定结构如下；exact English wording 仍可做不改变语义的 replay/eval calibration：
+`brain_think` 先用 human-readable preface 说明：这是用户要求 Brain 跨 turn 保持的 working context，不是 optional background；latest user message 定义 current request，但 applicable restored cognition 仍须按其 meaning 与 cognitive role 参与受影响的 understanding/reasoning/answer/action，不能只从其他来源重建。随后使用 XML/HTML-like structural boundary。目标不是把 memory 数据库序列化给模型，而是利用模型已有的 Markdown heading、tagged-context / filesystem / tool-call 训练先验形成一个可直接操作的 cognition work surface。稳定结构如下；exact English wording 仍可做不改变语义的 replay/eval calibration：
 
 ```text
-# User-Requested Current Context
+# User-Requested Working Context
 
-The following is returned because the user asked Brain to help you remember context across turns. It may contain the user's preferences, prior decisions, ongoing intentions, constraints, and relevant project context. To understand the user accurately, preserve continuity, and satisfy the current request, you must actively combine relevant content below with the latest user message when reasoning and answering; do not merely acknowledge or ignore it. The latest user message determines the current request.
+The following brain_think_context is user-requested working context for this turn. The latest user message defines the current request. Use applicable cognition according to its meaning and cognitive role; do not treat it as optional background or reconstruct the same understanding from other sources alone.
 
 <brain_think_context
-  purpose="Use restored prior cognition when handling the user's latest message."
-  reconcile_with="The user's latest message and current evidence."
-  evidence_rule="Persistence, recall, or later retrieval neither raises nor lowers a claim's authority. Evaluate information by meaning, certainty, commitment, scope, provenance, and the time of the state it describes; context order alone does not establish recency or truth."
-  update_rule="Update prior context where they change it; carry forward what remains valid."
-  preserve_rule="Use remembered content with the same meaning, certainty, and commitment it had when formed."
+  context_role="Restored cognition that participates in the working context for this turn."
+  form_current_understanding_from="Form current understanding from the latest user message, applicable restored cognition, and relevant evidence together."
+  update_cognition_when="Update only cognition that the latest user message or relevant evidence materially confirms, refines, contradicts, fulfills, cancels, or replaces. Carry forward other applicable cognition; another source's silence does not change it."
+  preserve_cognitive_semantics="Keep each cognition's meaning, certainty, commitment, and role unless materially updated. A proposal or hypothesis does not become a fact or decision because it was stored or recalled. An intention remains active until fulfilled, cancelled, or replaced."
 >
   <brain_namespace
-    roots="{@session/&lt;sid&gt;,@project,@global}"
-    root_meaning="The root of a brain path states the future context in which that cognition should continue to apply."
+    continuity_roots="{@session/&lt;sid&gt;,@project,@global}"
+    root_encodes="The contexts across which cognition is intended to carry forward."
   >
-    <path_rule match="@session/&lt;sid&gt;/**" meaning="Applies within the current session." />
-    <path_rule match="@project/**" meaning="Applies across sessions in the current project." />
-    <path_rule match="@global/**" meaning="Applies across projects and future sessions." />
+    <path_rule match="@session/&lt;sid&gt;/**" continuity_scope="This session only." />
+    <path_rule match="@project/**" continuity_scope="This project, across sessions." />
+    <path_rule match="@global/**" continuity_scope="Across projects and sessions." />
   </brain_namespace>
 
   <core_memory
-    purpose="Resident working cognition restored every applicable turn so ongoing work can continue without depending on archival retrieval."
+    residency="Working cognition kept resident across turns within its continuity scope."
+    restore_policy="Each core document is included in full inside its core element on every turn within that scope. Use non-empty content directly; `brain_cat` does not read core.md."
+    empty_meaning="`empty=true` means the core exists and is intentionally empty, not omitted or truncated."
   >
     <core
       path="@global/core.md"
-      maintain_when="Cross-project working cognition changes and future work across projects should carry that change directly."
-      maintain_with="Use `brain_edit` on @global/core.md with the updated complete core document."
-      archive_when="Some cognition should remain remembered across projects but no longer needs to stay resident every turn."
-      archive_with="First use `brain_write` on @global/memories/{decision,knowledge,intention,skill}/&lt;relative-item-path&gt;.md to preserve the archival cognition, then use `brain_edit` on @global/core.md to remove what no longer needs to remain resident."
+      update_when="The cross-project cognition that should remain resident is added, materially updated, or removed."
+      update_with="Use `brain_edit` to replace @global/core.md with the complete updated core document."
+      archive_when="Cognition should remain preserved and available across projects but no longer needs to be resident on every turn."
+      archive_with="First use `brain_write` to preserve it at a concrete @global/memories/{decision,knowledge,intention,skill}/&lt;relative-item-path&gt;.md path matching its cognitive role, then use `brain_edit` to replace @global/core.md with the complete core document after removing it."
     >...raw Markdown...</core>
 
     <core
       path="@project/core.md"
-      maintain_when="Project working cognition changes and future sessions in this project should carry that change directly."
-      maintain_with="Use `brain_edit` on @project/core.md with the updated complete core document."
-      archive_when="Some cognition should remain remembered in this project but no longer needs to stay resident every turn."
-      archive_with="First use `brain_write` on @project/memories/{decision,knowledge,intention,skill}/&lt;relative-item-path&gt;.md to preserve the archival cognition, then use `brain_edit` on @project/core.md to remove what no longer needs to remain resident."
+      update_when="Cognition scoped to this project that should remain resident across its sessions is added, materially updated, or removed."
+      update_with="Use `brain_edit` to replace @project/core.md with the complete updated core document."
+      archive_when="Cognition should remain preserved and available in this project but no longer needs to be resident on every turn."
+      archive_with="First use `brain_write` to preserve it at a concrete @project/memories/{decision,knowledge,intention,skill}/&lt;relative-item-path&gt;.md path matching its cognitive role, then use `brain_edit` to replace @project/core.md with the complete core document after removing it."
     >...raw Markdown...</core>
 
     <core
       path="@session/&lt;sid&gt;/core.md"
-      maintain_when="The current session's active goal, progress, commitments, unresolved work, or other resident working cognition changes and later turns in this session need that change to continue correctly."
-      maintain_with="Use `brain_edit` on @session/&lt;sid&gt;/core.md with the updated complete core document."
-      archive_when="Some cognition from this session should remain recoverable later in the session but no longer needs to stay resident every turn."
-      archive_with="First use `brain_write` on @session/&lt;sid&gt;/memories/{decision,knowledge,intention,skill}/&lt;relative-item-path&gt;.md to preserve the archival cognition, then use `brain_edit` on @session/&lt;sid&gt;/core.md to remove what no longer needs to remain resident."
+      update_when="Session-scoped cognition that should remain resident for subsequent turns is added, materially updated, or removed. Typical examples include the active goal, current progress, commitments, unresolved work, or intended next step."
+      update_with="Use `brain_edit` to replace @session/&lt;sid&gt;/core.md with the complete updated core document."
+      archive_when="Cognition should remain preserved and available in this session but no longer needs to be resident on every turn."
+      archive_with="First use `brain_write` to preserve it at a concrete @session/&lt;sid&gt;/memories/{decision,knowledge,intention,skill}/&lt;relative-item-path&gt;.md path matching its cognitive role, then use `brain_edit` to replace @session/&lt;sid&gt;/core.md with the complete core document after removing it."
     >...raw Markdown...</core>
   </core_memory>
 
   <archival_memory
-    path_space="{@session/&lt;sid&gt;,@project,@global}/memories/{decision,knowledge,intention,skill}/**/*.md"
-    purpose="Persistent cognition that does not need to stay resident every turn and can be recalled when useful."
-    residency_meaning="Archival means persistent but not resident every turn; it does not mean stale or lower in authority."
-    remember_when="Preserve newly formed or materially updated cognition when forgetting it could materially change future reasoning or behavior, but it does not need to remain resident in core."
-    remember_with="Use `brain_write` at a concrete path whose applicability root and cognitive-role directory match the cognition being preserved."
+    path_pattern="{@session/&lt;sid&gt;,@project,@global}/memories/{decision,knowledge,intention,skill}/**/*.md"
+    residency="Persistent cognition not restored on every turn, but available for recall within its continuity scope."
+    preserve_when="Newly formed or materially updated cognition should remain available within its continuity scope because losing it could materially change future understanding, reasoning, decisions, or actions, but it does not need to remain resident on every turn."
+    preserve_with="Use `brain_write` at a concrete path whose continuity root and cognitive-role directory match the cognition being preserved."
+    maintenance_rule="If the same cognition already has an existing persistent owner, update that owner instead of creating a duplicate Brain item. A raw tool result, completed turn, or tool call alone is not a reason to persist cognition. If no durable cognition changed, do not mutate Brain."
   >
     <cognitive_role_rules
-      role_meaning="The directory after memories/ states how recalled cognition should participate in future reasoning or action."
+      directory_encodes="The directory immediately after memories/ encodes the cognitive role an item retains when restored: how it should participate in current understanding, reasoning, decisions, and actions when applicable. Restoration does not reduce it to generic background."
     >
-      <path_rule match="{@session/&lt;sid&gt;,@project,@global}/memories/decision/**/*.md" meaning="An established choice that future work should continue from while its basis remains valid." />
-      <path_rule match="{@session/&lt;sid&gt;,@project,@global}/memories/knowledge/**/*.md" meaning="A fact, rule, constraint, or established understanding to reason with when its conditions apply." />
-      <path_rule match="{@session/&lt;sid&gt;,@project,@global}/memories/intention/**/*.md" meaning="An active goal or commitment whose remaining work should continue until fulfilled, cancelled, or replaced." />
-      <path_rule match="{@session/&lt;sid&gt;,@project,@global}/memories/skill/**/*.md" meaning="A reusable method to apply when similar task conditions recur." />
+      <path_rule match="{@session/&lt;sid&gt;,@project,@global}/memories/decision/**/*.md" role="An established choice that current work should continue from when applicable, unless materially revised, reversed, or superseded. It establishes the chosen direction or constraint, not that implementation or completion has occurred." />
+      <path_rule match="{@session/&lt;sid&gt;,@project,@global}/memories/knowledge/**/*.md" role="A fact, rule, constraint, or established understanding to use in current reasoning when its scope and conditions apply. Preserve the certainty it expresses and do not generalize it beyond what the item establishes." />
+      <path_rule match="{@session/&lt;sid&gt;,@project,@global}/memories/intention/**/*.md" role="An active goal or commitment to continue pursuing when applicable until it is fulfilled, cancelled, or replaced. It establishes work that remains intended, not that the work has been performed or completed." />
+      <path_rule match="{@session/&lt;sid&gt;,@project,@global}/memories/skill/**/*.md" role="A reusable method, procedure, or learned technique to apply when the current task matches its prerequisites and intended conditions. It guides how to act; prior examples or outcomes do not establish facts about the current task." />
     </cognitive_role_rules>
 
     <memory_candidates
-      purpose="Recall cues surfaced for this turn; surfacing does not by itself establish current-query relevance or independently validate their claims."
-      choose="Use the current task to decide which summaries may materially affect the current judgment."
-      inspect_when="A summary may materially affect the current judgment, or its exact reasoning, qualifications, evidence, or details matter."
-      inspect_with="Use `brain_cat` on that item's concrete path."
-      search_when="The prior cognition you need is not surfaced here."
-      search_with="Use `brain_glob` when you remember its path/name shape, or `brain_grep` when you remember content clues; narrow or generalize the memory path patterns above to select the appropriate search space."
-      questioned_status="An item marked `questioned` remains recallable, but its current cognition has unresolved epistemic uncertainty and should be re-evaluated before relying on it."
+      purpose="A bounded, non-exhaustive set of archival cognition summaries surfaced as working context for this turn."
+      when_to_use="Use a candidate when its summary is relevant to the latest user request or the cognition it represents may materially affect current understanding, reasoning, decisions, or actions."
+      use_as="Use a sufficient summary directly according to the cognitive role encoded by its path, incorporating it into current understanding, reasoning, decisions, and actions it materially affects."
+      inspect_only_when="The summary is insufficient for the current task, or its exact reasoning, qualifications, evidence, or details are needed."
+      inspect_with="Use `brain_cat` on the candidate's concrete path."
+      search_when="Cognition needed for the current task is not present in the surfaced candidates."
+      search_with="Use `brain_glob` when the likely path, continuity root, cognitive role, or filename shape is known; use `brain_grep` when content clues are known. Start with the narrowest plausible path pattern and broaden only if needed."
+      questioned_means="The item's cognitive role is preserved, but one or more material claims have unresolved uncertainty. This status does not by itself make the item false, irrelevant, cancelled, or superseded. Re-evaluate the affected claims against relevant evidence before relying on them."
     >
       <memory_candidate_item path="..." summary="..." />
       <memory_candidate_item path="..." summary="..." status="questioned" />
@@ -281,26 +283,26 @@ The following is returned because the user asked Brain to help you remember cont
 
 稳定行为边界：
 
-- outer wrapper 直接表达 prior/current relationship，不再用抽象 `role="restored_prior_context"` 代替这些关系；
+- outer wrapper 直接表达 latest user message、applicable restored cognition 与 relevant evidence 共同形成 current understanding，不设置固定 source hierarchy；
 - core body 是原始 resident Markdown；
-- `<core_memory>` 只拥有共同的 resident-cognition role；每个固定 `<core path="...">` 自己拥有与该 path/applicability 对应的 maintain/archive decision affordance；
-- root applicability 由 `<brain_namespace>` 单一解释，不要求每个 core 再复制 `scope` / `applies_to` label；
-- cognitive role meaning 由 archival path rules 单一解释，candidate item 不重复 role/type；
+- `<core_memory>` 只拥有共同的 residency/restore/empty semantics；每个固定 `<core path="...">` 自己拥有与该 path/continuity scope 对应的 update/archive decision affordance 与 concrete tool path；
+- continuity root 由 `<brain_namespace>` 单一解释，不要求每个 core 再复制 `scope` label，但 concrete core guidance 仍就地保留其 scope-specific condition/path；
+- cognitive role meaning 由 archival path rules 单一解释，candidate item 不重复 role/type；archival maintenance 的 owner 复用、非持久化事件与 no-change 规则由 `<archival_memory maintenance_rule>` 只表达一次；
 - L0 candidate item 只携带真正随 item 变化的信息：`path + summary + status?`；
-- candidate 是 recall cue，不声称已经与 current query 做过 semantic relevance 判断；
+- candidate summary 是可直接使用的 bounded working context，但 surfacing alone 不声明 current relevance 或验证 claim；
 - `importance` 不在 L0 candidate 上重复展示，避免被误读成 current relevance；
 - core 与 L0 各自受其 bounded contract 控制；不得为了塞入更多 L0 而 silent truncate core；
 - generic promotion/demotion/signals list 不再存在；
 - guidance 放在最小且稳定、真正拥有该语义的 owner 上：固定 concrete object 的 scope-specific action guidance 不因“去重”被错误上提，动态同构 item 的 shared guidance 不机械复制；
 - tool identifier 在自然语言 guidance 中使用明确的 inline-code 形式，如 `` `brain_cat` ``、`` `brain_edit` ``。
 
-### PC2-THINK-005 Persistence judgment guidance
+### PC3-THINK-005 Persistence judgment guidance
 
 `brain_think` / hook-backed projection 是每个 cognition cycle 稳定在场的 agent context，因此必须保留低摩擦的 persistence/maintenance judgment guidance，但不把它定义成固定 end-of-turn write workflow。
 
 稳定 semantic ownership：
 
-- 每个 concrete core 在自身最小稳定 owner 上表达 scope-specific `maintain_when` / `maintain_with` / `archive_when` / `archive_with`；core→archival 的安全 guidance 是先 `brain_write` concrete archival cognition，再 `brain_edit` core prune resident content，避免先移除 resident cognition 后 archival write 失败；
+- 每个 concrete core 在自身最小稳定 owner 上表达 scope-specific `update_when` / `update_with` / `archive_when` / `archive_with`；core→archival 的安全 guidance 是先 `brain_write` concrete archival cognition，再 `brain_edit` core prune resident content，避免先移除 resident cognition 后 archival write 失败；
 - `<core_memory>` 只表达三层 core 共同的 resident working-cognition role，不承担要求模型重新映射到具体 scope/path 的泛化 action policy；
 - archival memory collection 表达：当本轮新形成或实质更新的 cognition 若被忘记会 materially change future reasoning/behavior、且不需要每轮 resident 时，应考虑保存/维护 archival memory；
 - archival path rules 表达 future applicability × cognitive role 的组合语义；role 是对已经形成 meaning 的编码，不制造 authority；
@@ -312,7 +314,7 @@ The following is returned because the user asked Brain to help you remember cont
 
 各 `brain_write` / `brain_edit` / `brain_feedback` tool description 继续聚焦自身操作 contract，不重复承载整套 persistence policy。最终自然语言措辞可在不改变上述 semantic owner / action relation 的前提下通过 Replay/Eval 做 wording calibration。
 
-### PC2-THINK-006 Restore failure locality
+### PC3-THINK-006 Restore failure locality
 
 `brain_think` / hook-equivalent anchor 以“恢复当前真实 cognition”为主要结果：
 
@@ -329,7 +331,7 @@ Generic MCP integration 暴露 11 个 logical primitives；mechanical-restore ho
 
 | Tool | Model-visible input | Core semantics |
 |---|---|---|
-| `brain_think` | `session_id?` | restore turn-level prior cognition；hook host 可替代 |
+| `brain_think` | `session_id?` | restore turn-level persistent cognition；hook host 可替代 |
 | `brain_absolute_path` | `path` | map a brain workspace location to its absolute filesystem path |
 | `brain_ls` | `path` | list direct children only |
 | `brain_glob` | `pattern`, `path?` | path/filename pattern discovery |
@@ -360,13 +362,13 @@ or @session/<sid>/memories/{decision,knowledge,intention,skill}/<relative-item-p
 
 ---
 
-### PC2-ABSOLUTE-001 `brain_absolute_path`
+### PC3-ABSOLUTE-001 `brain_absolute_path`
 
 ```text
 brain_absolute_path(path)
 ```
 
-这是 brain logical/workspace location 到真实 absolute filesystem path 的窄桥接工具，不读取、不创建、不修改目标，也不要求目标已经存在。它接受 `@global` / `@project` / `@session/<sid>` scope root、`core.md`、`memories/`、固定 role root 及其任意后代位置；后代可以是 directory、`.md` cognition 或非 `.md` 附加资产。
+这是 brain logical/workspace location 到真实 absolute filesystem path 的窄桥接工具，不读取、不创建、不修改目标，也不要求目标已经存在。它接受 `@global` / `@project` / `@session/<sid>` scope root、`<scope-root>/core.md`、`<scope-root>/memories/`、固定 role root 及其任意后代位置；后代可以是 directory、`.md` cognition 或非 `.md` 附加资产。`core.md` 与 `memories/` 在这里不是裸路径。
 
 该工具的宽松 location grammar 不改变其他 `brain_*` cognition tools 的 object grammar：`brain_ls/glob/grep/cat/write/edit/mv/rm/feedback` 仍只对 `.md` cognition 与其 logical directories 生效。路径仍必须保持 scope containment；`..`、反斜杠逃逸以及 scope-level `.state` 等 mechanism location 不通过此桥暴露。
 
@@ -475,6 +477,15 @@ brain_cat(path, offset?, limit?)
 - 文档未变时连续读取不无故跳行/重复稳定内容；
 - bounded rendering 以完整 logical line 为最小无损读取单位：不能截掉一行后半段、却让后续 continuation 越过它；
 - 若下一条完整 logical line 本身超过 `brain_cat` 的安全输出边界，返回明确的“该行无法在当前 exact-read transport 中无损表示”，不返回该行 excerpt 作为 exact content，也不推进到下一行；model-facing guidance 指向 `brain_absolute_path`，再由宿主已有普通 filesystem read 能力读取该文件，而不是新增 brain 私有 byte/column 子分页协议。
+
+当还有完整 logical lines 未返回时，结果追加稳定 continuation affordance：
+
+```text
+next_offset: <下一条尚未完整返回的 1-based line>
+continue_with: brain_cat(path=<canonical-path>, offset=<next_offset>)
+```
+
+EOF、空文档、offset 超出 EOF 或 representation-blocked line 不输出假的 continuation。
 
 对于 archival memory，结果还必须让模型看到 current epistemic status；若存在 current unresolved challenge，则展示 `questioned` 并恢复该 challenge。`status` 由 challenge 是否存在派生，不改变 Markdown document 的行坐标。
 
@@ -592,7 +603,7 @@ brain_feedback(
 
 含义：current evidence 对 stored meaning / basis / conditions / certainty / commitment 构成 material challenge，而且问题尚未解决。
 
-此时 `challenge` **required**，表达：
+此时 `challenge` **required 且 trim 后 non-empty**，表达：
 
 > 当前究竟在质疑什么，以及什么仍 unresolved。
 
@@ -611,7 +622,14 @@ brain_feedback(
 
 ### 不产生 feedback 的情况
 
-行动失败但 evidence 表明 failure 与 memory 本身无关时，不提交负向 feedback。旧 `attribute` event 退出 v2。
+行动失败但 evidence 表明 failure 与 memory 本身无关时，不提交负向 feedback。旧 `attribute` event 退出 v3。
+
+### Model-facing result 与 error affordance
+
+- 合法 `brain_ls` / `brain_glob` / `brain_grep` 无结果分别明确返回 `no archival cognition entries` / `no matching archival cognition paths` / `no matching archival cognition content`，不是空 ToolResult，也不是 error；
+- typed error 首行保持 `error: <code>`；第二行给 caller 可以直接采取的修正动作。invalid regex 明确提示修正表达式或改用 `literal=true`；edit ambiguity 指出怎样形成 exact unique region；feedback challenge 与 archival frontmatter error 指出缺少的完整输入；
+- no-op edit 返回 `no changes: <path>`；no-op question 返回 `current challenge unchanged for <path>`；adopt 成功返回 `recorded validated use for <path>`，避免把记录 validated-use event 表述成 cognition 本身被“采纳”；
+- 上述是 presentation affordance，不新增 public 参数、第二套 error code 或 pagination state。
 
 ---
 
@@ -698,11 +716,11 @@ lock/transaction detail
 Specification by Example 应以：
 
 ```text
-v2 BDD
+v3 BDD
 +
 本文 public/model-visible contract
 +
 真实 deployment/failure boundaries
 ```
 
-为输入展开 acceptance cases；不得从当前 production implementation 或 v1 contract 反推 v2 expectation。
+为输入展开 acceptance cases；不得从当前 production implementation 或冻结的 v2 contract 反推 v3 expectation。

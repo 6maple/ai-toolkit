@@ -1,11 +1,11 @@
-# brain v2 Detailed Design — Integration Boundary
+# brain v3 Detailed Design — Integration Boundary
 
 > **Layer:** Phase 5B Detailed Design child。
 > **Owns:** A1/A2 host invocation facts、public Tool registration/dispatch/result transport、hook-backed B4 call-through。
 > **Parent:** `design-brain-system.md` A. Integration Boundary。
 > **Inputs:** Frozen Requirements / Tool Contract / Acceptance + B1/B2/B3/B4 application contracts。
 > **Children:** none。
-> **Status:** **Design Frozen (2026-08-26, project-mapping re-freeze)**；canonical v2 Detailed Design baseline。
+> **Status:** **Design Frozen for v3 (2026-08-30)**；project-mapping semantics inherit the unchanged v2 2026-08-26 baseline；canonical v3 Detailed Design truth is this file。
 > **Compatibility boundary:** 不为 v1 Tool schema、旧 plugin config、旧 metadata key 或旧 host wiring提供兼容；只有明确 compatibility requirement 才增加 adapter。
 
 ---
@@ -352,7 +352,7 @@ Plugin 的 model-visible tool descriptors必须来自 §5 同一 in-code contrac
 
 当前 Codex adapter在同步 `UserPromptSubmit` 中读取官方hook input的 `session_id`与 `cwd`并保存同一条host-owned binding；plugin MCP entry再以每次调用的thread metadata查找该binding。Codex-specific字段、持久化位置与校验属于plugin implementation，不进入brain核心。绑定缺失或冲突时fail closed，不回退到长驻MCP进程cwd，模型显式参数也不能覆盖trusted session。
 
-当前 Codex hook将 MCP hook result 转换为 `hooks.additional_context` developer context；replay 表明模型可能读取却弱化其任务影响。因此 Codex adapter 使用 `UserPromptSubmit` command hook 注入一次性 `brain_think` instruction，让 restore 形成 explicit model tool call/result，而不是再由 hook 注入完整 cognition。
+当前 Codex adapter 使用同步 `UserPromptSubmit` command hook直接调用与 `brain_think` 相同的 B4 restore path，并把未改写的 `AnchorResult.context` 作为 `hookSpecificOutput.additionalContext` developer context 注入。因为 hook 已机械完成 restore，plugin MCP server隐藏 model-visible `brain_think`，只暴露其余十个工具；同一 turn 不再要求或允许第二次 model-triggered restore。
 
 具体 key（例如当前 Codex integration 使用的 thread metadata）只是 adapter evidence：
 

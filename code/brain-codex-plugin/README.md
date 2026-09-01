@@ -2,10 +2,14 @@
 
 Codex host adapter for `../brain`.
 
-- `UserPromptSubmit` executes Brain restore code directly and adds the unchanged
-  `<brain_think_context>` inside a `<brain_context>` envelope as developer context.
+- `UserPromptSubmit` executes the same restoration path as `brain_think` and adds
+  its unchanged result as developer context before Codex handles the user prompt.
+- The same synchronous hook records Codex's documented `session_id` and `cwd` as
+  one host-owned invocation binding before the restored context reaches the model.
 - The bundled MCP server exposes the remaining ten Brain tools and omits
   `brain_think`, preventing duplicate model-triggered restoration.
+- Each MCP call resolves project services and trusted session identity from that
+  binding, so one long-lived server can safely serve tasks from different projects.
 - Brain remains the owner of cognition, persistence, ranking, and tool semantics.
 
 ## Development
@@ -40,7 +44,7 @@ codex plugin add brain-codex-plugin@ai-toolkit-local
 ```
 
 Installing or enabling a plugin does not automatically trust its lifecycle
-hooks. Open `/hooks`, review the `UserPromptSubmit` command contributed by
+hooks. Open `/hooks`, review the `UserPromptSubmit` command hook contributed by
 `brain-codex-plugin@ai-toolkit-local`, and trust its current definition. Codex
 stores trust against the definition hash, so a changed hook may require another
 review after reinstalling.
@@ -72,12 +76,12 @@ start another new task.
 This first version is a local development plugin. The legacy Codex
 `.codex-plugin` MCP loader does not expand `${PLUGIN_ROOT}` in `.mcp.json`, so
 the MCP entry uses this checkout's absolute `dist/mcp-server.mjs` path while
-leaving `cwd` unset. Codex therefore starts it from the active task directory,
-which Brain uses as the project root.
+leaving `cwd` unset. The MCP process working directory is deliberately not used
+as project identity; `UserPromptSubmit` supplies the current task's binding.
 
-Both the MCP server and hook execute the checkout's absolute stub paths during
-development. If the checkout moves, update `.mcp.json` and `hooks/hooks.json`,
-then regenerate the stubs.
+Both the MCP server and restoration hook execute checkout-specific absolute stub
+paths during development. If the checkout moves, regenerate `.mcp.json` and
+`hooks/hooks.json` with the stub command.
 
 The production distribution model is intentionally not represented by this
 development build. It will use installed global commands rather than shipping

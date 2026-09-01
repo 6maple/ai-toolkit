@@ -466,7 +466,14 @@ export function renderCatPage(page: CatPage): string {
     page.challenge,
     page.safetyTruncated,
   );
-  if (page.blockedLineNumber === undefined) return rendered;
+  if (page.blockedLineNumber === undefined) {
+    if (page.nextOffset === undefined) return rendered;
+    return [
+      rendered,
+      `next_offset: ${page.nextOffset}`,
+      `continue_with: brain_cat(path=${formatPublicPath(page.path)}, offset=${page.nextOffset})`,
+    ].join("\n");
+  }
   return [
     rendered,
     `line ${page.blockedLineNumber} cannot be returned exactly: the complete logical line is ${page.blockedLineUtf8Bytes ?? "unknown"} UTF-8 bytes and exceeds the brain_cat transport budget`,

@@ -1,11 +1,11 @@
-# brain v2 Detailed Design — Logical Namespace & Physical Storage Projection
+# brain v3 Detailed Design — Logical Namespace & Physical Storage Projection
 
 > **Layer:** Phase 5B Detailed Design child。
 > **System owners:** B1 Public Namespace & Object Semantics + E1 Physical Storage Projection（仅 layout / containment / physical-address 部分）。
 > **Parent:** `design-brain-system.md`。
 > **Frozen inputs:** `bdd-brain-behavior-requirements.md`、`brain-tools-contract.md`、`acceptance-spec-brain.md`。
 > **Supersedes:** `design-brain-runtime.md` 中 B1/E1 path/layout 的旧综合设计；旧文只保留摘要和本文件链接。
-> **Status:** **Design Frozen (2026-08-26, project-mapping re-freeze)**；canonical v2 Detailed Design baseline。
+> **Status:** **Design Frozen for v3 (2026-08-30)**；project-mapping semantics inherit the unchanged v2 2026-08-26 baseline；canonical v3 Detailed Design truth is this file。
 
 ---
 
@@ -415,7 +415,7 @@ BRAIN_HOME = join(homedir(), ".brain-data")
 
 当前production不读取同名环境变量。E1不读取环境变量、`homedir()`或默认路径；`brainRoot`是必填外部依赖。未来若恢复可配置路径，只修改composition root如何计算 `BRAIN_HOME`。
 
-Canonical v2 state只按本文 `global/` / `projects/` physical tree解释；brainRoot中的其他历史/未知布局不自动映射成 cognition state。
+Canonical v3 state只按本文 `global/` / `projects/` physical tree解释；brainRoot中的其他历史/未知布局不自动映射成 cognition state。
 
 ### 6.3 Project identity 与 source roots
 

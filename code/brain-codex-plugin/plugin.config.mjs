@@ -4,7 +4,7 @@ export const pluginConfig = {
       displayName: "Brain",
       shortDescription: "Restore persistent cognition before every Codex turn.",
       longDescription:
-        "Brain restores global, project, and session cognition before each user prompt and exposes memory discovery and maintenance tools without exposing the automatic restore operation.",
+        "Brain requires Codex to restore global, project, and session cognition at the start of every user turn and exposes the complete memory toolset.",
       developerName: "Maple",
       category: "Productivity",
       capabilities: ["Read", "Write"],
@@ -23,9 +23,10 @@ export const pluginConfig = {
     },
   },
   hook: {
-    description: "Restore Brain cognition before every user prompt.",
+    description: "Restore Brain context before every user prompt.",
     timeout: 10,
-    statusMessage: "Restoring Brain context",
+    statusMessage: "Preparing Brain context",
+    additionalContextLimit: 0,
   },
   marketplace: {
     manifest: ".agents/plugins/marketplace.json",

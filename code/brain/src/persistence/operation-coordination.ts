@@ -141,7 +141,7 @@ const GLOBAL_LOCK_RETRY_MS = 50;
 export class FileGlobalSemanticLease implements GlobalSemanticLeasePort {
   private readonly lockPath: string;
 
-  constructor(private readonly brainRoot: string) {
+  constructor(brainRoot: string) {
     this.lockPath = path.join(brainRoot, ".brain-global-semantic.lock");
   }
 
@@ -175,12 +175,12 @@ export class FileGlobalSemanticLease implements GlobalSemanticLeasePort {
       if (signal?.aborted) throw new CoordinationError("aborted");
       let compromised: Error | undefined;
       try {
-        const release = await properLockfile.lock(this.brainRoot, {
+        const release = await properLockfile.lock(this.lockPath, {
           lockfilePath: this.lockPath,
           retries: 0,
           stale: GLOBAL_LOCK_STALE_MS,
           update: GLOBAL_LOCK_UPDATE_MS,
-          realpath: true,
+          realpath: false,
           onCompromised: (error) => {
             compromised = error;
           },

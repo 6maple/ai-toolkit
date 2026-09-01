@@ -10,6 +10,8 @@ import { parseSessionId } from "./brain/namespace.ts";
 import {
   registerBrainTools,
   type BrainApplicationServices,
+  type BrainToolInvocation,
+  type BrainToolInvocationResolver,
   type BrainToolRegistrationOptions,
 } from "./integration/mcp-adapter.ts";
 import { resolveOrCreateProject } from "./persistence/project-mapping.ts";
@@ -17,7 +19,12 @@ import { createBrainApplicationServices } from "./runtime/application.ts";
 import { bootstrapBrainRuntimeInfrastructure } from "./runtime/bootstrap.ts";
 
 export { registerBrainTools };
-export type { BrainApplicationServices, BrainToolRegistrationOptions };
+export type {
+  BrainApplicationServices,
+  BrainToolInvocation,
+  BrainToolInvocationResolver,
+  BrainToolRegistrationOptions,
+};
 
 const BRAIN_HOME = join(homedir(), ".brain-data");
 
@@ -64,11 +71,16 @@ export async function restoreProductionBrainContext(
 }
 
 export async function runBrainMcpServer(options: BrainToolRegistrationOptions = {}): Promise<void> {
-  const services = await createProductionBrainServices();
+  const services =
+    options.resolveInvocation === undefined ? await createProductionBrainServices() : undefined;
   const server = new McpServer({ name: "brain", version: "0.2.0" });
   registerBrainTools(server, services, undefined, options);
   await server.connect(new StdioServerTransport());
-  console.error(`brain ready: project=${services.binding.projectId}`);
+  console.error(
+    services === undefined
+      ? "brain ready: invocation-scoped project binding"
+      : `brain ready: project=${services.binding.projectId}`,
+  );
 }
 
 const invokedAsCli =

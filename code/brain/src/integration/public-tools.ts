@@ -1,3 +1,4 @@
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 export const BRAIN_TOOL_NAMES = [
@@ -53,7 +54,7 @@ export const thinkInputSchema = z.strictObject({
     .string()
     .optional()
     .describe(
-      "Optional current session identifier. Omit it when no reliable current session identity is available.",
+      "Optional exact current session identifier supplied by the host. Do not invent, shorten, derive, or reuse an identifier from another session. Omit it when no reliable current session identity is available.",
     ),
 });
 
@@ -61,7 +62,7 @@ export const absolutePathInputSchema = z.strictObject({
   path: z
     .string()
     .describe(
-      "Brain workspace location to map. Accepts @global, @project, @session/<sid>, core.md, memories/, a fixed role root, and any safe descendant below a role root including non-.md assets.",
+      "Brain workspace location to map. Use a scope root (@global, @project, or @session/<sid>), <scope-root>/core.md, <scope-root>/memories/, a fixed role root, or any safe descendant below a role root, including non-.md assets.",
     ),
 });
 
@@ -90,7 +91,7 @@ export const grepInputSchema = z.strictObject({
     .string()
     .optional()
     .describe(
-      "Optional canonical-path glob that further filters archival cognition documents in the selected memories corpus.",
+      "Optional file glob relative to the selected search root. Use it to narrow which archival Markdown documents are searched.",
     ),
   ignoreCase: z
     .boolean()
@@ -135,7 +136,7 @@ export const writeInputSchema = z.strictObject({
   content: z
     .string()
     .describe(
-      "Complete archival Markdown document. It must begin with YAML frontmatter delimited by --- lines, contain a non-empty string summary and importance set to low, medium, high, or critical, then contain the Markdown body. Example prefix: ---\\nsummary: Concise retrieval cue\\nimportance: medium\\n---\\n",
+      "Complete archival Markdown document. Start with YAML frontmatter containing a non-empty summary and importance set to low, medium, high, or critical. summary is the current gist used for recall and discovery; keep it consistent with the cognition. The body may be empty when the summary already preserves the complete meaning. importance is the reasonably expected consequence if this cognition applies but is not recalled: low means little material effect and easy recovery; medium means meaningful but usually recoverable rework or worse judgment; high means a material change to an important result or significant cost, harm, or rework; critical means a severe, irreversible, or otherwise unacceptable consequence. Do not use importance for recency, frequency, scope, confidence, retrievability, or current-query relevance. Example prefix: ---\\nsummary: Concise retrieval cue\\nimportance: medium\\n---\\n",
     ),
 });
 
@@ -165,7 +166,7 @@ export const editInputSchema = z
       .string()
       .optional()
       .describe(
-        "Complete replacement Markdown for the existing cognition document. Use this instead of edits when replacing or reorganizing the document as a whole. Archival content must retain valid summary/importance frontmatter; core content does not use archival frontmatter.",
+        "Complete replacement Markdown for the existing cognition document. Use this instead of edits when replacing or reorganizing the document as a whole. For an archival document, retain valid summary/importance frontmatter, keep the resulting summary consistent with the resulting cognition, and treat importance as the expected consequence if applicable cognition is not recalled; change importance only when that omission consequence changes. Core content does not use archival frontmatter.",
       ),
   })
   .refine((value) => (value.edits === undefined) !== (value.content === undefined), {
@@ -189,32 +190,44 @@ export const feedbackInputSchema = z
     feedback: z
       .enum(["adopt", "question", "resolve"])
       .describe(
-        "adopt records validated successful use; question records a current unresolved challenge; resolve clears an existing current challenge.",
+        "adopt: use only after this cognition actually guided a decision or action and the observed outcome supports its continued validity; reading, mentioning, or agreeing with it is not enough. question: set or replace the complete current unresolved material challenge; challenge is required. resolve: clear an existing current challenge after it has been resolved. If the cognition's stored meaning must change, edit the document first. resolve does not record successful use.",
       ),
     challenge: z
       .string()
       .optional()
       .describe(
-        "Required for feedback=question: the complete current unresolved challenge that should be preserved.",
+        "For feedback=question, the complete non-empty description of what is currently challenged and what remains unresolved. It replaces the previous current challenge rather than appending a history.",
       ),
   })
-  .refine((value) => value.feedback !== "question" || value.challenge !== undefined, {
-    message: "challenge is required for feedback=question",
-    path: ["challenge"],
-  });
+  .refine(
+    (value) =>
+      value.feedback !== "question" ||
+      (value.challenge !== undefined && value.challenge.trim().length > 0),
+    {
+      message: "feedback=question requires a non-empty challenge",
+      path: ["challenge"],
+    },
+  );
 
 export interface BrainToolDefinition {
   readonly name: BrainToolName;
   readonly description: string;
   readonly inputSchema: z.ZodTypeAny;
+  readonly annotations?: ToolAnnotations;
 }
 
 export const PUBLIC_BRAIN_TOOLS: readonly BrainToolDefinition[] = [
   {
     name: "brain_think",
     description:
-      "Restore prior brain context for the current turn. Call once immediately after each new user message before substantive reasoning when no host hook performs this restore automatically.",
+      "Restore persistent Brain cognition as working context for the current turn. Call exactly once immediately after each new user message, before substantive reasoning, responding, or using any other tool, when the host has not already supplied a brain_think result. If a host hook instructs this call, obey it immediately. Never call more than once in the same turn.",
     inputSchema: thinkInputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
   },
   {
     name: "brain_absolute_path",
@@ -225,55 +238,55 @@ export const PUBLIC_BRAIN_TOOLS: readonly BrainToolDefinition[] = [
   {
     name: "brain_ls",
     description:
-      "List the direct children of one archival memories directory. Pass a path under <scope-root>/memories, optionally narrowed to a cognitive role or nested directory. Do not pass a bare scope such as @project, core.md, or a concrete .md document. Output is bounded and not pageable; when more entries exist, call again with a narrower directory.",
+      "List the direct children of one archival memories directory. The bounded, non-pageable result contains subdirectories and archival cognition summaries. If truncated, narrow path or use brain_glob or brain_grep.",
     inputSchema: lsInputSchema,
   },
   {
     name: "brain_glob",
     description:
-      "Find archival cognition documents by canonical public path/name glob. Searches only the memories subtree, never core.md or arbitrary workspace files. Optionally provide a valid memories directory as path to narrow the search. Results are discovery summaries, not exact document content; use brain_cat on a returned concrete .md path when the full cognition matters.",
+      "Find active archival cognition documents by public path or name glob. Omit path to search all applicable memories trees; provide a memories directory to narrow the search. Results are summaries, not exact document content; use brain_cat only when the summary is insufficient or exact details matter.",
     inputSchema: globInputSchema,
   },
   {
     name: "brain_grep",
     description:
-      "Search the content of archival cognition documents with bounded regex or literal matching. Searches only the memories subtree, never core.md or arbitrary workspace files. Use path and glob to narrow the corpus, literal=true for ordinary text, and context for nearby logical lines. Matches are discovery evidence; use brain_cat with a returned concrete .md path and line offset for exact content.",
+      "Search active archival Markdown content by regular expression or literal text. Omit path to search all applicable memories trees; use path and glob to narrow the corpus. Results include real matching lines plus each document's summary and status; use brain_cat only when the full document or exact qualifications matter.",
     inputSchema: grepInputSchema,
   },
   {
     name: "brain_cat",
     description:
-      "Read one concrete archival cognition Markdown document under <scope-root>/memories/{decision,knowledge,intention,skill}/...md. This tool cannot read core.md: applicable core content is already fully restored inside <brain_think_context>; use that resident content directly and use brain_edit to maintain it. Returns complete logical document lines with stable 1-based coordinates. Large documents are bounded; continue with offset until complete.",
+      "Read one concrete active archival cognition Markdown document. core.md is not a valid target because applicable core content is already fully present in <brain_think_context>; use that resident content directly and brain_edit to maintain it. Results use stable 1-based document lines. If more lines remain, continue from next_offset. If a complete line cannot fit, follow the returned brain_absolute_path recovery instruction.",
     inputSchema: catInputSchema,
   },
   {
     name: "brain_write",
     description:
-      "Write a complete archival cognition Markdown document. Creates the document when absent and fully overwrites its Markdown content when present. The path must be a concrete .md document under <scope-root>/memories/{decision,knowledge,intention,skill}; this tool cannot create or overwrite core.md. Content must include valid archival frontmatter with summary and importance, followed by the body.",
+      "Create a new archival cognition or fully replace the cognition at an existing archival path. Replacing an existing cognition does not preserve that cognition's learning continuity. This tool never writes core.md. Content must be a complete archival Markdown document with a current summary and omission-cost importance. Use brain_edit when the same existing cognition is being updated.",
     inputSchema: writeInputSchema,
   },
   {
     name: "brain_edit",
     description:
-      "Edit one existing core or archival cognition Markdown document. Provide exactly one mode: edits for one or more exact, unique, non-overlapping replacements matched against the same original document, or content for complete replacement. For core.md, use the content already restored in <brain_think_context>; do not call brain_cat first. This tool does not create missing documents; use brain_write only when creating an archival document.",
+      "Update one existing core or archival cognition while preserving its identity and appropriate learning continuity. Provide exactly one mode: edits for exact, unique, non-overlapping replacements against the same original document, or content for complete replacement. For core.md, use the content already restored in <brain_think_context>; do not call brain_cat first. This tool does not create missing documents; use brain_write to create a new archival cognition.",
     inputSchema: editInputSchema,
   },
   {
     name: "brain_rm",
     description:
-      "Remove one active archival cognition document. The path must be a concrete .md document under <scope-root>/memories/{decision,knowledge,intention,skill}. This tool cannot remove core.md, a memories directory, or an arbitrary workspace file.",
+      "Remove one active archival cognition document. The target must be one concrete .md document under a memories role. core.md, directories, and arbitrary workspace files are invalid.",
     inputSchema: rmInputSchema,
   },
   {
     name: "brain_mv",
     description:
-      "Move one archival cognition document to another concrete archival cognition path, preserving the same cognition and its mechanism-owned state. Both src and dst must be .md paths under a memories role; core.md, directories, and arbitrary workspace files are invalid.",
+      "Move the same archival cognition to another concrete archival cognition path while preserving its identity and appropriate learning continuity. Changing the path can change its continuity scope or cognitive role. If dst already exists, that destination cognition is replaced. core.md, directories, and arbitrary workspace files are invalid.",
     inputSchema: mvInputSchema,
   },
   {
     name: "brain_feedback",
     description:
-      "Record validated use or a current epistemic question/resolve transition for one archival cognition.",
+      "Record validated successful use or maintain the current unresolved epistemic challenge for one active archival cognition. This tool does not edit the cognition document or change its importance.",
     inputSchema: feedbackInputSchema,
   },
 ];
