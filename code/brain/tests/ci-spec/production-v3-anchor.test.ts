@@ -10,6 +10,7 @@ import {
 } from "../../src/application/anchor-restore.ts";
 import {
   escapeXmlAttribute,
+  escapeXmlText,
   renderAnchorCandidateItem,
   renderAnchorContext,
   type AnchorProjection,
@@ -257,6 +258,7 @@ function setup() {
 describe("T6 anchor renderer", () => {
   it("escapes dynamic attributes while preserving core Markdown verbatim", () => {
     expect(escapeXmlAttribute('a&<b>"\t\n\r')).toBe("a&amp;&lt;b&gt;&quot;&#9;&#10;&#13;");
+    expect(escapeXmlText('a&<b>"\n')).toBe('a&amp;&lt;b&gt;"\n');
     const projection: AnchorProjection = {
       currentSessionId: parseSessionId("s1"),
       cores: [
@@ -287,42 +289,35 @@ describe("T6 anchor renderer", () => {
     const rendered = renderAnchorContext(projection);
     expect(rendered.endsWith("\n")).toBe(true);
     expect(rendered).toContain("<tag>&value\n</core>");
-    expect(rendered).toContain("<core_memory ");
-    expect(rendered).toContain('restore_policy="');
+    expect(rendered).toContain("## How to Use This Context");
+    expect(rendered).toContain("## Continuity Scopes");
+    expect(rendered).toContain("## Resident Working Cognition");
+    expect(rendered).toContain("## Recalled Archival Cognition");
     expect(rendered).toContain('path="@session/s1/core.md"');
     expect(rendered).toContain('empty="true">\n</core>');
-    expect(rendered).toContain('summary="a &quot;quote&quot; &amp; &lt;fact&gt;&#10;next"');
-    expect(rendered).toContain('continuity_roots="{@session/s1,@project,@global}"');
-    const coreOpeningLines = rendered.split("\n").filter((line) => line.startsWith("    <core "));
+    expect(rendered).toContain(
+      '<recalled_cognition path="@project/memories/knowledge/a.md" status="questioned">\na "quote" &amp; &lt;fact&gt;\nnext\n</recalled_cognition>',
+    );
+    expect(rendered).toContain("`@session/s1`");
+    const coreOpeningLines = rendered.split("\n").filter((line) => line.startsWith("<core "));
     expect(coreOpeningLines).toHaveLength(3);
-    for (const opening of coreOpeningLines) {
-      expect(opening).toContain('update_when="');
-      expect(opening).toContain('update_with="');
-      expect(opening).toContain('archive_when="');
-      expect(opening).toContain('archive_with="');
-    }
-    const candidateCollection = rendered
-      .split("\n")
-      .find((line) => line.startsWith("    <memory_candidates "));
-    const archivalOpeningLines = rendered
-      .split("\n")
-      .filter((line) => line.startsWith("  <archival_memory "));
-    expect(archivalOpeningLines).toHaveLength(1);
-    expect(archivalOpeningLines[0]).toContain('maintenance_rule="');
-    expect(rendered.match(/maintenance_rule=/g) ?? []).toHaveLength(1);
-    expect(candidateCollection).toContain('when_to_use="');
-    expect(candidateCollection).toContain('use_as="');
-    expect(candidateCollection).toContain('inspect_only_when="');
+    expect(rendered.match(/^<brain_think_context>$/gm) ?? []).toHaveLength(1);
+    expect(rendered.match(/^<recalled_cognition\b/gm) ?? []).toHaveLength(1);
+    expect(rendered).not.toContain("<brain_namespace");
+    expect(rendered).not.toContain("<core_memory");
+    expect(rendered).not.toContain("<archival_memory");
+    expect(rendered).not.toContain("<memory_candidates");
+    expect(rendered).not.toContain("<memory_candidate_item");
     expect(rendered).not.toContain("<sid>");
     expect(rendered).not.toContain("importance=");
     expect(rendered).not.toContain("challenge=");
     expect(rendered).not.toContain("durability=");
   });
 
-  it("renders candidate attributes only as path, summary, status in frozen order", () => {
+  it("renders recalled cognition with path/status attributes and escaped summary text", () => {
     const active = renderAnchorCandidateItem({
       path: archival("@project/memories/knowledge/a.md"),
-      summary: "A",
+      summary: "A & <B>",
     });
     const questioned = renderAnchorCandidateItem({
       path: archival("@project/memories/knowledge/b.md"),
@@ -330,10 +325,10 @@ describe("T6 anchor renderer", () => {
       status: "questioned",
     });
     expect(active).toBe(
-      '<memory_candidate_item path="@project/memories/knowledge/a.md" summary="A" />',
+      '<recalled_cognition path="@project/memories/knowledge/a.md">\nA &amp; &lt;B&gt;\n</recalled_cognition>',
     );
     expect(questioned).toBe(
-      '<memory_candidate_item path="@project/memories/knowledge/b.md" summary="B" status="questioned" />',
+      '<recalled_cognition path="@project/memories/knowledge/b.md" status="questioned">\nB\n</recalled_cognition>',
     );
   });
 });
@@ -346,7 +341,8 @@ describe("T6 anchor restore", () => {
       result.context.indexOf("@project/core.md"),
     );
     expect(result.context).not.toContain("@session/");
-    expect(result.context).toContain('continuity_roots="{@project,@global}"');
+    expect(result.context).toContain("`@global`");
+    expect(result.context).toContain("`@project`");
     expect(operations.auxiliaryScopes).toEqual(["global", "project"]);
   });
 
@@ -356,7 +352,7 @@ describe("T6 anchor restore", () => {
 
     const result = await app.runAnchor({ currentSessionId: parseSessionId("s1") });
     expect(result.context).toContain('path="@session/s1/core.md"');
-    expect(result.context).toContain('continuity_roots="{@session/s1,@project,@global}"');
+    expect(result.context).toContain("`@session/s1`");
     expect(operations.semanticMutations).toHaveLength(1);
     expect(operations.semanticMutations[0]).toHaveLength(1);
     expect(operations.semanticMutations[0]?.[0]?.ref).toMatchObject({

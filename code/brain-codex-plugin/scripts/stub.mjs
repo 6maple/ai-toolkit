@@ -65,6 +65,11 @@ async function validateMarketplace() {
 
 async function generatePluginFiles() {
   const hookEntry = resolve(pluginRoot, "dist", `${pluginConfig.entries.hook.name}.mjs`);
+  const permissionHookEntry = resolve(
+    pluginRoot,
+    "dist",
+    `${pluginConfig.entries.permissionHook.name}.mjs`,
+  );
   const mcpEntry = resolve(pluginRoot, "dist", `${pluginConfig.entries.mcp.name}.mjs`);
   const version = `${packageJson.version}+codex.local-${localCachebuster()}`;
 
@@ -100,6 +105,20 @@ async function generatePluginFiles() {
               timeout: pluginConfig.hook.timeout,
               statusMessage: pluginConfig.hook.statusMessage,
               additionalContextLimit: pluginConfig.hook.additionalContextLimit,
+            },
+          ],
+        },
+      ],
+      PermissionRequest: [
+        {
+          matcher: pluginConfig.permissionHook.matcher,
+          hooks: [
+            {
+              type: "command",
+              command: `node \"${portablePath(permissionHookEntry)}\"`,
+              commandWindows: `node \"${permissionHookEntry}\"`,
+              timeout: pluginConfig.permissionHook.timeout,
+              statusMessage: pluginConfig.permissionHook.statusMessage,
             },
           ],
         },

@@ -488,7 +488,7 @@ describe("T5 read/discovery application", () => {
     expect(ops.calls).toBe(before);
   });
 
-  it("cat does not consume or learn an oversized logical line that cannot be returned exactly", async () => {
+  it("cat marks an oversized prefix, continues after that line, and does not learn the excerpt", async () => {
     const { state, pi, ops, app } = setup();
     const item = archival("@project/memories/knowledge/oversized.md");
     state.add(item, { body: `${"界".repeat(Math.ceil(DEFAULT_MAX_BYTES / 3) + 10)}\nafter\n` });
@@ -496,11 +496,34 @@ describe("T5 read/discovery application", () => {
 
     const result = await app.cat({ path: item, offset: 5, limit: 2 });
     expect(result.page.lines).toEqual([]);
-    expect(result.page.nextOffset).toBeUndefined();
+    expect(result.page.nextOffset).toBe(6);
+    expect(result.page.oversizedLine?.lineNumber).toBe(5);
+    expect(result.page.oversizedLine?.prefix.startsWith("界")).toBe(true);
+    expect(result.page.oversizedLine!.shownUtf8Bytes).toBeLessThan(
+      result.page.oversizedLine!.fullUtf8Bytes,
+    );
     expect(result.text).toContain("line 5");
+    expect(result.text).toContain("shown_utf8_bytes:");
+    expect(result.text).toContain("full_line_utf8_bytes:");
     expect(result.text).toContain("brain_absolute_path");
+    expect(result.text).toContain("next_offset: 6");
     expect(ops.calls).toBe(0);
     expect(state.companionWrites).toHaveLength(0);
+  });
+
+  it("cat does not invent continuation after an oversized final line", async () => {
+    const { state, pi, ops, app } = setup();
+    const item = archival("@project/memories/knowledge/oversized-final.md");
+    state.add(item, { body: `${"界".repeat(Math.ceil(DEFAULT_MAX_BYTES / 3) + 10)}\n` });
+    pi.readResult = { outputLines: 0, truncated: true, firstLineExceedsLimit: true };
+
+    const result = await app.cat({ path: item, offset: 5, limit: 1 });
+    expect(result.page.oversizedLine?.lineNumber).toBe(5);
+    expect(result.page.nextOffset).toBeUndefined();
+    expect(result.text).not.toContain("next_offset:");
+    expect(result.text).not.toContain("continue_with: brain_cat");
+    expect(result.text).toContain("brain_absolute_path");
+    expect(ops.calls).toBe(0);
   });
 
   it("cat content stays successful when auxiliary coordination/persistence degrades", async () => {

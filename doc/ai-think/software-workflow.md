@@ -12,6 +12,14 @@
 
 ## 0. 唯一执行入口
 
+### 为什么需要这条流程
+
+软件协作中常见的偏差是：用户说了目标，AI 直接写代码；随后测试围绕代码补齐，最后用“测试通过”证明最初理解正确。另一种偏差是方向已经明确，执行者仍不断请求用户重复确认，或为了流程完整创建大量无实际作用的文档。
+
+本流程用阶段之间的依赖关系解决这些问题：先确定应该得到的结果，再确定怎样验证、怎样实现，最后用真实证据判断完成。用户已经说明的目标和边界要一直保留；AI 承担可调查的事实、专业判断和范围内的执行。阶段表示当前在解决哪类问题，不要求每个阶段单独开会、单独回复或单独建文件。
+
+初次阅读先掌握本节，再按 §2 选择当前任务入口；需要理解一次小改动怎样贯穿这些关系，可看 [§20 的完整示例](#20-完整示例已有名称校验-bug-怎样完成)。`software-core.md` 解释每类产物为什么这样划分，本文负责说明何时进入、何时结束和遇到问题回到哪里。
+
 当软件能力进入稳定规格与交付阶段，使用下面这一条主流程：
 
 ```text
@@ -58,7 +66,17 @@ Implementation Plan 不是这条 truth flow 的必经层。复杂执行确实需
 
 Alignment readiness 用于确认 AI 正在解决正确的问题、完整保留已经成立的要求、没有擅自扩大范围，并且具备转换当前 Gate 所需的 evidence 与授权。它不是新的 truth layer，也不替代 Requirements、Acceptance、Design 或验证证据。
 
-本文严格区分五件事：用户明确确认目标或选择；上下文为 AI 提供唯一推断依据；用户把有界专业判断委托给 AI；具体行动已经按要求展示；具体行动已经获得执行授权。它们可以共同支持 Gate，但不能互相改名或互相代替。只有能够指向 decision owner 对当前这一对象作出的明确要求、批准、授权、拒绝或带条件裁决，并记录为 `explicit-owner` 时，才可以按实际极性描述用户的决定；提问、担忧、候选、事实陈述或没有回应不成立。`context-derived`、`delegated-solution` 和 AI 的专业判断只表示“有依据继续”，不能描述成“用户已经明确同意”“已与用户达成一致”“用户认可”或其他等价说法。行动已经展示不自动表示已经授权，目标或结果进入范围也不自动表示所有实现手段都已获得静默执行授权。
+先区分五种依据，它们回答的问题不同：
+
+| 已发生的事 | 能够据此说明什么 |
+|---|---|
+| 用户明确要求、批准、拒绝或带条件裁决了当前对象 | 按原话的对象、方向和条件记录用户决定，依据为 `explicit-owner` |
+| 已有上下文排除了其他合理的重要解释 | 可以按推断形成判断，依据为 `context-derived`；重要方案仍等待用户针对方案回应 |
+| 用户把一定范围内的专业判断交给 AI | 在该范围内完成专业设计，依据为 `delegated-solution`；新重要方案仍需展示并等待回复 |
+| AI 已说明准备改变什么 | 动作已经可见；还要判断执行依据 |
+| 动作符合 §1.3 的执行授权条件 | 可以执行该动作；不能扩张到其他对象和影响 |
+
+提问、担忧、讨论候选、陈述事实和没有回应，都不自动构成用户同意。比如“不要发布”是明确的禁止发布决定，应按其否定方向记录，不能因为它属于 `explicit-owner` 就当成发布授权。目标已经进入范围，也不代表所有实现手段都获得了静默执行授权。
 
 Alignment readiness 主要防止：
 
@@ -74,6 +92,8 @@ Alignment readiness 主要防止：
 ```
 
 ### 1.1 持续维护轻量 Alignment State
+
+这份记录是为了解决“隔了一段对话后，不知道哪些已确定、哪些仍待办”的问题。它记录工作事实，不要求向用户展示一张不断增长的表格。`Commitment` 是本任务必须落实的要求或承诺；`Gap` 是影响当前判断的缺口；`Intervention` 只表示谁来解除该缺口；`Gate` 是当前阶段能否通过的结论。
 
 Alignment State 就是 §0 的八个控制项，不再建立另一份模板。执行者只维护当前判断需要的内容，其中：
 
@@ -96,6 +116,10 @@ Alignment State 就是 §0 的八个控制项，不再建立另一份模板。�
 - **Gap** 只使用 `none`、`non-blocking unknown` 或 `blocking material gap`；Gap 不是 Commitment 状态；
 - **Intervention** 只使用 `none`、`AI 调查或执行`、`decision owner 裁决` 或 `等待外部 evidence`；Gap 为 `none` 时 Intervention 也必须为 `none`；
 - **Gate / Next** 使用 §1.5 的统一 Gate 结果，并记录下一阶段或保持打开的原因。
+
+例如，“只审查并报告问题”是本轮 Commitment，报告完整且有证据时可以 fulfilled；“以后重构整个模块”若只是候选，不应变成当前实现任务。没有 gap 而下一步要正常实现时，`Intervention` 为 `none`，把实现写在 `Next`；“下一步还有工作”不等于“存在需要别人介入的缺口”。
+
+重要方案已经提出但尚未得到用户允许继续的回复时，待确认方案保持候选，原始目标继续有效。即使技术调查已完成，也存在“尚未取得用户对具体方案的回应”这一 `blocking material gap`，Intervention 为 `decision owner 裁决`；不能因为 AI 自认为没有未知就填 `none`。这里等待的是用户检验方案后的判断，不是请用户代做技术调查。
 
 `fulfilled` 只表示“本任务已经履行”，不表示对应 canonical Requirement、Contract 或 Design 失效。`fulfilled`、`superseded` 和 `parked` 是任务关闭时允许的 Commitment 终态；`proposed` 和 `active` 都不是关闭状态。
 
@@ -158,6 +182,8 @@ Target 是否仍是同一个目标和范围？
 
 #### 行动发生前：Action Visibility Check
 
+这项检查回答两个不同问题：“用户是否已经知道将发生什么变化”和“这个变化是否已经允许执行”。前者避免突然扩大行动，后者保护实际决定权。已有明确请求或有界授权时沿用；需要补充说明时用普通语言说明对象、目的、影响和依据，不要求向用户复述内部标签。
+
 只读调查、检索、比较和不会改变用户 artifact 或外部状态的检查，可以按当前 Target 直接执行，不要求逐项预告。准备首次创建或修改 artifact，或实际 mutation 超出此前的 Visible Action Boundary 或 Authorized Execution Boundary 时，先用一段简短、用户可见的说明明确：
 
 ```text
@@ -192,7 +218,18 @@ Authorized Execution Boundary 只接受以下三种授权依据：
 - 扩大到尚未展示的组件，进行非必要重构、迁移、清理或统一化；
 - 发布、部署、发送外部消息、删除重要数据，或产生其他 material external impact。
 
-执行中发现新的 material 行动，或需要越出任一行动边界时，在该行动发生前分别更新 Visible Action Boundary、Authorized Execution Boundary 和授权依据。Design 是否需要等待用户回复仍由 intent-first、已有委托和 unresolved user-owned gap 决定；mutation 是否可以执行只由 Authorized Execution Boundary 决定，未授权时无论是否已经展示都必须等待。
+执行中发现新的 material 行动，或需要越出任一行动边界时，在该行动发生前分别更新 Visible Action Boundary、Authorized Execution Boundary 和授权依据。新重要方案按 `software-core.md` §4.4 展示并等待用户针对方案回应；既有委托或 AI 未发现信息缺口都不能豁免。实际实施必须同时满足对应 Design Gate 与 Authorized Execution Boundary，不能只满足其中一项就提前执行。
+
+**把这些规则用于短对话：**
+
+| 对话与当前背景 | 当前可以做什么 | 为什么 |
+|---|---|---|
+| 用户：“看一下这些文档是否有问题。” | 读取、比较、交付审查结论 | 当前请求是审查，不自动包含修改 |
+| AI 展示：“会在 A 文档补背景，在 B 文档补一个例子。”用户：“可以。” | 按已展示对象和方向修改 A、B，并完成必要验证 | 当前动作已有 `explicit-action`，不必再逐段请求批准 |
+| 用户：“修复这个已定义行为的 bug。”AI 展示局部修复与相关测试 | 执行满足必要性测试的修复与验证 | 这些是交付所要求结果的 `necessary-means`，不是顺手扩展 |
+| 执行中发现还能新增一个无关功能，AI 提出建议，用户尚未回答 | 继续原范围内的工作，新功能仍是候选 | 已展示不等于已获授权 |
+| 目标与修改范围已明确，AI 提出新的重要技术方案，自认为没有未知，用户尚未回复 | 交付具体推荐与依据，等待回应；暂不实施该方案 | AI 对背景的理解尚未经过用户针对方案的检验 |
+| 用户：“可以改，但不要发布。” | 在对应修改范围内执行，保留不发布约束 | 批准修改与禁止发布同时有效 |
 
 #### 产物形成后：Artifact Self-Review
 
@@ -216,13 +253,16 @@ Artifact Self-Review 只为 §0 的 Evidence、Commitments 和 Gate / Next 提�
 
 先判断 gap 属于哪一类。
 
+下表的 `Intervention` 用于相应工作尚未完成、并构成当前缺口时。缺口已解除后的正常下一阶段工作记在 `Next`，不因为还要编码或检查就一直保持介入状态。
+
 | Gap 或工作 | AI 的责任 | Intervention |
 |---|---|---|
 | 可以从会话历史、代码、文件、日志、运行结果、官方资料或实验获得的事实与上下文 | 主动调查、验证并报告 evidence | `AI 调查或执行` |
 | 根据已确认规则进行覆盖检查、traceability、静态分析或一致性审查 | 完成检查并报告结果 | `AI 调查或执行` |
 | 在 Frozen behavior、Design boundary、Visible Action Boundary 和 Authorized Execution Boundary 内完成测试、实现、通过 §1.3 必要性测试的重构和验证 | 自主执行可逆、范围明确的工作 | `AI 调查或执行` |
 | 已确认目标和授权边界内的 Contract、Experience、Test、System 或 Detailed Design | 调研会话、项目、已有写法和外部 evidence，完成比较、专业取舍和完整设计；按 §1.3、§2.4 在下游行动前让用户看见 material 方向和依据 | `AI 调查或执行` |
-| 多个技术选择真正等价，或 evidence 已支持唯一最佳专业方案 | 选择最直接、可逆、易验证的方案；material 时记录依据并按 §1.3 展示 | `AI 调查或执行` |
+| 已确认方案内多个局部技术选择真正等价 | 选择最直接、可逆、易验证的实现 | `AI 调查或执行` |
+| evidence 已支持一份重要专业方案，但用户尚未针对它允许继续 | AI 先完成设计、推荐及依据并展示，随后等待用户回复 | 设计形成时为 `AI 调查或执行`；等待方案回应时为 `decision owner 裁决` |
 | 用户目标、价值或偏好已经明确表达，或结合会话与事实不存在合理的 materially different 解释 | 记录推导依据并按该意图继续，不机械重问 | `AI 调查或执行` |
 | 只能由用户提供或决定，并且 AI 从现有会话和其他 evidence 中既无法取得、也无法根据上下文唯一且可靠地推出的目标、价值、优先级、体验、scope、non-goal 或 acceptance context | 先完成全部可调查工作和不受影响的设计，对受影响部分给出条件化方案，只请求缺失的最小充分 context | `decision owner 裁决` |
 | 安全、隐私、合规、不可逆操作、外部发布或 material external impact | 先调查和降低不确定性 | `decision owner 裁决`，由拥有授权和责任的人决定；已有明确授权边界时按授权执行 |
@@ -230,9 +270,11 @@ Artifact Self-Review 只为 §0 的 Evidence、Commitments 和 Gate / Next 提�
 | 主观体验验收、风险接受或组织规定的发布授权 | AI 提供 evidence 和建议 | `decision owner 裁决` |
 | AI 无法取得、用户也不是可靠事实来源的外部信息 | 明确缺失 evidence 和验证方式 | `等待外部 evidence`，不把它伪装成用户澄清题 |
 
-设计是 AI / solution owner 的专业工作。与用户讨论 Design 是让用户能够用自己拥有的背景纠正方向，不表示把技术方案重新交给用户选择，也不自动把 Intervention 设为 `decision owner 裁决`。
+设计是 AI / solution owner 的专业工作。AI 先完成调查、比较和具体推荐，再让用户用自己拥有的背景检验重要方案。等待用户对重要方案回应时，Intervention 设为 `decision owner 裁决`；它指向用户对方案的判断，不表示把专业设计工作退回用户。
 
-人工介入只用于真正 user-owned / owner-owned、尚未从上下文确定且没有委托的判断。准备提问前，依次检查：相关会话是否已经回答；项目和外部 evidence 是否可调查；已确认目标和专业因果是否支持唯一方案；该类判断是否已经委托给 AI。任一项足以继续时，由 AI 完成工作，不增加用户裁决负担；这不取消 §1.3 的行动可见义务，也不能把“无需用户决定”表达成“用户已经同意”。
+准备向用户索取信息前，依次检查：相关会话是否已经回答，项目和外部证据是否可调查，已确认目标和专业因果是否足以形成推荐，该类专业工作是否已经交给 AI。能完成的工作由 AI 先完成，不让用户重复提供事实或代做分析。
+
+上述检查解决已知信息缺口；重要方案仍需独立完成“展示并等待回复”。AI 可以认为推荐充分，但不能替用户判断“双方已经理解一致”。已经得到回应、获准继续且没有重要变化的具体方案，才直接沿用原确认。
 
 使用 `delegated-solution` 时记录委托的 Target、决定类别和边界。用户说“继续”只覆盖当时已经展示的范围、设计和下一动作；后续出现新的 material 方向时重新对齐。
 
@@ -248,9 +290,11 @@ Artifact Self-Review 只为 §0 的 Evidence、Commitments 和 Gate / Next 提�
 
 ### 1.5 Alignment Gate 的结果
 
+先分清三个层次：**本阶段的可做工作已经做完**，可能仍在等待缺失信息；**本阶段通过**，表示产物、证据和授权已足以进入下一阶段；**任务完成**，还要求本轮承诺的最终结果全部落实。后文各阶段的“完成条件”必须与本节的共同条件一起满足，不能把“我已审查”直接当成“可以通过”。
+
 Intervention 回答“下一步由谁解除 gap”，Gate result 回答“当前能否转换阶段”。两者不能互相替代：需要 AI、decision owner 或外部 evidence 采取的动作完成后，必须重新依据 Gap 和完成 evidence 评估 Gate。
 
-无论使用下面哪一种通过结果，所有 mutation 都必须在执行前已经落入 Authorized Execution Boundary；material Design 和行动还必须在对应行动前按 §1.3、§2.4 落入 Visible Action Boundary。任一条件不满足时，Gate 保持打开，不能靠事后补录边界取得通过。
+无论使用下面哪一种通过结果，所有 mutation 都必须在执行前已经落入 Authorized Execution Boundary；material Design 和行动还必须在对应行动前按 §1.3、§2.4 落入 Visible Action Boundary。新的重要方案还必须已有用户针对方案允许继续的回应；AI 推断和一般性设计委托不能替代它。任一条件不满足时，Gate 保持打开，不能靠事后补录取得通过。
 
 每次评估 Gate 时，只使用以下四种结果：
 
@@ -258,14 +302,15 @@ Intervention 回答“下一步由谁解除 gap”，Gate result 回答“当前
    - 当前 Target 和 user-owned Commitments 已由明确输入或不存在合理 material 分支的上下文确定；
    - 需要 AI 调查、专业设计、讨论或执行的工作已经完成；
    - AI 没有把能够完成的工作转交给用户；
+   - 没有新的重要方案等待用户回应；已有重要方案的明确确认仍覆盖当前工作；
    - Gap 为 `none`；
    - 没有新增 user-owned 选择；
    - AI 可以进入下一阶段。
 
 2. **通过—Owner 已确认**
-   - 曾经缺少只能由 decision owner 提供、且无法从其他 evidence 唯一推出的意图、价值、scope、风险或授权 context；
+   - 曾经缺少只能由 decision owner 提供的意图、价值、scope、风险或授权信息，或正在等待用户对已展示重要方案的回应；
    - AI 已先完成可调查内容、不受影响的设计，以及受该 context 影响的条件化方案、建议和 trade-off；
-   - decision owner 已补齐最小 context 或明确裁决，相关 Commitment 和 canonical owner 已更新；
+   - decision owner 已补齐最小 context 或针对具体方案明确允许继续，相关问题已处理，Commitment 和 canonical owner 已更新；
    - Gap 为 `none`，可以进入下一阶段。
 
 3. **有条件通过—仅剩非阻塞未知**
@@ -275,12 +320,14 @@ Intervention 回答“下一步由谁解除 gap”，Gate result 回答“当前
 
 4. **保持打开—存在阻塞项**
    - Gap 为 `blocking material gap`；
-   - 缺少的可调查事实、只能由 decision owner 补充的 context / 裁决或外部 evidence 仍会改变目标、方向、风险或 acceptance result；
+   - 仍缺会改变结果的可调查事实、user-owned 信息或外部 evidence，或者尚未取得用户对新的重要方案允许继续的回应；
    - 根据 Intervention 记录由 AI、decision owner 或外部 evidence source 解除阻塞所需的动作。
 
 只有前三种结果表示 Gate 已通过。第四种结果必须保持在当前 Gate。Gate 通过只表示当前 evidence 和授权足以继续，不表示“已与用户达成一致”或用户逐项明确同意；只有能够追溯到 decision owner 对当前对象作出的明确要求、批准、授权、拒绝或带条件裁决，才能按实际极性报告对应用户决定。Alignment 记录是下游输入；下游阶段仍负责保护 Commitments、Visible Action Boundary 和 Authorized Execution Boundary，不能静默改写。
 
 ### 1.6 Closure Alignment 适用于任何合法任务终点
+
+关闭依据是本轮答应交付什么。只要求审查时，交付有依据的结论即可；要求修复时，发现原因还不够；要求实现并验证时，代码写好但必要验证未完成也不够。`fulfilled` 的对象是这一轮的承诺，不是整份产品规范的生命周期。
 
 任务可以按 §2 的入口和授权范围停在分析、审查、Design、implementation 或完整 delivery 的合法终点，不要求为了关闭任务补走不适用的后续阶段。关闭前先完成 §1.3 的 Artifact Self-Review，再统一检查：
 
@@ -371,7 +418,7 @@ Next：...
 明确列出不同解释
 → 恢复相关会话并调查项目、外部资料或 experiment
 → 由 AI 完成职责内专业判断，给出 evidence、后果、已确定部分和条件化推荐
-→ 上下文已支持唯一解释或已有授权：记录依据后继续
+→ 上下文已支持唯一解释或已有授权：记录形成判断的依据；若是新重要方案，展示并等待用户针对方案允许继续
 → 仍缺只能由用户提供的 material context：请求最小补充
 → 仍缺外部事实：等待对应 evidence source
 → 更新 canonical owner
@@ -410,7 +457,7 @@ Public Contract / Experience、Example & Coverage、Test Design Review、System 
 
 这是一次随设计逐步更新的证据链，不是每个阶段重新建立一套文档或机械要求用户确认。各阶段只补充本阶段相关的来源、比较、结论和对齐结果；无 material 新信息时复用已有记录。Design Evidence & Alignment 是当前 Design 的一个章节或可追溯记录，不创建新的 truth layer。
 
-可见、等待和裁决边界的完整语义由 [`software-core.md` §4.4](software-core.md#44-设计讨论用于校准方向不把专业责任退回用户) 拥有。当前 Gate 分别判断：material Design 是否已在 implementation 前让用户实际看见；是否因 intent-first、未完成对齐或未委托的 material 方向而需要等待；是否存在只能由 decision owner 裁决的 unresolved user-owned context。其余专业设计由 AI 推进，但“AI 可推进”不能报告成“用户已明确确认”。
+可见、等待和裁决边界的完整语义由 [`software-core.md` §4.4](software-core.md#44-设计讨论用于校准方向不把专业责任退回用户) 拥有。当前 Gate 分别判断：重要设计是否已经展示；用户是否针对该方案允许继续，相关疑问是否处理；是否仍缺只能由用户补齐的信息。即使最后一项没有缺口，前两项仍必须成立。AI 继续承担设计与推荐，不能把自己的专业判断报告成用户已经确认。
 
 下面逐阶段说明怎样执行。每个阶段满足“完成条件”后，再按 §1.5 得到统一 Gate 结果；只有 Gate 已通过，才能进入下一阶段。
 
@@ -471,7 +518,9 @@ AI 已检查可访问会话和其他 evidence 后，目标、价值、责任或�
 
 ### 本阶段工作
 
-按 §2.4 更新 Design Evidence & Alignment，重点调查同调用方、同类型 API / 交互、公共约定和真实 call sites，并比较语义、兼容性、状态、错误、任务路径和验证方式。AI 形成 Contract / Experience 方案并讨论 materially significant 的公开语义；只把无法从 evidence 唯一推出的 user-owned 体验或产品 context 留给用户补充。
+先按 §2.4 查看相同调用方使用的接口或交互，以及真实调用位置。比较它们怎样表达输入、结果、状态、错误和兼容要求；有 UI 时还比较用户任务路径及验证方式。
+
+AI 据此形成 Contract / Experience 方案，在 Design Evidence & Alignment 中记录依据，并让用户看见会影响重要公开行为的选择。项目里能查清的内容由 AI 查清；只有仍缺少用户才能提供、且不能从已有表达确定的体验或产品信息时，才请求补充。
 
 根据产品形态明确：
 
@@ -479,6 +528,8 @@ AI 已检查可访问会话和其他 evidence 后，目标、价值、责任或�
 - identity、path、namespace 或状态在公开边界上的含义；
 - UI 的任务路径、信息层级和 loading/empty/error/success 等状态；
 - visual、responsive、accessibility 等当前适用 baseline。
+
+涉及 UI 还原或复杂布局时，按 [`software-core.md` §9.1](software-core.md#91-ui-还原与复杂布局的拆解方法) 形成边界、逐层结构、约束、视觉样式和 design token 的对应关系，并明确还原程度及验证条件。当前阶段确定 Experience baseline；内部实现细节由后续 Detailed Design 承接，实际渲染验证由对应 Acceptance / Readiness 检查承担。
 
 ### 明确产出
 
@@ -505,7 +556,9 @@ AI 已检查可访问会话和其他 evidence 后，目标、价值、责任或�
 
 ### 本阶段工作
 
-按 §2.4 更新 Design Evidence & Alignment，重点调查历史 failure、相似 capability 的行为规格以及既有 Example / verification pattern。由 AI 把每个 Requirement 展开为 Given / When / Then 和完整 coverage matrix，并讨论 materially distinct 的行为与边界；旧测试只帮助发现遗漏和选择验证方式，不拥有 expected behavior，用户也不负责替 AI 设计普通测试场景。
+先按 §2.4 查看历史故障、相似能力的行为规格和既有验证写法。然后由 AI 把每个 Requirement 展开成 Given / When / Then，整理为覆盖表：每行说明哪个要求、什么场景、预期什么结果、用什么方法验证。
+
+把依据和重要边界写入 Design Evidence & Alignment，并按 §2.4 展示需要用户看见的行为选择。旧测试用于发现遗漏和选择验证方式；预期结果仍来自当前 Requirement / Contract。普通测试场景由 AI 完成，不要求用户代为设计。具体格式见 [`software-core.md` §6.4](software-core.md#64-同一功能的三类测试)。
 
 覆盖维度至少检查：
 
@@ -539,6 +592,8 @@ AI 已检查可访问会话和其他 evidence 后，目标、价值、责任或�
 
 ## 6. Test Design Review：独立审查行为规格
 
+这里独立审查的是场景与预期本身：先按需求检查它们是否正确，再让实现面对这些预期。是否要求另一位评审者由项目规定；本阶段不自动要求新建 Agent 或额外评审流程。
+
 ### 进入条件
 
 - Example / Scenario matrix 已完成初稿；
@@ -570,8 +625,10 @@ AI 已检查可访问会话和其他 evidence 后，目标、价值、责任或�
 ### 完成条件
 
 - review 问题已经处理；
-- material ambiguity 已由 AI 调查和专业判断消除，或只剩确实需要 user-owned context / 外部 evidence 的 blocker；
+- 会改变行为或覆盖结论的歧义已经由调查、专业判断或必要裁决消除；
 - Acceptance 可以作为后续 Design 和测试代码的稳定 What。
+
+如果只剩用户或外部来源才能解除的阻塞项，可以报告“AI 可完成的审查已做完，仍等待某项信息”，但本阶段 Gate 保持打开，不进入 Acceptance Freeze。
 
 ---
 
@@ -606,7 +663,7 @@ Freeze 表示：当前 evidence 下，行为已经清楚到足以进入 Design�
 - 当前重要行为和边界已经明确；
 - 每个 Requirement 有验证去向；
 - 没有把 production internals 当作行为来源；
-- 没有仍会改变架构或主要行为的未决问题。
+- 没有仍会改变架构前提或主要行为的未决需求、公开契约问题；内部实现方案继续由后续 Design 决定。
 
 新 evidence 后续推翻当前理解时，重新打开对应 Requirement / Acceptance，向下同步，不在 Design、tests 或 implementation 中静默改写行为。
 
@@ -622,7 +679,9 @@ Freeze 表示：当前 evidence 下，行为已经清楚到足以进入 Design�
 
 ### 本阶段工作
 
-按 §2.4 更新 Design Evidence & Alignment，重点调查项目级规则、公共机制、相邻模块、同 responsibility family、相关调用方，以及必要的外部成熟架构。AI / solution owner 完成 evidence 足以确定的 System Design；对仍受 user-owned gap 影响的部分给出条件化方案和推荐，再只请求最小 context，不把架构分析或普通技术选择交给用户。
+先按 §2.4 查看项目规则、公共机制、相邻模块、承担同类责任的实现和真实调用方。只有外部成熟架构可能改变当前设计判断时，再补充该证据。
+
+AI / solution owner 完成证据足以支持的 System Design，并更新 Design Evidence & Alignment。缺少用户信息的部分，写成“若条件 A 成立则方案 A，若条件 B 成立则方案 B”，给出推荐及其理由，再请求决定所必需的信息。架构调查和普通技术选择仍由 AI 完成。
 
 定义：
 
@@ -671,7 +730,11 @@ Freeze 表示：当前 evidence 下，行为已经清楚到足以进入 Design�
 
 ### 本阶段工作
 
-按 §2.4 更新 Design Evidence & Alignment，重点调查公共 primitive、同 owner / contract / lifecycle 的实现，以及同类型 command、adapter、repository、state machine、codec、UI interaction 或测试写法。按责任、contract、data/control flow、状态、错误、恢复、依赖、扩展和测试边界详细比较；成立条件相同且没有 material 偏离依据时严格参考，需要偏离时记录差异来源及其对其他同类型实现的影响。AI 完成可确定部分；只把确实受 user-owned gap 影响的部分作为条件化方案讨论。
+先按 §2.4 找到公共基础能力，以及责任、接口契约或生命周期相同的实现。具体对象可以是命令、adapter、存储接口、状态机、编解码器、UI 交互或测试写法。
+
+再比较当前问题真正涉及的关系：谁负责、输入输出如何流动、状态怎样变化、错误如何处理和恢复、依赖与扩展点在哪里、测试能观察什么。成立条件相同且没有重要偏离依据时，严格参考已有写法；需要偏离时，说明差异来源，以及其他同类实现是否受影响。
+
+把比较与决定记录到 Design Evidence & Alignment。AI 先完成可确定的部分；只有确实依赖缺失用户信息的部分，才作为带明确条件的方案讨论。
 
 定义当前实现真正需要的：
 
@@ -737,7 +800,7 @@ Freeze 表示：当前 evidence 下，行为已经清楚到足以进入 Design�
 
 - 每个计划进入 CI 的 case 都有测试代码；
 - 测试代码可以独立接受 Test Review；
-- 尚未接入 production 或尚未根据 production 修改 expected behavior。
+- expected behavior 始终来自 Frozen Acceptance，没有为了迁就 production 而修改；测试是否已经接入 production 另行记录，不以接线状态代替这项检查。
 
 ---
 
@@ -782,13 +845,19 @@ Freeze 表示：当前 evidence 下，行为已经清楚到足以进入 Design�
 
 ### 适用条件
 
-出现以下任一情况时执行：
+本阶段的目的是区分测试脚本自身的问题与 production 尚未实现的行为。先检查当前变化有没有充分的自验证证据，再决定是否需要单独运行 Fake Green。
 
-- 新编写了尚未接入 production 的 Acceptance tests；
-- 测试包含新的 fixture、matcher、参数化或多步 Scenario；
-- 需要先区分“测试脚本写错”与“production 未实现”。
+新写的 Acceptance tests，或新的 fixture、matcher、参数化、多步场景，都需要重新检查其证据；它们不是无条件重复 Fake Green 的触发器。
 
-已有稳定测试只做小幅调整、且其自验证证据仍然成立时，可以直接进入 Production Baseline。
+已有证据同时足以说明以下内容时，可以跳过单独的 Fake Green，直接进入 Production Baseline，并记录依据：
+
+- 当前场景和参数分支确实被执行，fixture 与接线有效；
+- 当前断言实际观察了规定结果，能够识别相应错误；
+- 本次变化没有使这些证据失效。
+
+例如，沿用已验证的接线和 matcher，只增加一个普通输入边界，测试在真实 application 上准确报告了预期的行为偏差，且断言已通过审查，可以直接用这些证据自验证。仅有“旧测试曾全部通过”、空断言，或按 expected value 配好的 Fake 返回成功，都不够说明新增场景有效。
+
+缺少上述证据、需要隔离测试脚本与 production 问题时，执行当前场景所需的最小 Fake Green。若使用其他等价自验证方式，也应说明它实际验证了哪些部分。
 
 ### 本阶段工作
 
@@ -919,7 +988,7 @@ Implementation Plan 只在复杂执行顺序确实降低交付成本时创建或
 
 ### 进入条件
 
-- 当前范围的 production 修改已完成；
+- 当前所需 production 修改已完成，或 §13 已证明当前实现满足要求、无需修改；
 - 相关自动化检查已运行。
 
 ### 本阶段工作
@@ -1082,3 +1151,60 @@ Example 或 expected result 有误
 任务关闭时额外确认三件事：所有 Commitment 已进入允许的终态；Artifact Self-Review 已用实际 evidence 排除 material 的做偏、做少、做多；当前 Gate result 与实际 Gap、Intervention 和 evidence 一致。
 
 低经验执行者按当前阶段的进入条件、本阶段工作、明确产出和完成条件执行，不需要猜隐藏步骤；高经验执行者可以合并相邻阶段，但仍保留这些阶段关系和 evidence。
+
+---
+
+## 20. 完整示例：已有名称校验 bug 怎样完成
+
+本例演示 §0 控制项和 §2.1 合并阶段的实际用法，不建立第二条流程。功能背景与 R1–R3 的完整定义见 [`software-core.md` §1.1](software-core.md#11-贯穿示例修改项目名称)。下面的文件位置和运行结果均是假设的教学输入，不是本仓库实际修复报告。
+
+### 20.1 用户请求、背景与进入依据
+
+假设用户要求：“修复项目名称输入空格时仍保存成功的问题，按已有命名规则处理。”当前 Requirement 已明确 R2：移除首尾空格后为空时拒绝，旧名称不变。Contract 已定义 `invalid-name`；Detailed Design 已规定先裁剪、再校验、最后提交。现有测试已有稳定的真实 application 与内存存储接线，但漏了全空格场景。
+
+这轮目标是修复已明确行为的实现偏差。先读相关规范、实现和测试，再从 §2 的 bug 入口进入；不重新设计名称规则，也不创建新 Requirements 或 Plan 文件。完整规则存在于原位置，新测试引用 R2。
+
+### 20.2 用八个控制项记录当前判断
+
+| 控制项 | 本例的具体内容 |
+|---|---|
+| Target | 修复全空格名称处理并验证；当前不改其他命名规则 |
+| Stage | 已有 expected behavior 的 bug；先取得复现和 production baseline |
+| Evidence | 规范要求拒绝；读取代码后发现校验发生在裁剪前；“因此造成缺陷”仍需运行场景核实 |
+| Owner | R2 定义结果，Contract 定义错误，Detailed Design 定义顺序；测试不改写这些定义 |
+| Commitments | “修复并验证”是 `active / explicit-owner`，来自用户请求；普通实现手段不冒充用户逐项要求 |
+| Gap | 取得复现前为 `blocking material gap`：尚缺当前实现是否确实违反 R2 的证据；由 AI 调查解除 |
+| Intervention | 此时为 `AI 调查或执行`；复现和判断充分后为 `none`，正常下一动作写到 Next |
+| Gate / Next | 此时为“保持打开—存在阻塞项”；先完成场景审查和基线，取得匹配证据后评估为“通过—AI 可继续”，再进入最小修复 |
+
+修改前可以向用户这样说明：“已确认已有规则要求拒绝全空格名称。我会在名称处理函数中把裁剪放到校验前，并在现有测试中补充该场景，检查返回输入错误且旧名称不变。”这说明了实际修改对象和必要验证手段；执行授权来自明确的修复请求及 §1.3 的必要手段测试。没有额外发布、依赖或数据迁移动作。
+
+### 20.3 场景、基线、修复与完成证据
+
+新增场景的具体含义：
+
+```text
+Given：通过正常保存行为建立名称 Old
+When：提交三个空格
+Then：返回 invalid-name；随后 getName() 仍为 Old
+```
+
+先审查这条场景是否忠实表达 R2，再接到真实 application。按 §12 检查自验证证据：本例若沿用已验证的接线和 matcher，且运行结果准确显示该输入的行为偏差，就可以直接采用这些证据，不额外搭 Fake Green；若接线或断言仍不可信，先做最小自验证。两种路径都不能把 Fake Green 记作 production 结果。
+
+假设 production 基线显示：返回成功，随后名称为空。这个结果证明当前实现偏离 R2。AI 只修正裁剪与校验的顺序，然后运行新增场景及与同一名称处理路径有关的已有检查。假设新增场景和既有正常、长度边界、提交前失败场景全部通过，且当前项目要求的相关静态检查通过，才能据此报告对应验证结果。若真实运行失败，就保留真实结果，继续定位，不调整 expected value 迁就实现。
+
+完成时回查原始要求：空白输入是否拒绝，旧值是否保留，正常名称是否仍能保存，修改是否仅落实已有设计。只有这些证据成立，“修复并验证”才转为 `fulfilled`。本例没有承诺真实 adapter 或进程崩溃恢复；未执行的此类验证不报告为通过。
+
+这里确实经历了场景设计、审查、基线、实现和结果验证，但这些可以在一次工作中完成。没有增加独立文档，也没有省略重要判断。
+
+### 20.4 发生不同反馈时，从哪里继续
+
+| 新情况 | 原因与下一步 |
+|---|---|
+| 基线已经通过 | 检查测试是否真的执行、输入与复现条件是否一致、缺陷是否已经修复；不故意改坏代码制造 Red |
+| 用户改为要求“全空格表示恢复默认名称” | 公开行为已改变，先更新 Requirement / Contract 和 Acceptance，再重判设计与实现 |
+| 规范清楚，但无法运行当前必需的测试 | 不能宣称修复已验证；查清环境问题，仍无法取得证据时明确未完成项 |
+| 审查发现相邻模块可以统一重构 | 它不是本轮修复所必需；只作为候选说明，不自动扩大修改 |
+| 用户本轮只要求诊断 | 交付原因、证据和建议即可；本轮不进入修复，诊断承诺仍可正常完成 |
+
+以上变化沿用同一套目标、证据、责任和 Gate 判断。案例中的“小”表示范围有限、规则清楚，不表示可以用作者直觉代替必要证据。

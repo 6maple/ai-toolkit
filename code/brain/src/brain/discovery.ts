@@ -1,4 +1,5 @@
 import picomatch from "picomatch";
+import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";
 
 import type { LogicalMarkdownText } from "../persistence/codecs.ts";
 import {
@@ -11,6 +12,7 @@ import {
 
 export const DISCOVERY_MAX_RECORDS = 64 as const;
 export const DISCOVERY_MAX_RENDERED_UTF8_BYTES = 8192 as const;
+export const CAT_OVERSIZED_LINE_EXCERPT_MAX_UTF8_BYTES = DEFAULT_MAX_BYTES;
 
 export type DiscoveryQueryErrorCode =
   | "invalid-glob"
@@ -80,8 +82,12 @@ export interface CatPage {
   readonly status?: "questioned";
   readonly challenge?: string;
   readonly safetyTruncated: boolean;
-  readonly blockedLineNumber?: number;
-  readonly blockedLineUtf8Bytes?: number;
+  readonly oversizedLine?: {
+    readonly lineNumber: number;
+    readonly prefix: string;
+    readonly shownUtf8Bytes: number;
+    readonly fullUtf8Bytes: number;
+  };
 }
 
 export interface PackedRecords<T> {
@@ -241,6 +247,18 @@ export function renderDiscoveryRecord(record: DiscoveryNodeRecord): string {
 
 export function utf8ByteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
+}
+
+function utf8Prefix(value: string, maxBytes: number): string {
+  const points: string[] = [];
+  let bytes = 0;
+  for (const point of value) {
+    const pointBytes = utf8ByteLength(point);
+    if (bytes + pointBytes > maxBytes) break;
+    points.push(point);
+    bytes += pointBytes;
+  }
+  return points.join("");
 }
 
 export function recordsFit<T>(
@@ -432,15 +450,23 @@ export function buildCatPageFromPiRead(
     return { path, startLine: args.offset, lines: [], status, challenge, safetyTruncated: false };
   }
   if (piRead.firstLineExceedsLimit || piRead.outputLines === 0) {
+    const fullLine = requested[0]!;
+    const prefix = utf8Prefix(fullLine, CAT_OVERSIZED_LINE_EXCERPT_MAX_UTF8_BYTES);
+    const nextOffset = startIndex + 1 < allLines.length ? args.offset + 1 : undefined;
     return {
       path,
       startLine: args.offset,
       lines: [],
+      nextOffset,
       status,
       challenge,
       safetyTruncated: true,
-      blockedLineNumber: args.offset,
-      blockedLineUtf8Bytes: utf8ByteLength(requested[0]!),
+      oversizedLine: {
+        lineNumber: args.offset,
+        prefix,
+        shownUtf8Bytes: utf8ByteLength(prefix),
+        fullUtf8Bytes: utf8ByteLength(fullLine),
+      },
     };
   }
   const selected = requested.slice(0, Math.min(requested.length, piRead.outputLines));
@@ -466,7 +492,7 @@ export function renderCatPage(page: CatPage): string {
     page.challenge,
     page.safetyTruncated,
   );
-  if (page.blockedLineNumber === undefined) {
+  if (page.oversizedLine === undefined) {
     if (page.nextOffset === undefined) return rendered;
     return [
       rendered,
@@ -474,9 +500,20 @@ export function renderCatPage(page: CatPage): string {
       `continue_with: brain_cat(path=${formatPublicPath(page.path)}, offset=${page.nextOffset})`,
     ].join("\n");
   }
-  return [
+  const oversized = page.oversizedLine;
+  const parts = [
     rendered,
-    `line ${page.blockedLineNumber} cannot be returned exactly: the complete logical line is ${page.blockedLineUtf8Bytes ?? "unknown"} UTF-8 bytes and exceeds the brain_cat transport budget`,
-    `continue with brain_absolute_path(path=${formatPublicPath(page.path)}) and use the host filesystem read capability for that file`,
-  ].join("\n");
+    `line ${oversized.lineNumber} is shown as an incomplete oversized-line excerpt, not complete exact content`,
+    `${oversized.lineNumber}: ${oversized.prefix}`,
+    `shown_utf8_bytes: ${oversized.shownUtf8Bytes}`,
+    `full_line_utf8_bytes: ${oversized.fullUtf8Bytes}`,
+    `complete_with: brain_absolute_path(path=${formatPublicPath(page.path)}) and the host filesystem read capability`,
+  ];
+  if (page.nextOffset !== undefined) {
+    parts.push(
+      `next_offset: ${page.nextOffset}`,
+      `continue_with: brain_cat(path=${formatPublicPath(page.path)}, offset=${page.nextOffset})`,
+    );
+  }
+  return parts.join("\n");
 }

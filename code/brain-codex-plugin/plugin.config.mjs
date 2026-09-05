@@ -16,6 +16,10 @@ export const pluginConfig = {
       input: "src/user-prompt-submit.ts",
       name: "user-prompt-submit",
     },
+    permissionHook: {
+      input: "src/permission-request.ts",
+      name: "permission-request",
+    },
     mcp: {
       input: "src/mcp-server.ts",
       name: "mcp-server",
@@ -27,6 +31,11 @@ export const pluginConfig = {
     timeout: 10,
     statusMessage: "Preparing Brain context",
     additionalContextLimit: 0,
+  },
+  permissionHook: {
+    matcher: "^mcp__brain__brain_edit$",
+    timeout: 10,
+    statusMessage: "Checking Brain edit safety",
   },
   marketplace: {
     manifest: ".agents/plugins/marketplace.json",

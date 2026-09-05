@@ -14,6 +14,20 @@
           }
         ]
       }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "^mcp__brain__brain_edit$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"D:/Workspace/ai-projects/ai-toolkit/code/brain-codex-plugin/dist/permission-request.mjs\"",
+            "commandWindows": "node \"D:\\Workspace\\ai-projects\\ai-toolkit\\code\\brain-codex-plugin\\dist\\permission-request.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking Brain edit safety"
+          }
+        ]
+      }
     ]
   }
 }

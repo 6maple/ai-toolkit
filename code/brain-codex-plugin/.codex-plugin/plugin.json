@@ -1,6 +1,6 @@
 {
   "name": "brain-codex-plugin",
-  "version": "0.1.0+codex.20260831103733",
+  "version": "0.1.0+codex.local-20260902T140158Z",
   "description": "Persistent Brain cognition for Codex with required turn-start restoration.",
   "author": {
     "name": "Maple"

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const pluginRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const hookEntry = join(pluginRoot, "dist", "user-prompt-submit.mjs");
+const permissionHookEntry = join(pluginRoot, "dist", "permission-request.mjs");
 const mcpEntry = join(pluginRoot, "dist", "mcp-server.mjs");
 
 function runProcess(entry, { cwd, env, input, stopWhen }) {
@@ -138,6 +139,12 @@ async function main() {
   assert.equal(hook.additionalContextLimit, 0);
   console.log("PASS UserPromptSubmit is configured to deliver complete Brain context");
 
+  const permissionHook = hookConfig.hooks.PermissionRequest[0];
+  assert.equal(permissionHook.matcher, "^mcp__brain__brain_edit$");
+  assert.match(permissionHook.hooks[0].command, /dist\/permission-request\.mjs/);
+  assert.match(permissionHook.hooks[0].commandWindows, /dist\\permission-request\.mjs/);
+  console.log("PASS PermissionRequest targets only Codex Brain edits");
+
   const temp = await mkdtemp(join(tmpdir(), "brain-codex-plugin-"));
   const firstSourceRoot = join(temp, "project-one");
   const secondSourceRoot = join(temp, "project-two");
@@ -167,6 +174,51 @@ async function main() {
     assert.match(firstContext, /@session\/codex-verify-session-one/);
     assert.doesNotMatch(firstContext, /<brain_context\b/);
     console.log("PASS hook restores Brain directly for the documented cwd/session input");
+
+    const permissionInput = {
+      session_id: firstHookInput.session_id,
+      turn_id: firstHookInput.turn_id,
+      cwd: firstSourceRoot,
+      hook_event_name: "PermissionRequest",
+      permission_mode: "default",
+      tool_name: "mcp__brain__brain_edit",
+      tool_input: {
+        path: "@global/core.md",
+        content: "# Initialized global cognition\n",
+      },
+    };
+    const emptyCorePermission = await runProcess(permissionHookEntry, {
+      cwd: firstSourceRoot,
+      env,
+      input: `${JSON.stringify(permissionInput)}\n`,
+    });
+    assert.equal(emptyCorePermission.code, 0, emptyCorePermission.stderr);
+    assert.equal(
+      JSON.parse(emptyCorePermission.stdout).hookSpecificOutput.decision.behavior,
+      "allow",
+    );
+
+    await writeFile(
+      join(temp, ".brain-data", "global", "core.md"),
+      "# Existing global cognition\n",
+      "utf8",
+    );
+    const existingCorePermission = await runProcess(permissionHookEntry, {
+      cwd: firstSourceRoot,
+      env,
+      input: `${JSON.stringify(permissionInput)}\n`,
+    });
+    assert.equal(existingCorePermission.code, 0, existingCorePermission.stderr);
+    assert.equal(existingCorePermission.stdout, "");
+
+    const planPermission = await runProcess(permissionHookEntry, {
+      cwd: firstSourceRoot,
+      env,
+      input: `${JSON.stringify({ ...permissionInput, permission_mode: "plan" })}\n`,
+    });
+    assert.equal(planPermission.code, 0, planPermission.stderr);
+    assert.equal(planPermission.stdout, "");
+    console.log("PASS PermissionRequest allows only empty-target initialization in edit modes");
 
     const refreshed = await runProcess(hookEntry, {
       cwd: firstSourceRoot,
