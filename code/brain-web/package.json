@@ -1,0 +1,29 @@
+{
+  "name": "brain-web",
+  "version": "0.1.0",
+  "description": "Local VitePress browser for ~/.brain-data using virtual markdown modules.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vp run build:site",
+    "preview": "vitepress preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "brain": "link:../brain"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vite-plus": "0.2.4",
+    "vitepress": "^1.6.3"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.21.0",
+      "onFail": "download"
+    }
+  }
+}

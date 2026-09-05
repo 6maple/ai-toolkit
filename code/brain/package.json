@@ -16,12 +16,16 @@
       "types": "./dist/public-tools.d.mts",
       "default": "./dist/public-tools.mjs"
     },
+    "./shared": {
+      "types": "./dist/shared.d.mts",
+      "default": "./dist/shared.mjs"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
     "build": "vp pack && pnpm run types",
     "stub": "unbuild --stub --config build.stub.config.ts && pnpm run types",
-    "types": "tsc -p tsconfig.public-tools.json --emitDeclarationOnly --outDir dist && node -e \"require('node:fs').copyFileSync('dist/public-tools.d.ts', 'dist/public-tools.d.mts')\"",
+    "types": "tsc -p tsconfig.public-tools.json --emitDeclarationOnly --outDir dist && node -e \"require('node:fs').copyFileSync('dist/public-tools.d.ts', 'dist/public-tools.d.mts')\" && tsc -p tsconfig.shared.json --emitDeclarationOnly --outDir dist && node -e \"require('node:fs').copyFileSync('dist/shared.d.ts', 'dist/shared.d.mts')\"",
     "dev": "vp pack --watch",
     "test": "vp test",
     "typecheck": "tsc --noEmit",

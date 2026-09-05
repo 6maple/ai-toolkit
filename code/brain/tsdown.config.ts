@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "public-tools": "src/public-tools.ts",
+    shared: "src/shared.ts",
   },
   // Declarations are emitted by the explicit `types` package script. tsdown
   // only owns the JavaScript artifacts here.
