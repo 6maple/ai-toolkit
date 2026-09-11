@@ -15,14 +15,21 @@ import { createInterface } from 'node:readline'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { buildCallArgs, extractAnchorContext, InstanceManager, PUBLIC_BRAIN_TOOLS, setupAutoThink, visibleToolDefinitions } from '../dist/index.mjs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { buildCallArgs, extractAnchorContext, InstanceManager, isOpenCodeUrl, PUBLIC_BRAIN_TOOLS, setupAutoThink, setupOpenCodeSessionHeader, toHostSchema, visibleToolDefinitions } from '../dist/index.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN = join(HERE, '..')
 const results = []
 const ok = (name) => results.push(`PASS ${name}`)
 const fail = (name, detail) => results.push(`FAIL ${name}: ${detail}`)
+
+// Resolve DSH's own JSON predicate from the exact dsh-tools dependency graph.
+// This catches hidden/symbol properties that JSON.stringify and Object.keys omit.
+const dshToolsPackage = createRequire(import.meta.url).resolve('@deepseek-ai/dsh-tools/package.json')
+const dshToolsRequire = createRequire(dshToolsPackage)
+const dshValuesEntry = dshToolsRequire.resolve('@deepseek-ai/dsh-util-values')
+const { isJsonValue } = await import(pathToFileURL(dshValuesEntry).href)
 
 const hookVisible = visibleToolDefinitions(true, true)
 const manualVisible = visibleToolDefinitions(false, true)
@@ -41,6 +48,72 @@ if (buildCallArgs({}, { id: 'host-session' }, true).session_id === 'host-session
 else fail('A0 trusted session injection', 'host session was not injected')
 if (!('session_id' in buildCallArgs({}, undefined, true))) ok('A0 no default session injection')
 else fail('A0 no default session injection', 'session_id was invented')
+const invalidHostSchemas = PUBLIC_BRAIN_TOOLS
+  .filter((definition) => !isJsonValue(toHostSchema(definition)))
+  .map((definition) => definition.name)
+if (invalidHostSchemas.length === 0) ok('A0 DSH lossless tool schemas')
+else fail('A0 DSH lossless tool schemas', invalidHostSchemas.join(','))
+if (isOpenCodeUrl('https://opencode.ai/zen/go/v1/responses', ['opencode.ai']) &&
+    isOpenCodeUrl('https://api.opencode.ai/v1/messages', ['opencode.ai']) &&
+    !isOpenCodeUrl('https://example.com/opencode.ai/v1', ['opencode.ai'])) ok('A0 OpenCode host matching')
+else fail('A0 OpenCode host matching', 'host boundary mismatch')
+
+async function verifyOpenCodeSessionHeader() {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  const handlers = new Map()
+  const ctx = {
+    on: (event, handler) => { handlers.set(event, handler); return () => handlers.delete(event) },
+  }
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+    calls.push({ url, session: headers.get('x-opencode-session') })
+    return new Response('ok')
+  }
+  const dispose = setupOpenCodeSessionHeader(ctx, {
+    enabled: true,
+    providers: ['opencode-go'],
+    hosts: ['opencode.ai'],
+  })
+  const stream = handlers.get('llm/stream')
+  const run = async (sessionId, url, init, provider = 'opencode-go') => {
+    const iterable = stream({ provider, model: 'test', sessionId }, () => ({
+      async *[Symbol.asyncIterator]() {
+        await Promise.resolve()
+        await fetch(url, init)
+        yield { type: 'done' }
+      },
+    }))
+    for await (const _chunk of iterable) { /* drain */ }
+  }
+  try {
+    await Promise.all([
+      run('session-alpha', 'https://opencode.ai/v1/responses'),
+      run('session-beta', 'https://api.opencode.ai/v1/chat/completions'),
+    ])
+    await run('session-gamma', 'https://example.com/v1/responses')
+    await run('session-other', 'https://opencode.ai/v1/responses', undefined, 'other-provider')
+    await run('session-delta', 'https://opencode.ai/v1/responses', {
+      headers: { 'x-opencode-session': 'explicit' },
+    })
+    const actual = calls.map((call) => `${call.url}=${call.session}`).sort()
+    const expected = [
+      'https://api.opencode.ai/v1/chat/completions=session-beta',
+      'https://example.com/v1/responses=null',
+      'https://opencode.ai/v1/responses=explicit',
+      'https://opencode.ai/v1/responses=session-alpha',
+      'https://opencode.ai/v1/responses=null',
+    ].sort()
+    if (JSON.stringify(actual) === JSON.stringify(expected)) ok('A0 OpenCode per-session request header')
+    else fail('A0 OpenCode per-session request header', JSON.stringify(actual))
+  } finally {
+    dispose()
+    globalThis.fetch = originalFetch
+  }
+}
+
+await verifyOpenCodeSessionHeader()
 
 /** Minimal MCP server used to exercise the client/manager without brain. */
 function writeFakeServer(target) {
@@ -160,7 +233,9 @@ async function main() {
     id: 'host-session',
     session: {
       header: { cwd: fakeRoot },
-      events: [{ type: 'agent/inbox/spliced', seq: 7, data: { inserted: [{ source: { kind: 'user' } }] } }],
+      snapshotEvents: () => [
+        { type: 'agent/inbox/spliced', seq: 7, data: { inserted: [{ source: { kind: 'user' } }] } },
+      ],
     },
   }
   const ctx = {

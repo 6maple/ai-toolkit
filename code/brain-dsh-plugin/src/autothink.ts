@@ -45,15 +45,16 @@ interface SpliceEvent {
 
 /** 会话事件流中最后一条"插入过 user 消息"的 splice 事件 seq。 */
 function lastUserMessageSeq(agent: Agent): number {
-  let last = 0
-  for (const event of agent.session.events as unknown as SpliceEvent[]) {
+  const events = agent.session.snapshotEvents()
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as unknown as SpliceEvent
     if (event.type !== 'agent/inbox/spliced') continue
     const inserted = event.data?.inserted
     if (Array.isArray(inserted) && inserted.some((message) => message?.source?.kind === 'user')) {
-      if (typeof event.seq === 'number') last = event.seq
+      return typeof event.seq === 'number' ? event.seq : 0
     }
   }
-  return last
+  return 0
 }
 
 /** 历史中最后一条本插件注入消息的文本（resume 基线，避免重复注入）。 */

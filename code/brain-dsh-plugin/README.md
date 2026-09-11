@@ -11,6 +11,8 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
   原样作为 plugin message 注入下一次模型输入；任何 warning 或失败只进入日志。
 - 工具与 AutoThink 都把 DSH `agent.id` 作为可信 MCP invocation metadata 传递。手动
   `brain_think` 保留模型显式的 `session_id`，否则才注入该 id；缺少 session 时不创建默认值。
+- 对 `opencode` / `opencode-go` 的 `opencode.ai` 推理请求，插件把当前 DSH 会话 ID 写入
+  `x-opencode-session`。并发会话相互隔离；其他 provider、其他域名和已有显式请求头不变。
 - `InstanceManager`负责按source root的lazy process、timeout、abort、崩溃冷却和plugin
   卸载清理。brain 负责所有 cognition semantics。
 
@@ -24,6 +26,9 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 | `exposeThink` | `true` | 仅当 AutoThink 关闭时公开 `brain_think`。 |
 | `autoThink.enabled` | `true` | 在用户消息边界 anchor 并注入 context。 |
 | `autoThink.timeoutMs` | `5000` | 单次 hook anchor 超时；失败不阻塞 agent step。 |
+| `opencodeSession.enabled` | `true` | 注入 OpenCode Go 要求的会话请求头。 |
+| `opencodeSession.providers` | `[opencode, opencode-go]` | 允许建立会话请求头上下文的 provider。 |
+| `opencodeSession.hosts` | `[opencode.ai]` | 允许写入请求头的目标域名及其子域名。 |
 
 旧 v1 的 vendored tools、approval、`project_root` tool 参数、`default` session 与历史文件语义
 不受支持。v2 public behavior 以 `doc/brain/v2/brain-tools-contract.md` 和
@@ -62,6 +67,6 @@ dsh --profile web --dump-config
 本地 `link:` 改为 core 的精确版本（例如 `0.1.0`），并保持两包同步发布。core 的
 `brain/public-tools` export 是唯一 host/tool contract source，并交付 JavaScript 与 declarations。
 
-`test` 覆盖 instance lifecycle、timeout/abort/crash guard、AutoThink 的单边界逐字注入与失败去重，
-并对真实 v2 MCP server 验证 11-tool surface、trusted session、无路径 glob/grep、write、feedback
-和 absolute-path 转发。
+`test` 覆盖 instance lifecycle、timeout/abort/crash guard、AutoThink 的单边界逐字注入与失败去重、
+OpenCode 并发会话请求头隔离与域名边界，并对真实 v2 MCP server 验证 11-tool surface、trusted
+session、无路径 glob/grep、write、feedback 和 absolute-path 转发。

@@ -20,6 +20,7 @@ import { PUBLIC_BRAIN_TOOLS, type BrainToolDefinition } from 'brain/public-tools
 import { setupAutoThink } from './autothink.js'
 import { InstanceManager } from './instances.js'
 import { extractText } from './mcp.js'
+import { setupOpenCodeSessionHeader } from './opencode-session.js'
 
 // Programmatic surface for verification and embedding. The contract itself is
 // re-exported from core; this package does not own a copy.
@@ -27,6 +28,7 @@ export { InstanceManager } from './instances.js'
 export { PUBLIC_BRAIN_TOOLS } from 'brain/public-tools'
 export { setupAutoThink } from './autothink.js'
 export { extractAnchorContext, extractText } from './mcp.js'
+export { isOpenCodeUrl, setupOpenCodeSessionHeader } from './opencode-session.js'
 
 export const name = '@dsh-external/brain-dsh-plugin'
 export const inject = ['tools', 'agents']
@@ -50,6 +52,14 @@ export interface Config {
     /** 自动注入的单次调用超时（默认 5s；超时静默跳过，不阻塞 step）。 */
     timeoutMs: number
   }
+  opencodeSession: {
+    /** 为 OpenCode Go 请求注入当前 DSH 会话 ID（默认开启）。 */
+    enabled: boolean
+    /** 需要注入的 DSH provider 名称。 */
+    providers: string[]
+    /** 允许注入请求头的目标域名及其子域名。 */
+    hosts: string[]
+  }
 }
 
 export const Config = z.object({
@@ -63,6 +73,11 @@ export const Config = z.object({
     enabled: z.boolean().default(true),
     timeoutMs: z.number().default(5000),
   }),
+  opencodeSession: z.object({
+    enabled: z.boolean().default(true),
+    providers: z.array(z.string()).default(['opencode', 'opencode-go']),
+    hosts: z.array(z.string()).default(['opencode.ai']),
+  }),
 })
 
 const OUTPUT_SCHEMA: Record<string, unknown> = {
@@ -72,8 +87,17 @@ const OUTPUT_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 }
 
-function toHostSchema(definition: BrainToolDefinition): Record<string, unknown> {
-  return definition.inputSchema.toJSONSchema({ target: 'draft-07' })
+export function toHostSchema(definition: BrainToolDefinition): Record<string, unknown> {
+  // Zod attaches a non-enumerable `~standard` property to the generated root.
+  // DSH 0.1.5 deliberately rejects such objects when projecting tool schemas,
+  // so cross the adapter boundary through JSON to produce the wire value that
+  // the JSON Schema generator represents.
+  const encoded = JSON.stringify(definition.inputSchema.toJSONSchema({ target: 'draft-07' }))
+  const schema: unknown = JSON.parse(encoded)
+  if (typeof schema !== 'object' || schema === null || Array.isArray(schema)) {
+    throw new Error(`brain-dsh-plugin: ${definition.name} produced a non-object input schema`)
+  }
+  return schema as Record<string, unknown>
 }
 
 /** The hook owns anchor triggering, so it is the only mode that hides think. */
@@ -111,6 +135,11 @@ export function buildCallArgs(
 }
 
 export function apply(ctx: Context, config: Config): void {
+  ctx.effect(
+    () => setupOpenCodeSessionHeader(ctx, config.opencodeSession),
+    'brain: OpenCode session header',
+  )
+
   // ---- resolve the brain server entry ----
   const require = createRequire(import.meta.url)
   const defaultServerPath = require.resolve('brain')
