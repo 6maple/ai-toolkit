@@ -10,5 +10,5 @@
     "verbatimModuleSyntax": true,
     "types": ["node"]
   },
-  "include": ["plugins/**/*.ts", ".vitepress/**/*.ts", "vite.config.ts"]
+  "include": ["env.d.ts", "lib/**/*.ts", "plugins/**/*.ts", ".vitepress/**/*.ts", "vite.config.ts"]
 }

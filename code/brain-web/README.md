@@ -32,3 +32,6 @@ BRAIN_ROOT=D:\some\brain pnpm dev
 ```
 
 - 页面通过 VitePress 的 Markdown 转换管线渲染，不是前端自行解析 Markdown。
+- 顶部搜索由 brain-web 自己构建索引，覆盖 core、memory 正文与元数据、项目和 session 信息。
+- 支持 `Ctrl/Cmd + K` 或 `/` 打开搜索；中文内容使用分词和二元词索引。
+- 搜索数据会进入本地构建产物，不应发布或共享 `.vitepress/dist`。

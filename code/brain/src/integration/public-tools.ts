@@ -161,7 +161,7 @@ export const writeInputSchema = z.strictObject({
         "importance: low | medium | high | critical",
         "---",
         "",
-        "`summary` is the current gist used in bounded recall and active discovery. Keep it consistent with the cognition. The body contains any additional detail and may be empty when the `summary` preserves the complete meaning.",
+        "`summary` supports bounded recall and active discovery. State the cognition's current meaning and when it applies; when useful, indicate which procedures, conditions, or evidence the body provides. Preserve its cognitive role and key qualifications so the summary is not misleading. Keep it consistent with the document. The body may be empty when the summary expresses the complete cognition.",
         "",
         "`importance` is the reasonably expected consequence if this cognition applies but is not recalled, considering how recoverable the omission would be:",
         "",
@@ -199,13 +199,13 @@ export const editInputSchema = z
       .min(1)
       .optional()
       .describe(
-        "Non-empty list of exact targeted replacements. Form each `oldText` from the current exact document content, not from a recalled or discovered `summary`. Every `edits[].oldText` is matched against the same original document before any replacement is applied; no edit sees another edit's `newText`. Each `oldText` must identify one unique region, and the matched regions must not overlap. If any replacement is invalid, none are applied. Use `content` instead when supplying the complete resulting document is clearer than a set of targeted replacements.",
+        "Non-empty list of exact targeted replacements. Form each `oldText` from the current exact document content, not from a recalled or discovered `summary`. Every `edits[].oldText` is matched against the same original document before any replacement is applied; no edit sees another edit's `newText`. Each `oldText` must identify one unique region, and the matched regions must not overlap. If any replacement is invalid, none are applied. When changing archival meaning or applicability, update `summary` in the same edit so it preserves the cognitive role, key qualifications, and useful body-reading cues. Use `content` instead when supplying the complete resulting document is clearer than a set of targeted replacements.",
       ),
     content: z
       .string()
       .optional()
       .describe(
-        "Complete resulting Markdown for the same existing cognition document. Use this mode when revising or reorganizing the document as a whole; it still preserves the cognition's identity.\n\nFor `core.md`, provide the complete resulting core Markdown. Core does not use archival `summary`/`importance` frontmatter.\n\nFor an archival cognition, provide the complete resulting archival document with YAML frontmatter containing a non-empty `summary` and `importance` set to `low`, `medium`, `high`, or `critical`. Keep `summary` consistent with the resulting cognition. `importance` remains the reasonably expected consequence if this cognition applies but is not recalled; change it only when that omission consequence changes.",
+        "Complete resulting Markdown for the same existing cognition document. Use this mode when revising or reorganizing the document as a whole; it still preserves the cognition's identity.\n\nFor `core.md`, provide the complete resulting core Markdown. Core does not use archival `summary`/`importance` frontmatter.\n\nFor an archival cognition, provide the complete resulting archival document with YAML frontmatter containing a non-empty `summary` and `importance` set to `low`, `medium`, `high`, or `critical`. Keep `summary` consistent with the resulting cognition, including its meaning, applicability, key qualifications, and useful body-reading cues. `importance` remains the reasonably expected consequence if this cognition applies but is not recalled; change it only when that omission consequence changes.",
       ),
   })
   .refine((value) => (value.edits === undefined) !== (value.content === undefined), {
@@ -307,7 +307,7 @@ export const PUBLIC_BRAIN_TOOLS: readonly BrainToolDefinition[] = [
   {
     name: "brain_cat",
     description:
-      "Read one concrete active archival cognition Markdown document when its recalled or discovered `summary` is insufficient and exact reasoning, qualifications, evidence, or details matter. The bounded result uses stable 1-based logical lines and includes current `status` and unresolved challenge when present. Continue from `next_offset` when returned. An oversized line is returned as a marked excerpt with instructions for reading the complete file.",
+      "Read one concrete active archival cognition Markdown document to obtain the method, conditions, reasoning, or evidence needed for the current task beyond its recalled or discovered summary. The bounded result uses stable 1-based logical lines and includes current `status` and unresolved challenge when present. Continue from `next_offset` when returned. An oversized line is returned as a marked excerpt with instructions for reading the complete file.",
     inputSchema: catInputSchema,
   },
   {

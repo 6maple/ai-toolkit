@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/shared.ts"]
+  "include": ["src/shared.ts", "src/proper-lockfile.d.ts"]
 }

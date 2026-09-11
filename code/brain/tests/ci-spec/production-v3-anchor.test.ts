@@ -292,17 +292,17 @@ describe("T6 anchor renderer", () => {
     expect(rendered).toContain("## How to Use This Context");
     expect(rendered).toContain("## Continuity Scopes");
     expect(rendered).toContain("## Resident Working Cognition");
-    expect(rendered).toContain("## Recalled Archival Cognition");
+    expect(rendered).toContain("## Recalled Archival Cognition Summaries");
     expect(rendered).toContain('path="@session/s1/core.md"');
     expect(rendered).toContain('empty="true">\n</core>');
     expect(rendered).toContain(
-      '<recalled_cognition path="@project/memories/knowledge/a.md" status="questioned">\na "quote" &amp; &lt;fact&gt;\nnext\n</recalled_cognition>',
+      '<recalled_cognition_summary path="@project/memories/knowledge/a.md" status="questioned">\na "quote" &amp; &lt;fact&gt;\nnext\n</recalled_cognition_summary>',
     );
     expect(rendered).toContain("`@session/s1`");
     const coreOpeningLines = rendered.split("\n").filter((line) => line.startsWith("<core "));
     expect(coreOpeningLines).toHaveLength(3);
     expect(rendered.match(/^<brain_think_context>$/gm) ?? []).toHaveLength(1);
-    expect(rendered.match(/^<recalled_cognition\b/gm) ?? []).toHaveLength(1);
+    expect(rendered.match(/^<recalled_cognition_summary\b/gm) ?? []).toHaveLength(1);
     expect(rendered).not.toContain("<brain_namespace");
     expect(rendered).not.toContain("<core_memory");
     expect(rendered).not.toContain("<archival_memory");
@@ -325,10 +325,10 @@ describe("T6 anchor renderer", () => {
       status: "questioned",
     });
     expect(active).toBe(
-      '<recalled_cognition path="@project/memories/knowledge/a.md">\nA &amp; &lt;B&gt;\n</recalled_cognition>',
+      '<recalled_cognition_summary path="@project/memories/knowledge/a.md">\nA &amp; &lt;B&gt;\n</recalled_cognition_summary>',
     );
     expect(questioned).toBe(
-      '<recalled_cognition path="@project/memories/knowledge/b.md" status="questioned">\nB\n</recalled_cognition>',
+      '<recalled_cognition_summary path="@project/memories/knowledge/b.md" status="questioned">\nB\n</recalled_cognition_summary>',
     );
   });
 });

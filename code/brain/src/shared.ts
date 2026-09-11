@@ -1,10 +1,26 @@
 /**
- * brain/shared — 给同仓库消费方（如 brain-web）使用的共享导出。
+ * brain/shared — 给可信宿主适配器和同仓库消费方使用的共享导出。
  *
  * 这里只做透传（passthrough），不封装业务逻辑、不新增 read-only 层。
  * 暴露的是 brain 内部已有的读取/解析/状态模块，便于复用同一套 namespace、
  * document schema、companion codec 和 storage 语义。
  */
+
+// --- host integration ---
+export {
+  registerBrainTools,
+  type BrainApplicationServices,
+  type BrainToolInvocation,
+  type BrainToolInvocationResolver,
+  type BrainToolRegistrar,
+  type BrainToolRegistrationOptions,
+  type HostInvocationAdapter,
+} from "./integration/mcp-adapter.ts";
+export {
+  createProductionBrainServices,
+  restoreProductionBrainContext,
+  type ProductionBrainRestoreRequest,
+} from "./runtime/production.ts";
 
 // --- brain logical namespace ---
 export {

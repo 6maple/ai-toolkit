@@ -1,6 +1,6 @@
 # Brain v4 model-facing cognition interface — 临时设计稿
 
-> 状态：Implemented in source / representative replay pending，2026-09-02。
+> 状态：Implemented in source / user manual acceptance pending，2026-09-10。
 >
 > 本文件是本轮 v4 model-facing cognition interface 文案调整的唯一设计记录。未在本文明确重开的行为继续以 v3 当前基线为准。
 >
@@ -57,14 +57,14 @@ Shared Brain renderer 中的 XML-like tags 只负责界定动态内容：
 
 - `<brain_think_context>`：shared Brain working context 的边界；
 - `<core>`：一份 concrete resident core 的内容边界；
-- `<recalled_cognition>`：一条 recalled archival cognition 的边界。
+- `<recalled_cognition_summary>`：一条 recalled archival cognition summary 的边界。
 
 attribute 只放短小、原子的动态 metadata：
 
 - `core.path`；
 - `core.empty`（只有确实需要表达空 core 时）；
-- `recalled_cognition.path`；
-- `recalled_cognition.status`（只有存在 current status 时）。
+- `recalled_cognition_summary.path`；
+- `recalled_cognition_summary.status`（只有存在 current status 时）。
 
 不再用长 attribute 承载 instructions，也不再生成以下静态 presentation containers：
 
@@ -75,7 +75,7 @@ attribute 只放短小、原子的动态 metadata：
 - `memory_candidates`；
 - `memory_candidate_item`。
 
-model-facing 名称统一使用 **recalled cognition**，不使用容易被理解为“尚未确认观点或搜索线索”的 **memory candidate**。
+model-facing 摘要名称统一使用 **recalled cognition summary**，不使用容易被理解为“尚未确认观点或搜索线索”的 **memory candidate**。
 
 ## 3. 语义与文案 ownership
 
@@ -216,25 +216,25 @@ A goal or commitment that remains intended until fulfilled, cancelled, or replac
 
 A reusable method together with its trigger and prerequisites. Apply its procedure, checks, stopping conditions, and fallback when appropriate. Do not turn current facts, a one-time decision, progress, or result into a skill. An agent method is not automatically a product requirement.
 
-## Recalled Archival Cognition
+## Recalled Archival Cognition Summaries
 
-Use the `summary` in a `<recalled_cognition>` directly when it contains what the current work needs. Read the full document only when exact reasoning, qualifications, evidence, or detail are needed.
+Use these summaries to identify saved cognition relevant to the current task. Preserve the decisions, facts, intentions, and constraints they express according to each cognition's role. A summary is not necessarily the complete cognition.
 
-<recalled_cognition path="@project/memories/decision/example.md">
+<recalled_cognition_summary path="@project/memories/decision/example.md">
 ...escaped current summary text...
-</recalled_cognition>
+</recalled_cognition_summary>
 
-<recalled_cognition path="@project/memories/knowledge/example.md" status="questioned">
+<recalled_cognition_summary path="@project/memories/knowledge/example.md" status="questioned">
 ...escaped current summary text...
-</recalled_cognition>
+</recalled_cognition_summary>
 
 ### Questioned Cognition
 
-A `status="questioned"` marker applies only to that `<recalled_cognition>`. Preserve and use what remains established, while treating the current challenge as unresolved.
+A `status="questioned"` marker applies only to that `<recalled_cognition_summary>`. Preserve and use what remains established, while treating the current challenge as unresolved.
 
-### Read More Only When Needed
+### Read Content for Application
 
-Use `brain_cat` when a `<recalled_cognition>` summary is insufficient and the full archival cognition or its exact qualifications matter.
+When applying a method or relying on a cognition's conditions, reasoning, or evidence, use `brain_cat` to obtain the needed content before proceeding. Simple cognition fully expressed by its summary can be used directly. Do not reread content already available in the current context.
 
 ### Find Cognition Not Shown Here
 
@@ -277,7 +277,7 @@ Carry forward cognition that is formed or changed and should remain available be
 
 ### 5.2 Recalled cognition
 
-- tag 名固定为 `recalled_cognition`，不用 `memory_candidate_item`。
+- tag 名固定为 `recalled_cognition_summary`，不用 `memory_candidate_item`。
 - `path` 是 canonical public path；role 和 continuity scope 已由 path 表达，不重复增加 `scope`、`role`、`layer` 等第二份 metadata owner。
 - current summary 放在 tag body 中，而不是 `summary` attribute。
 - summary 作为 XML text 时转义 `&`、`<`、`>`；path/status attribute 使用 attribute escaping。
@@ -293,8 +293,8 @@ Codex overlay 位于 shared `# User-Requested Working Context` 之前。当前�
 ```xml
 <brain_think_instructions>
 The user explicitly requires the following `<brain_think_context>` to be used as current context for this turn.
-The latest user message defines the request. Treat every relevant `<core>` and `<recalled_cognition>` item as already established working cognition, not as background, a search lead, or material that must first be reconstructed from project files.
-You must let every relevant item materially determine your interpretation, tool choices, actions, and final answer according to its stated cognitive role. Use a `<recalled_cognition>` item's `summary` directly when it is sufficient; use `brain_cat` when its details are needed.
+The latest user message defines the request. Treat every relevant `<core>` and `<recalled_cognition_summary>` item as already established working cognition, not as background, a search lead, or material that must first be reconstructed from project files.
+You must let every relevant item materially determine your interpretation, tool choices, actions, and final answer according to its stated cognitive role. Follow the shared context's guidance for applying summaries and reading the cognition content needed for the current task.
 Other evidence may add facts or update the cognition it directly addresses. It must not replace, downgrade, or cause you to omit a relevant decision, intention, preference, constraint, or commitment merely because files, commits, timestamps, or other sources are newer or silent.
 Before completing the turn, ensure that your actions and answer reflect every relevant item.
 </brain_think_instructions>
@@ -470,7 +470,7 @@ Non-negative integer number of surrounding logical document line excerpts to inc
 Model-visible description：
 
 ```text
-Read one concrete active archival cognition Markdown document when its recalled or discovered `summary` is insufficient and exact reasoning, qualifications, evidence, or details matter. The bounded result uses stable 1-based logical lines and includes current `status` and unresolved challenge when present. Continue from `next_offset` when returned. An oversized line is returned as a marked excerpt with instructions for reading the complete file.
+Read one concrete active archival cognition Markdown document to obtain the method, conditions, reasoning, or evidence needed for the current task beyond its recalled or discovered summary. The bounded result uses stable 1-based logical lines and includes current `status` and unresolved challenge when present. Continue from `next_offset` when returned. An oversized line is returned as a marked excerpt with instructions for reading the complete file.
 ```
 
 `path` parameter description：
@@ -493,7 +493,7 @@ Positive integer maximum number of logical document lines to return. Omit it to 
 
 设计判断：
 
-- `brain_cat` 是 concrete archival document read，不是默认 retrieval pipeline；普通结果返回 exact complete lines，只有明确标记的 oversized-line excerpt 是例外。只有 recalled/discovered summary 对当前任务不够，或确实需要 exact qualifications/evidence/details 时才读取正文。
+- `brain_cat` 是 concrete archival document read，不是默认 retrieval pipeline；普通结果返回 exact complete lines，只有明确标记的 oversized-line excerpt 是例外。应用方法或依赖条件、依据时获取所需正文；摘要已完整表达简单认知，或当前 context 已有所需内容时不重复读取。
 - readable object 只包含 active archival cognition `.md` document。Applicable core 已完整 resident，不通过此 Tool 重读；core 的 maintenance 仍由 `brain_edit` 负责。
 - 读取坐标覆盖统一的 archival Markdown document，包括 frontmatter 与 body；没有“summary 占特殊 offset、body 使用另一套坐标”的私有协议。
 - `offset`、`limit`、rendered line number、`brain_grep` line number 与 `next_offset` 共享同一套稳定的 1-based logical-document coordinate；文档未变时，普通 continuation 不得跳过或重复稳定内容。Oversized-line remainder 是明确标记并提供恢复路径的例外，不伪装成已完整返回。
@@ -532,7 +532,7 @@ summary: <non-empty current gist>
 importance: low | medium | high | critical
 ---
 
-`summary` is the current gist used in bounded recall and active discovery. Keep it consistent with the cognition. The body contains any additional detail and may be empty when the `summary` preserves the complete meaning.
+`summary` supports bounded recall and active discovery. State the cognition's current meaning and when it applies; when useful, indicate which procedures, conditions, or evidence the body provides. Preserve its cognitive role and key qualifications so the summary is not misleading. Keep it consistent with the document. The body may be empty when the summary expresses the complete cognition.
 
 `importance` is the reasonably expected consequence if this cognition applies but is not recalled, considering how recoverable the omission would be:
 
@@ -553,7 +553,7 @@ Choose the reasonably expected consequence, not a remote worst case. `importance
 - `path` 只接受 concrete archival `.md` cognition。Continuity scope 与 cognitive role 继续由 path 表达；详细 role/scope 选择规则由 shared `brain_think_context` 拥有，不在本 Tool 重复一套。
 - Applicable core 已 resident，且 core 的同一认知维护由 `brain_edit` 完成；`brain_write` 不创建、覆盖或初始化 `core.md`。
 - `content` 是 complete document，不是 patch。Runtime 在任何 create/overwrite side effect 之前完成 newline normalization 与完整 archival contract validation。
-- `summary` 是 recall/discovery 使用的 current gist，必须与 document 的 current cognition 一致；body 只承载需要的补充细节，summary 已完整表达含义时允许为空。
+- `summary` 同时表达当前认知要点、适用场景与必要的正文线索；保持 decision/knowledge/intention/skill 的角色和关键限定，不把它改成只有触发词的索引。body 承载流程、条件和依据，简单认知完整表达时允许为空。
 - `importance` 只表达 cognition 适用却未被 recall 时的合理预期遗漏后果与可恢复性。四档定义保留完整，但用分层文本呈现；不再把结构、summary、body、importance 定义压成一个长段落。
 - 普通 Markdown body 与额外 frontmatter 继续按 v3 contract 被保留，但不会因此获得新的 Brain mechanism semantics；model-facing description 只教必需格式和 Brain 实际消费的 metadata，不邀请创建无作用字段。
 - 成功结果继续使用 `created <canonical-path>` 或 `overwrote <canonical-path>`，直接报告实际 identity action。缺失/无效 frontmatter、summary 或 importance 继续在 mutation 前失败，并给出提交完整有效 archival document 的修正方向。
@@ -576,7 +576,7 @@ Concrete existing cognition document to update. Use `<scope-root>/core.md` or `<
 `edits` parameter description：
 
 ```text
-Non-empty list of exact targeted replacements. Form each `oldText` from the current exact document content, not from a recalled or discovered `summary`. Every `edits[].oldText` is matched against the same original document before any replacement is applied; no edit sees another edit's `newText`. Each `oldText` must identify one unique region, and the matched regions must not overlap. If any replacement is invalid, none are applied. Use `content` instead when supplying the complete resulting document is clearer than a set of targeted replacements.
+Non-empty list of exact targeted replacements. Form each `oldText` from the current exact document content, not from a recalled or discovered `summary`. Every `edits[].oldText` is matched against the same original document before any replacement is applied; no edit sees another edit's `newText`. Each `oldText` must identify one unique region, and the matched regions must not overlap. If any replacement is invalid, none are applied. When changing archival meaning or applicability, update `summary` in the same edit so it preserves the cognitive role, key qualifications, and useful body-reading cues. Use `content` instead when supplying the complete resulting document is clearer than a set of targeted replacements.
 ```
 
 `edits[].oldText` parameter description：
@@ -598,7 +598,7 @@ Complete resulting Markdown for the same existing cognition document. Use this m
 
 For `core.md`, provide the complete resulting core Markdown. Core does not use archival `summary`/`importance` frontmatter.
 
-For an archival cognition, provide the complete resulting archival document with YAML frontmatter containing a non-empty `summary` and `importance` set to `low`, `medium`, `high`, or `critical`. Keep `summary` consistent with the resulting cognition. `importance` remains the reasonably expected consequence if this cognition applies but is not recalled; change it only when that omission consequence changes.
+For an archival cognition, provide the complete resulting archival document with YAML frontmatter containing a non-empty `summary` and `importance` set to `low`, `medium`, `high`, or `critical`. Keep `summary` consistent with the resulting cognition, including its meaning, applicability, key qualifications, and useful body-reading cues. `importance` remains the reasonably expected consequence if this cognition applies but is not recalled; change it only when that omission consequence changes.
 ```
 
 设计判断：
@@ -749,7 +749,7 @@ For `feedback=question`, the required complete non-empty description of what is 
 - 每个 Tool/parameter description 均非空并随 shared definitions 进入 generic/DSH adapter，但不对完整句子、段落顺序或同义措辞做 snapshot；
 - generic/manual integration 暴露 `brain_think`，Codex mechanical restore 隐藏它；
 - stable guidance 使用 Markdown hierarchy；
-- shared renderer 的 dynamic tag 只有 `<brain_think_context>`、`<core>`、`<recalled_cognition>`；Codex 的静态 attention overlay 另用 `<brain_think_instructions>` 界定；
+- shared renderer 的 dynamic tag 只有 `<brain_think_context>`、`<core>`、`<recalled_cognition_summary>`；Codex 的静态 attention overlay 另用 `<brain_think_instructions>` 界定；
 - tag/attribute 的 `path`、`status`、`empty` 和 escaping 正确；
 - 每个 concrete core 的 scope-specific maintain/archive ownership 完整；
 - recalled summary 在 tag body 中，questioned status 不改变 cognition text；
@@ -772,7 +772,7 @@ For `feedback=question`, the required complete non-empty description of what is 
 - 用关键词存在代替真实 semantic evaluation；
 - 因测试方便重新引入 static XML container 或重复 metadata owner。
 
-Representative Replay/Eval 负责验证模型行为，至少覆盖：
+本次摘要调整的模型行为由用户人工验收，不新增模型行为评估套件。以下场景供人工观察：
 
 - latest user message 改变当前 request，但未影响的 decision/constraint 继续生效；
 - 磁盘实现状态更新某个事实，但不抹掉 distinct intention 或 workflow decision；
@@ -814,10 +814,20 @@ Representative Replay/Eval 负责验证模型行为，至少覆盖：
 | 用户交互应花在真正需要用户提供的信息，而不是重复背景和纠偏 | Replay/Eval 检查 continuity、重复纠正、约束恢复以及额外 context/tool 成本 | 验收回到原始用户收益，不以 Tool call 或关键词代替 |
 | 不做无 evidence 的预防性设计 | v4 不改变 storage、learning、promotion、approval、history、Git 或 coordination subsystem | 本轮 scope 与已观察 failure 相称 |
 
-当前反向审计没有发现需要为实现本轮目标新增 Brain subsystem 的一级缺口。真正未验证的是 presentation 是否能让目标模型稳定产生上述行为，因此需要 representative Replay/Eval，而不是继续增加静态规则。
+当前反向审计没有发现需要为实现本轮目标新增 Brain subsystem 的一级缺口。真正未验证的是 presentation 是否能让目标模型稳定产生上述行为，因此本次调整交由用户人工验收，不新增评估子系统。
 
 ## 12. 下一步
 
 11 个 Tool 的 description/schema prose 与整份临时稿的 consistency/self-sufficiency audit 已完成。Shared prompt、dynamic presentation、Codex overlay、Tool wording 和验收点之间没有发现尚未说明的一级语义缺口；具体 tag、Tool、parameter、enum value、field 和 path pattern 的 model-facing 引用已统一使用 inline code，实际 dynamic tags 保持原样。
 
-Shared renderer、Codex attention overlay、Tool description/schema prose 与 oversized-line presentation 已按本文完成源码调整和确定性测试。下一步在明确需要时执行 stub、重新安装并做 representative model replay。只有实际出现需要独立规格或验收文档的复杂度时，再讨论是否增加其他 v4 文档；不机械扩展完整文档集。
+Shared renderer、Codex attention overlay、Tool description/schema prose 与 oversized-line presentation 已按本文完成源码调整和确定性测试。2026-09-10 的摘要标签、写作约定与读取指导调整已同步源码；模型效果由用户人工验收。stub、重新安装仍未执行。只有实际出现需要独立规格或验收文档的复杂度时，再讨论是否增加其他 v4 文档；不机械扩展完整文档集。
+
+## 13. 2026-09-10 摘要消费调整
+
+用户确认：动态标签使用 `recalled_cognition_summary`；摘要参考 Agent Skills description 的“是什么、何时使用”写法，补充必要的正文线索。模型实际应用方法或依赖条件、依据时获取所需正文；已明确的决定、事实、意图与约束仍作为 working cognition 生效。
+
+写作参考：[Agent Skills specification](https://agentskills.io/specification)、[Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)。借鉴发现和触发方式，保留 Brain 四类认知角色；不要求每条摘要机械附加读取命令。
+
+范围：shared renderer、Codex overlay 的标签引用、`brain_cat` 选择时机、`brain_write.content` 与 `brain_edit` 两种模式的摘要维护指导、现有标签结构测试及本稿。保留 `summary` 存储字段、现有读取工具、排序和预算；不新增 `has_body`，不自动改写已有记忆。程序一致性使用现有检查；模型实际效果由用户人工验收，不新增行为评估套件。
+
+程序检查：Brain 现有 155 项测试、源码类型检查、三个修改的 Brain TypeScript 文件格式检查、Codex 插件现有 8 项检查通过。全量 `vp check` 在未改动的 `storage.ts` 和 `production-v2-foundation.test.ts` 上报告格式问题；`vp lint` 另报告现有测试文件的类型错误和未使用导入，未计为全量检查通过。插件的 `pnpm test` 因包管理器解析所需的 registry 请求失败，随后直接运行其同一 `node scripts/verify.mjs` 脚本通过。模型行为仍待用户人工验收。

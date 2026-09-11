@@ -40,6 +40,9 @@ export interface HostInvocationAdapter {
   currentSessionId(extra: unknown): SessionId | undefined;
 }
 
+/** Structural MCP host boundary that avoids coupling consumers to Brain's SDK instance. */
+export type BrainToolRegistrar = Pick<McpServer, "registerTool">;
+
 /** Compatibility adapter for hosts that forward a trusted thread id in MCP request metadata. */
 export const THREAD_META_HOST_INVOCATION: HostInvocationAdapter = {
   currentSessionId(extra: unknown): SessionId | undefined {
@@ -402,7 +405,7 @@ function handlerFor(
 }
 
 export function registerBrainTools(
-  server: McpServer,
+  server: BrainToolRegistrar,
   services: BrainApplicationServices | undefined,
   hostInvocation: HostInvocationAdapter = THREAD_META_HOST_INVOCATION,
   options: BrainToolRegistrationOptions = {},

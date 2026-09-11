@@ -43,9 +43,9 @@ export function escapeXmlText(value: string): string {
 export function renderAnchorCandidateItem(candidate: AnchorCandidateProjection): string {
   const status = candidate.status === undefined ? "" : ` status="${candidate.status}"`;
   return [
-    `<recalled_cognition path="${escapeXmlAttribute(formatPublicPath(candidate.path))}"${status}>`,
+    `<recalled_cognition_summary path="${escapeXmlAttribute(formatPublicPath(candidate.path))}"${status}>`,
     escapeXmlText(candidate.summary),
-    "</recalled_cognition>",
+    "</recalled_cognition_summary>",
   ].join("\n");
 }
 
@@ -147,19 +147,19 @@ function renderArchivalCognition(candidates: readonly AnchorCandidateProjection[
     "",
     "A reusable method together with its trigger and prerequisites. Apply its procedure, checks, stopping conditions, and fallback when appropriate. Do not turn current facts, a one-time decision, progress, or result into a skill. An agent method is not automatically a product requirement.",
     "",
-    "## Recalled Archival Cognition",
+    "## Recalled Archival Cognition Summaries",
     "",
-    "Use the `summary` in a `<recalled_cognition>` directly when it contains what the current work needs. Read the full document only when exact reasoning, qualifications, evidence, or detail are needed.",
+    "Use these summaries to identify saved cognition relevant to the current task. Preserve the decisions, facts, intentions, and constraints they express according to each cognition's role. A summary is not necessarily the complete cognition.",
     "",
     recalled,
     "",
     "### Questioned Cognition",
     "",
-    'A `status="questioned"` marker applies only to that `<recalled_cognition>`. Preserve and use what remains established, while treating the current challenge as unresolved.',
+    'A `status="questioned"` marker applies only to that `<recalled_cognition_summary>`. Preserve and use what remains established, while treating the current challenge as unresolved.',
     "",
-    "### Read More Only When Needed",
+    "### Read Content for Application",
     "",
-    "Use `brain_cat` when a `<recalled_cognition>` summary is insufficient and the full archival cognition or its exact qualifications matter.",
+    "When applying a method or relying on a cognition's conditions, reasoning, or evidence, use `brain_cat` to obtain the needed content before proceeding. Simple cognition fully expressed by its summary can be used directly. Do not reread content already available in the current context.",
     "",
     "### Find Cognition Not Shown Here",
     "",

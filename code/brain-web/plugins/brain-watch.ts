@@ -14,14 +14,43 @@ export function brainWatchPlugin(): Plugin {
     name: 'brain-watch',
 
     configureServer(server) {
-      server.watcher.add(BRAIN_ROOT)
-      server.watcher.on('change', (file) => {
-        const normalized = file.replaceAll('\\', '/')
-        const root = BRAIN_ROOT.replaceAll('\\', '/')
-        if (normalized.startsWith(root)) {
-          server.restart()
+      let restartTimer: NodeJS.Timeout | undefined
+      let restartInFlight: Promise<void> | undefined
+      let restartQueued = false
+
+      const restart = async () => {
+        if (restartInFlight) {
+          restartQueued = true
+          return restartInFlight
         }
-      })
+
+        restartInFlight = (async () => {
+          do {
+            restartQueued = false
+            await server.restart()
+          } while (restartQueued)
+        })().finally(() => {
+          restartInFlight = undefined
+        })
+
+        return restartInFlight
+      }
+
+      const onBrainEvent = (_event: string, file: string) => {
+        const relative = path.relative(BRAIN_ROOT, file)
+        if (relative.startsWith('..') || path.isAbsolute(relative)) return
+
+        clearTimeout(restartTimer)
+        restartTimer = setTimeout(() => void restart(), 200)
+      }
+
+      server.watcher.add(BRAIN_ROOT)
+      server.watcher.on('all', onBrainEvent)
+
+      return () => {
+        clearTimeout(restartTimer)
+        server.watcher.off('all', onBrainEvent)
+      }
     },
   }
 }

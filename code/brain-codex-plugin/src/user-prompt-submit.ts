@@ -46,8 +46,8 @@ async function readStdin(): Promise<string> {
 const brainThinkInstructions = [
   "<brain_think_instructions>",
   "The user explicitly requires the following `<brain_think_context>` to be used as current context for this turn.",
-  "The latest user message defines the request. Treat every relevant `<core>` and `<recalled_cognition>` item as already established working cognition, not as background, a search lead, or material that must first be reconstructed from project files.",
-  "You must let every relevant item materially determine your interpretation, tool choices, actions, and final answer according to its stated cognitive role. Use a `<recalled_cognition>` item's `summary` directly when it is sufficient; use `brain_cat` when its details are needed.",
+  "The latest user message defines the request. Treat every relevant `<core>` and `<recalled_cognition_summary>` item as already established working cognition, not as background, a search lead, or material that must first be reconstructed from project files.",
+  "You must let every relevant item materially determine your interpretation, tool choices, actions, and final answer according to its stated cognitive role. Follow the shared context's guidance for applying summaries and reading the cognition content needed for the current task.",
   "Other evidence may add facts or update the cognition it directly addresses. It must not replace, downgrade, or cause you to omit a relevant decision, intention, preference, constraint, or commitment merely because files, commits, timestamps, or other sources are newer or silent.",
   "Before completing the turn, ensure that your actions and answer reflect every relevant item.",
   "</brain_think_instructions>",

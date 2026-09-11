@@ -9,9 +9,11 @@ import {
   formatPublicPath,
   listProjectMetadata,
   nodeCognitionStoreFs,
+  parseSessionId,
   projectAccessibility,
   type CognitiveRole,
   type ProjectMetadata,
+  type SessionId,
   type ScopeRef,
 } from 'brain/shared'
 
@@ -19,6 +21,29 @@ export interface BrainPage {
   path: string
   content: string
   tipTitle?: string
+}
+
+export interface BrainSearchDocument {
+  id: string
+  route: string
+  title: string
+  path: string
+  scope: 'global' | 'project' | 'session'
+  project?: string
+  projectId?: string
+  sessionId?: string
+  role?: CognitiveRole
+  summary?: string
+  importance?: string
+  status?: 'active' | 'questioned'
+  challenge?: string
+  content: string
+  metadata: string
+}
+
+export interface BrainCatalog {
+  pages: BrainPage[]
+  searchDocuments: BrainSearchDocument[]
 }
 
 interface MemoryMeta {
@@ -46,14 +71,14 @@ async function bindingFor(projectId: string) {
   return createStorageBinding({ brainRoot: BRAIN_ROOT, projectId })
 }
 
-async function listSessions(projectId: string): Promise<string[]> {
+async function listSessions(projectId: string): Promise<SessionId[]> {
   const binding = await bindingFor(projectId)
   const sessionsRoot = path.join(binding.brainRoot, 'projects', projectId, 'sessions')
   try {
     const entries = await fs.readdir(sessionsRoot, { withFileTypes: true })
     return entries
       .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
+      .map((entry) => parseSessionId(entry.name))
       .sort()
   } catch {
     return []
@@ -119,6 +144,7 @@ function renderMemory(memory: MemoryMeta): string {
     '| Field | Value |',
     '| --- | --- |',
     `| Brain path | \`${memory.path}\` |`,
+    `| summary | ${memory.summary} |`,
     `| role | ${memory.role} |`,
     `| importance | ${memory.importance} |`,
     `| status | ${memory.status} |`,
@@ -176,10 +202,65 @@ function firstH1(text: string): string | undefined {
   return line ? line.replace(/^#\s+/, '').trim() : undefined
 }
 
-export async function listBrainPages(): Promise<BrainPage[]> {
+export async function loadBrainCatalog(): Promise<BrainCatalog> {
   const pages: BrainPage[] = []
+  const searchDocuments: BrainSearchDocument[] = []
+  const searchIds = new Set<string>()
   const push = (pathValue: string, content: string, tipTitle?: string) =>
     pages.push({ path: pathValue, content, ...(tipTitle ? { tipTitle } : {}) })
+  const pushSearch = (document: BrainSearchDocument) => {
+    if (searchIds.has(document.id)) {
+      throw new Error(`Duplicate Brain search document ID: ${document.id}`)
+    }
+    searchIds.add(document.id)
+    searchDocuments.push(document)
+  }
+
+  const memorySearchDocument = (
+    memory: MemoryMeta,
+    pathValue: string,
+    scope: BrainSearchDocument['scope'],
+    context: {
+      project?: ProjectMetadata
+      sessionId?: string
+    } = {},
+  ): BrainSearchDocument => {
+    const route = `/brain/${pathValue}`
+    const metadata = [
+      memory.path,
+      `scope ${scope}`,
+      `role ${memory.role}`,
+      `importance ${memory.importance}`,
+      `status ${memory.status}`,
+      `retrievability ${memory.retrievability.toFixed(3)}`,
+      `exposure ${memory.exposure}`,
+      memory.challenge ? `challenge ${memory.challenge}` : '',
+      context.project ? `project ${context.project.name} ${context.project.projectId}` : '',
+      context.project ? `sourceRoots ${context.project.sourceRoots.join(' ')}` : '',
+      context.sessionId ? `session ${context.sessionId}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    return {
+      id: route,
+      route,
+      title: memory.summary,
+      path: memory.path,
+      scope,
+      ...(context.project
+        ? { project: context.project.name, projectId: context.project.projectId }
+        : {}),
+      ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+      role: memory.role,
+      summary: memory.summary,
+      importance: memory.importance,
+      status: memory.status,
+      ...(memory.challenge ? { challenge: memory.challenge } : {}),
+      content: memory.body,
+      metadata,
+    }
+  }
 
   const global = await loadScopeSnapshot('global', { kind: 'global' })
   if (global) {
@@ -188,10 +269,21 @@ export async function listBrainPages(): Promise<BrainPage[]> {
     }
     if (global.core.length > 0) {
       push('global/core', `# Global Core\n\n${global.core}`, firstH1(global.core))
+      pushSearch({
+        id: '/brain/global/core',
+        route: '/brain/global/core',
+        title: 'Global Core',
+        path: '@global/core.md',
+        scope: 'global',
+        content: global.core,
+        metadata: `@global/core.md\nscope global\ncycle ${global.cycle}`,
+      })
     }
     for (const memory of global.memories) {
       if (memory.hasContent) {
-        push(memoryPathKey(memory.path), renderMemory(memory), firstH1(memory.body))
+        const pathValue = memoryPathKey(memory.path)
+        push(pathValue, renderMemory(memory), firstH1(memory.body))
+        pushSearch(memorySearchDocument(memory, pathValue, 'global'))
       }
     }
   }
@@ -206,10 +298,29 @@ export async function listBrainPages(): Promise<BrainPage[]> {
     }
     if (scope.core.length > 0) {
       push(`${projectPrefix}/core`, `# Project Core\n\n${scope.core}`, firstH1(scope.core))
+      pushSearch({
+        id: `/brain/${projectPrefix}/core`,
+        route: `/brain/${projectPrefix}/core`,
+        title: `${project.name} · Project Core`,
+        path: '@project/core.md',
+        scope: 'project',
+        project: project.name,
+        projectId: project.projectId,
+        content: scope.core,
+        metadata: [
+          '@project/core.md',
+          `scope project`,
+          `project ${project.name} ${project.projectId}`,
+          `sourceRoots ${project.sourceRoots.join(' ')}`,
+          `cycle ${scope.cycle}`,
+        ].join('\n'),
+      })
     }
     for (const memory of scope.memories) {
       if (memory.hasContent) {
-        push(memoryPathKey(memory.path, project.projectId), renderMemory(memory), firstH1(memory.body))
+        const pathValue = memoryPathKey(memory.path, project.projectId)
+        push(pathValue, renderMemory(memory), firstH1(memory.body))
+        pushSearch(memorySearchDocument(memory, pathValue, 'project', { project }))
       }
     }
 
@@ -226,18 +337,43 @@ export async function listBrainPages(): Promise<BrainPage[]> {
       }
       if (sessionScope.core.length > 0) {
         push(`${sessionPrefix}/core`, `# Session Core\n\n${sessionScope.core}`, firstH1(sessionScope.core))
+        pushSearch({
+          id: `/brain/${sessionPrefix}/core`,
+          route: `/brain/${sessionPrefix}/core`,
+          title: `${project.name} · Session ${sessionId} Core`,
+          path: `@session/${sessionId}/core.md`,
+          scope: 'session',
+          project: project.name,
+          projectId: project.projectId,
+          sessionId,
+          content: sessionScope.core,
+          metadata: [
+            `@session/${sessionId}/core.md`,
+            'scope session',
+            `project ${project.name} ${project.projectId}`,
+            `sourceRoots ${project.sourceRoots.join(' ')}`,
+            `session ${sessionId}`,
+            `cycle ${sessionScope.cycle}`,
+          ].join('\n'),
+        })
       }
       for (const memory of sessionScope.memories) {
         if (memory.hasContent) {
-          push(
-            memoryPathKey(memory.path, project.projectId, sessionId),
-            renderMemory(memory),
-            firstH1(memory.body),
-          )
+          const pathValue = memoryPathKey(memory.path, project.projectId, sessionId)
+          push(pathValue, renderMemory(memory), firstH1(memory.body))
+          pushSearch(memorySearchDocument(memory, pathValue, 'session', { project, sessionId }))
         }
       }
     }
   }
 
-  return pages
+  return { pages, searchDocuments }
+}
+
+export async function listBrainPages(): Promise<BrainPage[]> {
+  return (await loadBrainCatalog()).pages
+}
+
+export async function listBrainSearchDocuments(): Promise<BrainSearchDocument[]> {
+  return (await loadBrainCatalog()).searchDocuments
 }

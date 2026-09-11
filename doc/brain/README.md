@@ -6,7 +6,7 @@ brain 文档按版本整理，文档规模应与实际变更相称。小范围�
 
 | 目录 | 状态 | 用途 |
 |---|---|---|
-| [`v4/design-draft.md`](v4/design-draft.md) | **Design draft / Implementation pending** | 本轮 model-facing cognition interface 文案调整的唯一设计记录。尚未扩展为完整版本文档。 |
+| [`v4/design-draft.md`](v4/design-draft.md) | **Implemented in source / Manual acceptance pending** | 本轮 model-facing cognition interface 文案调整的唯一设计记录；包含摘要标签、写作与读取指导调整，模型效果待用户人工验收。 |
 | [`v3/`](v3/) | **Current frozen specification and implementation baseline** | 当前完整规格与实现基线；完整继承 v2 后，重新裁决 model-visible anchor 的语义、结构与验证要求。 |
 | [`v2/`](v2/) | **Frozen Predecessor** | v3 的冻结前代基线。保留 v2 自己的完整规格、设计、审查和执行记录；后续变化不得回写。 |
 | [`v1/`](v1/) | **Frozen / Implemented Baseline** | 2026-08-20 冻结并完成 production CI review 的早期实现基线。 |
