@@ -75,7 +75,7 @@ export const Config = z.object({
   }),
   opencodeSession: z.object({
     enabled: z.boolean().default(true),
-    providers: z.array(z.string()).default(['opencode', 'opencode-go']),
+    providers: z.array(z.string()).default(['opencode', 'opencode-go', 'opencode-go-custom']),
     hosts: z.array(z.string()).default(['opencode.ai']),
   }),
 })

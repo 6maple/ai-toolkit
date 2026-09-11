@@ -2,6 +2,7 @@
 .cache
 node_modules
 __pycache__
+.vscode/settings.json
 .claude/skills
 .pnpm-store
 .brain-data
