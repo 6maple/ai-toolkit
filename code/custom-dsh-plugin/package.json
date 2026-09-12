@@ -1,0 +1,58 @@
+{
+  "name": "@dsh-external/dsh-approve-for-me",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Codex 风格的\"帮我批准\"审查者：低/中风险自动放行、高风险拦截、拿不准带审查意见转人工（默认接管全部会话）",
+  "license": "BSD-3-Clause",
+  "files": [
+    "dist",
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "stub": "unbuild --stub",
+    "check": "vp check"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.1",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.3.0",
+    "typescript": "^5.9.0",
+    "unbuild": "^3.6.1",
+    "vite-plus": "0.2.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.0.1-rc <2",
+    "@deepseek-ai/dsh-llm": ">=0.0.1-rc <2",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc <2",
+    "cordis": ">=4.0.0-rc <5",
+    "schemastery": "^3.18.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  }
+}

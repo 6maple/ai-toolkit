@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "declaration": false,
+    "noEmit": true,
+    "sourceMap": false
+  },
+  "include": ["src/client/**/*.ts"],
+  "exclude": []
+}

@@ -1,0 +1,6 @@
+# Bundle layer for the approval reviewer.  DSH composes this layer when the
+# package is listed in dsh.profile.bundles.
+- insert:
+    - id: dsh-approve-for-me
+      name: "@dsh-external/dsh-approve-for-me"
+      config: {}
