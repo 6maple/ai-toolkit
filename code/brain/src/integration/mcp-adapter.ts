@@ -74,6 +74,7 @@ function textResult(text: string, warnings: readonly string[] = []): BrainToolRe
       { type: "text", text },
       ...warnings.map((warning) => ({ type: "text" as const, text: `warning: ${warning}` })),
     ],
+    structuredContent: { text },
   };
 }
 
@@ -419,6 +420,7 @@ export function registerBrainTools(
         title: definition.name,
         description: definition.description,
         inputSchema: definition.inputSchema,
+        outputSchema: definition.outputSchema,
         annotations: definition.annotations,
       },
       handlerFor(definition.name, services, hostInvocation, options.resolveInvocation),

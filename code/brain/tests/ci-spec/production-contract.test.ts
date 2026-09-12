@@ -100,6 +100,10 @@ function captureRegistration(
           safeParse(value: unknown): { success: boolean };
           shape?: Record<string, unknown>;
         };
+        outputSchema: {
+          safeParse(value: unknown): { success: boolean };
+          shape?: Record<string, unknown>;
+        };
         description: string;
         annotations?: {
           readOnlyHint?: boolean;
@@ -130,6 +134,7 @@ describe("brain v2 generic MCP public contract", () => {
     for (const tool of PUBLIC_BRAIN_TOOLS) {
       expect(tool.description.length).toBeGreaterThan(0);
       expect(registered.get(tool.name)?.config.inputSchema).toBe(tool.inputSchema);
+      expect(registered.get(tool.name)?.config.outputSchema).toBe(tool.outputSchema);
       expect(registered.get(tool.name)?.config.annotations).toBe(tool.annotations);
     }
   });
@@ -175,6 +180,9 @@ describe("brain v2 generic MCP public contract", () => {
       expect(listedCat.inputSchema).toMatchObject({
         properties: { path: { type: "string", pattern: expect.any(String) } },
       });
+      expect(listedCat.outputSchema).toMatchObject({
+        properties: { text: { type: "string" } },
+      });
       const called = await client.callTool({
         name: "brain_write",
         arguments: {
@@ -183,6 +191,7 @@ describe("brain v2 generic MCP public contract", () => {
         },
       });
       expect(called.isError).not.toBe(true);
+      expect(called.structuredContent).toEqual({ text: expect.any(String) });
       expect(calls.at(-1)).toMatchObject({ name: "write" });
     } finally {
       await client.close();

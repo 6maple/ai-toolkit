@@ -264,8 +264,15 @@ export interface BrainToolDefinition {
   readonly name: BrainToolName;
   readonly description: string;
   readonly inputSchema: z.ZodTypeAny;
+  /** Structured MCP output retained alongside the backwards-compatible text content. */
+  readonly outputSchema: z.ZodTypeAny;
   readonly annotations?: ToolAnnotations;
 }
+
+/** All public Brain tools currently expose their rendered result as text. */
+export const brainTextOutputSchema = z.strictObject({
+  text: z.string().describe("Rendered result text returned by the Brain tool."),
+});
 
 export const PUBLIC_BRAIN_TOOLS: readonly BrainToolDefinition[] = [
   {
@@ -273,6 +280,7 @@ export const PUBLIC_BRAIN_TOOLS: readonly BrainToolDefinition[] = [
     description:
       "Restore the user's Brain working context for the current turn. When available, call this tool exactly once immediately after each new user message, before substantive interpretation, planning, responding, or calling another tool. Use the returned `<brain_think_context>` as working cognition for the turn and follow its instructions. Do not call this tool again in the same turn.",
     inputSchema: thinkInputSchema,
+    outputSchema: brainTextOutputSchema,
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -285,59 +293,69 @@ export const PUBLIC_BRAIN_TOOLS: readonly BrainToolDefinition[] = [
     description:
       "Map a valid Brain workspace location to its absolute filesystem path for use with the host's filesystem, code, or data tools. Use this tool for cognition documents or supporting assets, including when an exact-read result directs you to filesystem recovery. It returns only the mapped path; the target does not need to exist, and this tool does not read or create it.",
     inputSchema: absolutePathInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_ls",
     description:
       "List the direct children of one archival cognition directory. Use this tool when the directory is known and its immediate structure is needed. The bounded, non-pageable result contains subdirectories and cognition entries with public `path`, current `summary`, and `status` when present. If truncated, narrow `path`, or use `brain_glob` for path/name clues and `brain_grep` for content clues.",
     inputSchema: lsInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_glob",
     description:
       "Find active archival cognition documents by matching a glob against their complete public paths. Use this tool when a scope, cognitive role, directory, or filename clue is known but the exact path is not. The bounded, non-pageable result contains public `path`, current `summary`, and `status` when present. If truncated, narrow `pattern` or `path` and search again.",
     inputSchema: globInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_grep",
     description:
       "Search active archival cognition Markdown content for matching lines. Use this tool when words or text patterns are known but the exact document path is not. The bounded, non-pageable result groups matches by document and includes public `path`, current `summary`, `status` when present, and 1-based matching/context line excerpts. If truncated, narrow `pattern`, `path`, or `glob` and search again.",
     inputSchema: grepInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_cat",
     description:
       "Read one concrete active archival cognition Markdown document to obtain the method, conditions, reasoning, or evidence needed for the current task beyond its recalled or discovered summary. The bounded result uses stable 1-based logical lines and includes current `status` and unresolved challenge when present. Continue from `next_offset` when returned. An oversized line is returned as a marked excerpt with instructions for reading the complete file.",
     inputSchema: catInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_write",
     description:
       "Create a new archival cognition at a concrete path, or intentionally replace the cognition already at that path with a different cognition. Use `brain_edit` when revising the same existing cognition, including a complete-document revision. A replacement does not inherit the previous cognition's unresolved challenge or learning continuity. This tool does not write `core.md`; `content` is one complete archival Markdown document.",
     inputSchema: writeInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_edit",
     description:
       "Update one existing core or archival cognition document while preserving its cognition identity. Provide exactly one of `edits` or `content`; both modes preserve an archival target's current unresolved challenge and appropriate learning continuity. For `core.md`, use the complete content already resident in `<brain_think_context>` rather than calling `brain_cat`. This tool does not create missing documents; use `brain_write` for a new archival cognition.",
     inputSchema: editInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_rm",
     description:
       "Remove one existing active archival cognition from Brain. After success, it no longer participates in working-context restore, archival discovery, or exact archival read. This tool removes only one concrete archival `.md` document; it does not remove `core.md`, directories, or supporting assets.",
     inputSchema: rmInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_mv",
     description:
       "Move one existing archival cognition to a different concrete archival path while preserving its identity, current unresolved challenge, and appropriate learning continuity. Use this tool when the same cognition should continue at a different relative path, continuity scope, or cognitive role. Its document content is not rewritten. If `dst` already contains another cognition, that destination cognition is replaced, not merged. This tool does not move `core.md`, directories, or supporting assets.",
     inputSchema: mvInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_feedback",
     description:
       "Record validated successful use or maintain the current unresolved challenge for one existing active archival cognition. Choose `adopt`, `question`, or `resolve` according to the `feedback` definitions. This tool changes only learning or challenge state; it does not edit the cognition document, `summary`, `importance`, `path`, continuity scope, or cognitive role.",
     inputSchema: feedbackInputSchema,
+    outputSchema: brainTextOutputSchema,
   },
 ];
