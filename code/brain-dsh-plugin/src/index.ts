@@ -97,7 +97,11 @@ export function toHostSchema(definition: BrainToolDefinition): Record<string, un
   if (typeof schema !== 'object' || schema === null || Array.isArray(schema)) {
     throw new Error(`brain-dsh-plugin: ${definition.name} produced a non-object input schema`)
   }
-  return schema as Record<string, unknown>
+  // DSH accepts a deliberately small JSON Schema subset and rejects dialect
+  // declarations such as Zod's root-level `$schema`.  The generated structure
+  // remains valid after dropping that informational field.
+  const { $schema: _dialect, ...hostSchema } = schema as Record<string, unknown>
+  return hostSchema
 }
 
 /** The hook owns anchor triggering, so it is the only mode that hides think. */
