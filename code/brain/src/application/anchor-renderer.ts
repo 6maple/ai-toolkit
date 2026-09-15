@@ -76,25 +76,25 @@ function corePresentation(core: AnchorCoreProjection): CorePresentation {
       return {
         heading: "### Global Core",
         maintain:
-          "Maintain this `<core>` with `brain_edit` when cross-project cognition that should remain visible in every applicable turn changes, such as stable user preferences, principles, or reusable working constraints.",
+          "Maintain this `<core>` with `brain_edit`. Use it for direct cross-project guidance that must remain available in every applicable turn, especially instructions that tell the AI when to read or apply global memories.",
         archive:
-          "When cognition no longer needs to remain resident but should still be preserved globally, write it under `@global/memories/<role>/...` before removing it from this `<core>`.",
+          "Put detailed cross-project cognition under `@global/memories/<role>/...` whenever this `<core>` can still correctly direct the AI to read or apply it; keep the trigger, path, or usage instruction here instead of copying the detail into `<core>`.",
       };
     case "project":
       return {
         heading: "### Project Core",
         maintain:
-          "Maintain this `<core>` with `brain_edit` when project-scoped cognition that should remain visible across this project's sessions changes, such as its active goals, established working agreements, constraints, or architectural direction.",
+          "Maintain this `<core>` with `brain_edit`. Use it for direct project guidance that must remain available across this project's sessions, especially instructions that tell the AI when to read or apply project memories.",
         archive:
-          "When cognition no longer needs to remain resident but should still be preserved for this project, write it under `@project/memories/<role>/...` before removing it from this `<core>`.",
+          "Put detailed project cognition under `@project/memories/<role>/...` whenever this `<core>` can still correctly direct the AI to read or apply it; keep the trigger, path, or usage instruction here instead of copying the detail into `<core>`.",
       };
     case "session": {
       const root = `@session/${core.scope.sessionId}`;
       return {
         heading: "### Session Core",
         maintain:
-          "Maintain this `<core>` with `brain_edit` when session-scoped working cognition changes, including the active goal, current progress, commitments, unresolved work, or intended next step.",
-        archive: `When cognition no longer needs to remain resident but should still be preserved for this session, write it under \`${root}/memories/<role>/...\` before removing it from this \`<core>\`.`,
+          "Maintain this `<core>` with `brain_edit`. Use it for direct session guidance that must remain available every turn, especially instructions that tell the AI when to read or apply session memories. Session state that truly must remain visible every turn may also stay here.",
+        archive: `Put detailed session cognition under \`${root}/memories/<role>/...\` whenever this \`<core>\` can still correctly direct the AI to read or apply it; keep the trigger, path, usage instruction, or truly resident session state here instead of copying the detail into \`<core>\`.`,
       };
     }
   }
@@ -131,7 +131,13 @@ function renderContinuityScopes(sessionId?: SessionId): string {
 }
 
 function renderResidentCognition(cores: readonly AnchorCoreProjection[]): string {
-  return ["## Resident Working Cognition", "", cores.map(renderCore).join("\n\n")].join("\n");
+  return [
+    "## Resident Working Cognition",
+    "",
+    "Use each `<core>` for direct guidance that must remain available in every applicable turn, especially instructions that tell the AI when to read or apply specific memories. Put detailed cognition in `memories` whenever the AI can still be correctly guided from `<core>` to read or apply it when needed.",
+    "",
+    cores.map(renderCore).join("\n\n"),
+  ].join("\n");
 }
 
 function renderRelatedProjects(
