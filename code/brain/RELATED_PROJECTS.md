@@ -69,7 +69,9 @@ brain_grep(
 )
 ```
 
-省略 `brain_glob.path` / `brain_grep.path` 时，只搜索当前项目自己的 built-in scopes，不会顺带扫描所有关联项目。
+省略 `brain_glob.path` / `brain_grep.path` 时，会把工作区当成一个整体搜索：`global` 和当前 `session` 各搜索一次，同时搜索当前项目和所有可用关联项目已经存在的 project memories。某个关联项目虽然已注册、但还没有创建 Brain project cognition 时，默认搜索把它当作空结果；显式传入它的 `path` 时仍保持 `not-found`。
+
+如果多个 alias 指向同一个 Brain project，配置仍然有效，但 `brain_think` 会显示警告；各 alias 的 `read` / `write` 权限仍各自生效。
 
 `brain_think` 会告诉模型当前有哪些关联项目，例如：
 

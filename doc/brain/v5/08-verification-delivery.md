@@ -7,7 +7,7 @@ Status: implementation verified.
 - source-root-local `relatedProjects` config with exact registered-project resolution and per-alias `read | write` access;
 - `#alias/...` public routing without adding a related cognition `ScopeRef`;
 - related-project projection in `brain_think` without preloading related cognition or exposing resolver internals;
-- explicit related discovery/read, including `core.md`, while omitted `glob` / `grep` remain bounded to built-in applicable scopes;
+- explicit related discovery/read, including `core.md`, plus omitted `glob` / `grep` over global/current-session memory and all materialized workspace project memories with one combined bounded selection over collected candidates; registered-but-unmaterialized related cognition contributes an empty default-search result;
 - read-only related `brain_cat` with no target cognition/accessibility mutation;
 - related mutation permission enforcement and `brain_absolute_path` permission independence;
 - one semantic cross-project move transaction with binding-aware preflight, before-state, rollback, and shared move-domain derivation;

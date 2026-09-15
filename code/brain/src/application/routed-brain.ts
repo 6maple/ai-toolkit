@@ -3,6 +3,7 @@ import {
   isSameLogicalPath,
   parseAddressedPublicPath,
   parseAddressedResourceLocation,
+  parsePublicPath,
   type AddressedBrainPath,
   type AddressedResourceLocation,
   type LogicalArchivalPath,
@@ -29,6 +30,8 @@ import {
 } from "./cognition-maintenance.ts";
 import type {
   CatResult,
+  CollectedGlobResult,
+  CollectedGrepResult,
   DiscoveryListResult,
   GrepResult,
   ReadDiscovery,
@@ -64,7 +67,10 @@ export interface RoutedBrainCurrentServices {
   readonly sourceRoot: string;
   readonly binding: StorageBinding;
   readonly anchor: Pick<AnchorRestore, "runAnchor">;
-  readonly reads: Pick<ReadDiscovery, "ls" | "glob" | "grep" | "cat">;
+  readonly reads: Pick<
+    ReadDiscovery,
+    "ls" | "glob" | "grep" | "cat" | "collectGlob" | "finalizeGlob" | "collectGrep" | "finalizeGrep"
+  >;
   readonly maintenance: Pick<
     CognitionMaintenance,
     "write" | "edit" | "remove" | "move" | "feedback"
@@ -121,6 +127,52 @@ function withRelatedProjectReferenceNote<T extends { readonly text: string }>(
     `When writing this content back, keep \`@project/...\` as \`@project/...\`; do not replace it with \`${relatedRoot}/...\`.`,
   ].join("\n");
   return { ...result, text: `${note}\n\n${result.text}` };
+}
+
+const RELATED_PROJECT_MEMORIES = parsePublicPath("@project/memories/");
+const EMPTY_RELATED_GLOB: CollectedGlobResult = { items: [], sourceTruncated: false };
+const EMPTY_RELATED_GREP: CollectedGrepResult = { documents: [], sourceTruncated: false };
+
+function duplicateTargetWarnings(relations: readonly AvailableProjectRelation[]) {
+  const aliasesByProject = new Map<string, string[]>();
+  for (const relation of relations) {
+    const aliases = aliasesByProject.get(relation.projectId);
+    if (aliases === undefined) aliasesByProject.set(relation.projectId, [relation.alias]);
+    else aliases.push(relation.alias);
+  }
+  return [...aliasesByProject.values()]
+    .filter((aliases) => aliases.length > 1)
+    .map((aliases) => {
+      const rendered = aliases
+        .slice()
+        .sort()
+        .map((alias) => `#${alias}`)
+        .join(", ");
+      return {
+        code: "related-project-duplicate-target",
+        message: `${rendered} resolve to the same Brain project; multiple aliases are allowed, but omitted-path discovery may return that project's memories through each alias.`,
+      };
+    });
+}
+
+function withWorkspaceRelatedReferenceNote<T extends DiscoveryListResult | GrepResult>(result: T): T {
+  const containsRelatedProjectReference = result.records.some((record) => {
+    if (!record.publicPath.startsWith("#")) return false;
+    return "lineText" in record
+      ? [
+          record.summary,
+          record.lineText,
+          ...record.contextBefore.map((line) => line.text),
+          ...record.contextAfter.map((line) => line.text),
+        ].some((text) => text.includes("@project/"))
+      : record.kind === "archival" && record.summary.includes("@project/");
+  });
+  if (!containsRelatedProjectReference) return result;
+  const note =
+    "For a related result under `#alias/...`, follow an `@project/...` reference with that same `#alias/...` in Brain tools; keep `@project/...` unchanged when writing back.";
+  return { ...result, text: `${note}
+
+${result.text}` };
 }
 
 function renderSingleMaintenanceResult(result: MaintenanceResult, root: PublicBrainRoot): string {
@@ -225,14 +277,16 @@ export class RoutedBrainApplication {
 
   async think(currentSessionId?: SessionId): Promise<AnchorResult> {
     const catalog = await this.loadCatalog();
-    const relatedProjects = catalog.entries
-      .filter((entry): entry is AvailableProjectRelation => entry.kind === "available")
-      .map((entry) => ({
-        alias: entry.alias,
-        access: entry.access,
-        files: entry.files,
-        corePath: `#${entry.alias}/core.md`,
-      }));
+    const availableRelations = catalog.entries.filter(
+      (entry): entry is AvailableProjectRelation => entry.kind === "available",
+    );
+    const relatedProjects = availableRelations.map((entry) => ({
+      alias: entry.alias,
+      access: entry.access,
+      files: entry.files,
+      corePath: `#${entry.alias}/core.md`,
+    }));
+    const relatedProjectWarnings = duplicateTargetWarnings(availableRelations);
     const relatedProjectErrors = [
       ...(catalog.configError === undefined
         ? []
@@ -253,6 +307,7 @@ export class RoutedBrainApplication {
     const request: AnchorRequest = {
       ...(currentSessionId === undefined ? {} : { currentSessionId }),
       ...(relatedProjects.length === 0 ? {} : { relatedProjects }),
+      ...(relatedProjectWarnings.length === 0 ? {} : { relatedProjectWarnings }),
       ...(relatedProjectErrors.length === 0 ? {} : { relatedProjectErrors }),
     };
     return this.current.anchor.runAnchor(request);
@@ -275,7 +330,27 @@ export class RoutedBrainApplication {
     request: { pattern: string; path?: string },
     context: ReadDiscoveryContext = {},
   ): Promise<DiscoveryListResult> {
-    if (request.path === undefined) return this.current.reads.glob({ pattern: request.pattern }, context);
+    if (request.path === undefined) {
+      const catalog = await this.loadCatalog();
+      const current = await this.current.reads.collectGlob({ pattern: request.pattern }, context);
+      const related = await Promise.all(
+        catalog.entries
+          .filter((entry): entry is AvailableProjectRelation => entry.kind === "available")
+          .map(async (relation) => {
+            const access = await this.accessForRelation(relation);
+            if (!(await access.store.isScopeMaterialized({ kind: "project" }))) {
+              return EMPTY_RELATED_GLOB;
+            }
+            return access.reads.collectGlob(
+              { pattern: request.pattern, path: RELATED_PROJECT_MEMORIES },
+              context,
+            );
+          }),
+      );
+      return withWorkspaceRelatedReferenceNote(
+        this.current.reads.finalizeGlob([current, ...related]),
+      );
+    }
     const catalog = await this.loadCatalog();
     const target = await this.resolvePath(request.path, catalog);
     const result = await target.reads.glob({ pattern: request.pattern, path: target.address.path }, context);
@@ -294,30 +369,38 @@ export class RoutedBrainApplication {
     },
     context: ReadDiscoveryContext = {},
   ): Promise<GrepResult> {
+    const common = {
+      pattern: request.pattern,
+      ...(request.glob === undefined ? {} : { glob: request.glob }),
+      ...(request.ignoreCase === undefined ? {} : { ignoreCase: request.ignoreCase }),
+      ...(request.literal === undefined ? {} : { literal: request.literal }),
+      ...(request.context === undefined ? {} : { context: request.context }),
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+    };
     if (request.path === undefined) {
-      return this.current.reads.grep(
-        {
-          pattern: request.pattern,
-          ...(request.glob === undefined ? {} : { glob: request.glob }),
-          ...(request.ignoreCase === undefined ? {} : { ignoreCase: request.ignoreCase }),
-          ...(request.literal === undefined ? {} : { literal: request.literal }),
-          ...(request.context === undefined ? {} : { context: request.context }),
-          ...(request.signal === undefined ? {} : { signal: request.signal }),
-        },
-        context,
+      const catalog = await this.loadCatalog();
+      const current = await this.current.reads.collectGrep(common, context);
+      const related = await Promise.all(
+        catalog.entries
+          .filter((entry): entry is AvailableProjectRelation => entry.kind === "available")
+          .map(async (relation) => {
+            const access = await this.accessForRelation(relation);
+            if (!(await access.store.isScopeMaterialized({ kind: "project" }))) {
+              return EMPTY_RELATED_GREP;
+            }
+            return access.reads.collectGrep({ ...common, path: RELATED_PROJECT_MEMORIES }, context);
+          }),
+      );
+      return withWorkspaceRelatedReferenceNote(
+        this.current.reads.finalizeGrep([current, ...related]),
       );
     }
     const catalog = await this.loadCatalog();
     const target = await this.resolvePath(request.path, catalog);
     const result = await target.reads.grep(
       {
-        pattern: request.pattern,
+        ...common,
         path: target.address.path,
-        ...(request.glob === undefined ? {} : { glob: request.glob }),
-        ...(request.ignoreCase === undefined ? {} : { ignoreCase: request.ignoreCase }),
-        ...(request.literal === undefined ? {} : { literal: request.literal }),
-        ...(request.context === undefined ? {} : { context: request.context }),
-        ...(request.signal === undefined ? {} : { signal: request.signal }),
       },
       context,
     );

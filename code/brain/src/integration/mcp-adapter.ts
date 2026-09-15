@@ -89,9 +89,9 @@ const OBJECT_PATH_GUIDANCE: Partial<Record<BrainToolName, string>> = {
   brain_ls:
     "brain_ls accepts only a memories directory under a built-in root or configured #alias, for example @project/memories/ or #mobile/memories/knowledge/. Do not pass a bare root, core.md, or a concrete .md document.",
   brain_glob:
-    "When path is provided, brain_glob accepts only a memories directory under a built-in root or configured #alias. Omit path to search only the current applicable built-in memories; related projects require an explicit #alias path. This tool discovers archival memories, not core.md.",
+    "When path is provided, brain_glob accepts only a memories directory under a built-in root or configured #alias. Omit path to search global memories, current session memories, and all workspace project memories (current + available related projects). This tool discovers archival memories, not core.md.",
   brain_grep:
-    "When path is provided, brain_grep accepts only a memories directory under a built-in root or configured #alias. Omit path to search only the current applicable built-in memories; related projects require an explicit #alias path. This tool searches archival memories, not core.md.",
+    "When path is provided, brain_grep accepts only a memories directory under a built-in root or configured #alias. Omit path to search global memories, current session memories, and all workspace project memories (current + available related projects). This tool searches archival memories, not core.md.",
   brain_cat:
     "brain_cat accepts one concrete core.md or archival cognition .md document under a built-in root or configured #alias; bare roots and directories are invalid.",
   brain_write:

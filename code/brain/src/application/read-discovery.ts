@@ -135,6 +135,27 @@ export interface CatRequest {
   readonly signal?: AbortSignal;
 }
 
+export interface CollectedGlobItem {
+  readonly record: Extract<DiscoveryNodeRecord, { kind: "archival" }>;
+  readonly scarcity: ScarcityCandidate<Extract<DiscoveryNodeRecord, { kind: "archival" }>>;
+}
+
+export interface CollectedGlobResult {
+  readonly items: readonly CollectedGlobItem[];
+  readonly sourceTruncated: boolean;
+}
+
+export interface CollectedGrepDocument {
+  readonly publicPath: string;
+  readonly scarcity: ScarcityCandidate<Extract<DiscoveryNodeRecord, { kind: "archival" }>>;
+  readonly records: readonly GrepMatchRecord[];
+}
+
+export interface CollectedGrepResult {
+  readonly documents: readonly CollectedGrepDocument[];
+  readonly sourceTruncated: boolean;
+}
+
 interface EnrichedArchival {
   readonly snapshot: ArchivalSnapshot;
   readonly record: Extract<DiscoveryNodeRecord, { kind: "archival" }>;
@@ -250,7 +271,7 @@ export class ReadDiscovery {
       const child = childByKey.get(key);
       if (child === undefined) continue;
       if (child.kind === "directory") {
-        records.push({ kind: "directory", path: child });
+        records.push({ kind: "directory", path: child, publicPath: this.formatPath(child) });
       } else {
         const item = await this.enrich(child);
         enriched.push(item);
@@ -258,7 +279,7 @@ export class ReadDiscovery {
       }
     }
 
-    const renderRecord = (record: DiscoveryNodeRecord) => renderDiscoveryRecord(record, this.formatPath);
+    const renderRecord = (record: DiscoveryNodeRecord) => renderDiscoveryRecord(record);
     const ordered = recordsFit(records, renderRecord)
       ? records
       : [
@@ -268,11 +289,7 @@ export class ReadDiscovery {
           ),
         ];
     const trailer = "narrow path or use brain_glob/brain_grep; brain_ls is not pageable";
-    const packed = packDiscoveryRecords(
-      ordered,
-      renderRecord,
-      `truncated=true; ${trailer}`,
-    );
+    const packed = packDiscoveryRecords(ordered, renderRecord, `truncated=true; ${trailer}`);
     const truncated = pi.truncated || packed.truncated;
     return {
       records: packed.records,
@@ -288,10 +305,10 @@ export class ReadDiscovery {
     };
   }
 
-  async glob(
+  async collectGlob(
     request: GlobRequest,
     context: ReadDiscoveryContext = {},
-  ): Promise<DiscoveryListResult> {
+  ): Promise<CollectedGlobResult> {
     context.signal?.throwIfAborted();
     const matcher = compilePublicGlob(request.pattern);
     const candidates = await this.resolveCandidates(request.path, context);
@@ -314,32 +331,54 @@ export class ReadDiscovery {
         .filter((candidate): candidate is LogicalArchivalPath => candidate !== undefined)
         .map((candidate) => this.enrich(candidate)),
     );
-    const records = enriched.map((item) => item.record);
-    const renderRecord = (record: DiscoveryNodeRecord) => renderDiscoveryRecord(record, this.formatPath);
-    const ordered = recordsFit(records, renderRecord)
-      ? records
-      : rankActiveDiscoveryCandidates(enriched.map((item) => item.scarcity)).map(
-          (candidate) => candidate.value,
-        );
-    const trailer = "narrow pattern/path and search again; brain_glob is not pageable";
-    const packed = packDiscoveryRecords(
-      ordered,
-      renderRecord,
-      `truncated=true; ${trailer}`,
-    );
-    const truncated = pi.truncated || packed.truncated;
     return {
-      records: packed.records,
+      items: enriched.map((item) => ({ record: item.record, scarcity: item.scarcity })),
+      sourceTruncated: pi.truncated,
+    };
+  }
+
+  finalizeGlob(collections: readonly CollectedGlobResult[]): DiscoveryListResult {
+    const items = collections.flatMap((collection) => collection.items);
+    const canonical = [...items].sort((a, b) =>
+      a.record.publicPath < b.record.publicPath
+        ? -1
+        : a.record.publicPath > b.record.publicPath
+          ? 1
+          : 0,
+    );
+    const renderItem = (item: CollectedGlobItem) => renderDiscoveryRecord(item.record);
+    const ordered = recordsFit(canonical, renderItem)
+      ? canonical
+      : rankActiveDiscoveryCandidates(
+          items.map((item) => ({ ...item.scarcity, value: item })),
+          (candidate) => candidate.value.record.publicPath,
+        ).map((candidate) => candidate.value);
+    const trailer = "narrow pattern/path and search again; brain_glob is not pageable";
+    const packed = packDiscoveryRecords(ordered, renderItem, `truncated=true; ${trailer}`);
+    const sourceTruncated = collections.some((collection) => collection.sourceTruncated);
+    const truncated = sourceTruncated || packed.truncated;
+    return {
+      records: packed.records.map((item) => item.record),
       truncated,
       text: appendTruncation(
         packed.renderedText || "no matching archival cognition paths",
-        pi.truncated && !packed.truncated,
+        sourceTruncated && !packed.truncated,
         trailer,
       ),
     };
   }
 
-  async grep(request: GrepRequest, context: ReadDiscoveryContext = {}): Promise<GrepResult> {
+  async glob(
+    request: GlobRequest,
+    context: ReadDiscoveryContext = {},
+  ): Promise<DiscoveryListResult> {
+    return this.finalizeGlob([await this.collectGlob(request, context)]);
+  }
+
+  async collectGrep(
+    request: GrepRequest,
+    context: ReadDiscoveryContext = {},
+  ): Promise<CollectedGrepResult> {
     const args = normalizeGrepArguments(request.context);
     const roots = await this.resolveSearchRoots(request.path, context);
     const byPath = new Map<string, { enriched: EnrichedArchival; lines: readonly string[] }>();
@@ -391,6 +430,7 @@ export class ReadDiscovery {
         const contextLines = contextForLine(current.lines, hit.lineNumber, args.context);
         const record: GrepMatchRecord = {
           path: canonicalPath,
+          publicPath: current.enriched.record.publicPath,
           summary: current.enriched.snapshot.document.summary,
           ...(current.enriched.record.status === "questioned"
             ? { status: "questioned" as const }
@@ -400,40 +440,62 @@ export class ReadDiscovery {
           contextBefore: contextLines.before,
           contextAfter: contextLines.after,
         };
-        dedup.set(`${formatPublicPath(canonicalPath)}\0${hit.lineNumber}`, record);
+        dedup.set(`${record.publicPath}\0${hit.lineNumber}`, record);
       }
     }
 
     const canonical = canonicalGrepOrder([...dedup.values()]);
+    const recordsByPath = new Map<string, GrepMatchRecord[]>();
+    for (const record of canonical) {
+      const records = recordsByPath.get(record.publicPath);
+      if (records === undefined) recordsByPath.set(record.publicPath, [record]);
+      else records.push(record);
+    }
+    const unique = new Map<string, EnrichedArchival>();
+    for (const item of byPath.values()) {
+      unique.set(item.enriched.record.publicPath, item.enriched);
+    }
+    const documents = [...unique.values()]
+      .map((item) => ({
+        publicPath: item.record.publicPath,
+        scarcity: item.scarcity,
+        records: recordsByPath.get(item.record.publicPath) ?? [],
+      }))
+      .filter((item) => item.records.length > 0);
+    return { documents, sourceTruncated: piTruncated };
+  }
+
+  finalizeGrep(collections: readonly CollectedGrepResult[]): GrepResult {
+    const documents = collections.flatMap((collection) => collection.documents);
+    const canonical = canonicalGrepOrder(documents.flatMap((document) => document.records));
     let sequence: readonly GrepMatchRecord[] = canonical;
-    if (!grepRecordsFit(canonical, this.formatPath)) {
-      const unique = new Map<string, EnrichedArchival>();
-      for (const item of byPath.values()) {
-        unique.set(formatPublicPath(item.enriched.snapshot.path), item.enriched);
-      }
+    if (!grepRecordsFit(canonical)) {
       const documentOrder = rankActiveDiscoveryCandidates(
-        [...unique.values()].map((item) => ({
-          ...item.scarcity,
-          value: formatPublicPath(item.snapshot.path),
-        })),
-      ).map((candidate) => candidate.value);
+        documents.map((document) => ({ ...document.scarcity, value: document })),
+        (candidate) => candidate.value.publicPath,
+      ).map((candidate) => candidate.value.publicPath);
       const orderIndex = new Map(documentOrder.map((key, index) => [key, index]));
       sequence = [...canonical].sort((a, b) => {
         const byDocument =
-          (orderIndex.get(formatPublicPath(a.path)) ?? Number.MAX_SAFE_INTEGER) -
-          (orderIndex.get(formatPublicPath(b.path)) ?? Number.MAX_SAFE_INTEGER);
+          (orderIndex.get(a.publicPath) ?? Number.MAX_SAFE_INTEGER) -
+          (orderIndex.get(b.publicPath) ?? Number.MAX_SAFE_INTEGER);
         return byDocument !== 0 ? byDocument : a.lineNumber - b.lineNumber;
       });
     }
 
-    const packed = packGrepRecords(sequence, this.formatPath);
-    const truncated = piTruncated || packed.truncated;
+    const packed = packGrepRecords(sequence);
+    const sourceTruncated = collections.some((collection) => collection.sourceTruncated);
+    const truncated = sourceTruncated || packed.truncated;
     const text = appendTruncation(
-      renderGrepRecords(packed.records, this.formatPath) || "no matching archival cognition content",
+      renderGrepRecords(packed.records) || "no matching archival cognition content",
       truncated,
       "narrow pattern/path/glob and search again",
     );
     return { records: packed.records, truncated, text };
+  }
+
+  async grep(request: GrepRequest, context: ReadDiscoveryContext = {}): Promise<GrepResult> {
+    return this.finalizeGrep([await this.collectGrep(request, context)]);
   }
 
   async cat(request: CatRequest): Promise<CatResult> {
@@ -582,6 +644,7 @@ export class ReadDiscovery {
     const record: Extract<DiscoveryNodeRecord, { kind: "archival" }> = {
       kind: "archival",
       path: canonicalPath,
+      publicPath: this.formatPath(canonicalPath),
       summary: snapshot.document.summary,
       ...(status === "questioned" ? { status: "questioned" as const } : {}),
     };

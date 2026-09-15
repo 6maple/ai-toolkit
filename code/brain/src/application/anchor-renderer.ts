@@ -32,11 +32,17 @@ export interface RelatedProjectErrorProjection {
   readonly message: string;
 }
 
+export interface RelatedProjectWarningProjection {
+  readonly code: string;
+  readonly message: string;
+}
+
 export interface AnchorProjection {
   readonly currentSessionId?: SessionId;
   readonly cores: readonly AnchorCoreProjection[];
   readonly candidates: readonly AnchorCandidateProjection[];
   readonly relatedProjects?: readonly RelatedProjectProjection[];
+  readonly relatedProjectWarnings?: readonly RelatedProjectWarningProjection[];
   readonly relatedProjectErrors?: readonly RelatedProjectErrorProjection[];
 }
 
@@ -142,31 +148,37 @@ function renderResidentCognition(cores: readonly AnchorCoreProjection[]): string
 
 function renderRelatedProjects(
   projects: readonly RelatedProjectProjection[] = [],
+  warnings: readonly RelatedProjectWarningProjection[] = [],
   errors: readonly RelatedProjectErrorProjection[] = [],
 ): string {
-  if (projects.length === 0 && errors.length === 0) return "";
+  if (projects.length === 0 && warnings.length === 0 && errors.length === 0) return "";
   const lines = ["## Related Projects", ""];
   if (projects.length > 0) {
     lines.push(
       "These projects have separate Brain cognition. Their core is not loaded automatically.",
+      "A listing or mention alone does not trigger reading.",
       "",
     );
     for (const project of projects) {
       lines.push(
         `#${project.alias} [${project.access}]`,
         `- files: ${project.files}`,
-        `- core: ${project.corePath}`,
+        `  - before reading, changing, or analyzing a matching file: call \`brain_cat(\"${project.corePath}\")\` first`,
+        `- before making a decision based on this project's code, design, configuration, or current state: call \`brain_cat(\"${project.corePath}\")\` first`,
+        "- after reading the core: follow it, and complete anything it requires now before continuing",
         "",
       );
     }
-    lines.push(
-      "Before reading, changing, or analyzing matching project files, or making a project-specific decision, read every matching related core first.",
-      "After reading a core, follow its own cognition-reading directives; explicit `立即读取 ...` items are mandatory before continuing.",
-      "Do not read a related core merely because the project is listed or mentioned.",
-    );
+  }
+  if (warnings.length > 0) {
+    if (projects.length > 0) lines.push("");
+    lines.push("### Related Project Warnings", "");
+    for (const warning of warnings) {
+      lines.push(`${warning.code}: ${warning.message}`);
+    }
   }
   if (errors.length > 0) {
-    if (projects.length > 0) lines.push("");
+    if (projects.length > 0 || warnings.length > 0) lines.push("");
     lines.push("### Related Project Errors", "");
     for (const error of errors) {
       lines.push(
@@ -269,8 +281,19 @@ export function renderAnchorContext(projection: AnchorProjection): string {
     "",
     renderResidentCognition(projection.cores),
     "",
-    ...(renderRelatedProjects(projection.relatedProjects, projection.relatedProjectErrors)
-      ? [renderRelatedProjects(projection.relatedProjects, projection.relatedProjectErrors), ""]
+    ...(renderRelatedProjects(
+      projection.relatedProjects,
+      projection.relatedProjectWarnings,
+      projection.relatedProjectErrors,
+    )
+      ? [
+          renderRelatedProjects(
+            projection.relatedProjects,
+            projection.relatedProjectWarnings,
+            projection.relatedProjectErrors,
+          ),
+          "",
+        ]
       : []),
     renderArchivalCognition(projection.candidates),
     "",

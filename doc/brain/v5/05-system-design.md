@@ -1,4 +1,4 @@
-﻿# Brain v5 — System Design
+# Brain v5 — System Design
 
 Status: stable system design for v5 multi-project cognition.
 
@@ -135,7 +135,7 @@ Once a related core is explicitly read, that core owns its project-local cogniti
 
 Project-owned cognition keeps same-project references as `@project/...` in storage. When a related read/discovery result contains such a reference, the routed read layer adds short local guidance: follow `@project/...` through the current `#alias/...` for Brain tool calls, but keep `@project/...` unchanged in stored content. The Markdown itself is never rewritten.
 
-Broken aliases become bounded diagnostics; they do not prevent normal built-in restoration or valid relations from being projected.
+Broken aliases become bounded diagnostics; they do not prevent normal built-in restoration or valid relations from being projected. Multiple available aliases that resolve to the same Brain project remain valid but produce one bounded startup warning in the related-project projection.
 
 ### 5. Routed Read / Discovery
 
@@ -145,8 +145,9 @@ Rules:
 
 - explicit `#alias/...` routes to that project's project cognition
 - `brain_cat` may read concrete core or archival cognition documents
-- related `brain_ls`, `brain_glob`, `brain_grep` require explicit related addressing
-- omitted-path discovery builds its search set only from built-in applicable scopes; relations are not appended to it
+- related `brain_ls` remains explicitly addressed; explicit `brain_glob` / `brain_grep` paths narrow to exactly one addressed memory tree
+- omitted-path `brain_glob` / `brain_grep` search global/current-session memory once and materialized project memory across the current project plus every available related project; a registered related project with no project cognition yet contributes an empty result
+- each project computes matches and current memory-priority inputs using its own stored state; the candidates actually returned by those search sources are then ranked, bounded, and rendered once, while source-level truncation remains visible
 
 The read layer should not need a second implementation of cognition parsing, pagination, summaries, or discovery semantics.
 

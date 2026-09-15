@@ -41,7 +41,7 @@ Rules:
 - resolve relative `path` from active source root; absolute paths are allowed.
 - canonicalize the existing directory, then exact-match registered project metadata; never call `resolveOrCreateProject` for a relation. Resolve all valid relation paths in one catalog build against one project-metadata snapshot rather than rescanning every project for every alias.
 - a relation resolving to the active ProjectId is unavailable: current-project cognition is already addressed by `@project` and a self-relation adds only ambiguous permission/routing semantics.
-- multiple aliases may resolve to the same *other* ProjectId; relation access remains per alias.
+- multiple aliases may resolve to the same *other* ProjectId; relation access remains per alias. `brain_think` groups available relations by target ProjectId and emits a warning when a group contains more than one alias; the warning names aliases only and does not change routing, access, or expose ProjectId.
 - `files` is derived from the configured path, normalizing separators for model readability but preserving relative-vs-absolute form; do not substitute the canonical path or expose other source roots.
 - load the relation catalog per public tool invocation. Config edits therefore take effect without restarting the MCP process and mutation permission is never taken from a stale startup snapshot.
 
@@ -97,7 +97,7 @@ To follow an `@project/...` reference in this content, use `#brain/...` when cal
 When writing this content back, keep `@project/...` as `@project/...`; do not replace it with `#brain/...`.
 ```
 
-The note is emitted only for related results that actually contain `@project/`, so ordinary reads do not carry extra guidance. It applies to `brain_cat`, `brain_ls`, explicit related `brain_glob`, and explicit related `brain_grep`.
+The note is emitted only for related results that actually contain `@project/`, so ordinary reads do not carry extra guidance. It applies to `brain_cat`, `brain_ls`, explicit related discovery, and related results returned inside omitted-path workspace `brain_glob` / `brain_grep`.
 
 This is presentation/access context, not a new path grammar and not hidden mutable state. Tool calls remain fully qualified. `brain_edit` exact text continues to match the original stored Markdown because the content itself is unchanged.
 
@@ -140,7 +140,7 @@ Use this presentation for:
 - glob matching against complete public paths;
 - bounded-size rendering calculations and continuation affordances.
 
-Internal state lookup/dedup may continue using logical project paths where the public prefix is irrelevant.
+Within one project, state lookup may continue using logical project paths. Any result that can be combined across projects also carries its rendered public path (`@project/...` or `#alias/...`); cross-project ordering, grouping, deduplication, and tie-breaking use that public path so equal project-relative paths from different projects remain distinct.
 
 ### `brain_cat`
 
@@ -157,7 +157,9 @@ Current archival `brain_cat` performs a best-effort accessibility/companion upda
 
 Therefore related read access uses a no-op auxiliary-update port. The content read still succeeds, but no target companion/accessibility state is written. A `write` relation may use normal read-learning updates.
 
-`ls`, `glob`, and `grep` already have no semantic mutation side effect and need no special suppression.
+`ls`, `glob`, and `grep` already have no semantic mutation side effect and need no special suppression. They may read each memory's current accessibility state to calculate the same active-discovery priority used by single-project search, but they do not write accessibility, exposure, durability, epistemic state, or scope cycle.
+
+For omitted-path workspace discovery, split `glob` / `grep` internally into two phases: each materialized project collects matching records plus the priority information derived from that project's own memory state without final application-level packing; a registered related project whose project scope is not materialized contributes an empty collection; then the current routed application combines those collections and calls the same final ranking/bounding/rendering logic once. Explicit related paths do not use that empty-scope fallback and retain existing `not-found` behavior. The underlying per-source search tool may itself report truncation (for example a grep match limit); combined ranking applies to the candidates actually collected, and source truncation remains propagated. Do not add a second ranking or packing implementation in the routing layer.
 
 ## 6. Anchor / brain_think projection
 
@@ -180,7 +182,7 @@ type RelatedProjectProjection = {
 };
 ```
 
-Broken aliases/config contribute bounded diagnostics. No related core/memory content is read by `brain_think`.
+Broken aliases/config contribute bounded errors. Duplicate available aliases for one target project contribute a bounded warning. No related core/memory content is read by `brain_think`, and neither diagnostic exposes ProjectId.
 
 The renderer gives direct behavior guidance:
 
@@ -210,7 +212,7 @@ MCP adapter should not own project-resolution rules; it only converts tool argum
 
 Built-in `@...` paths continue through the current services unchanged.
 
-Omitted-path `brain_glob` / `brain_grep` never route through relations. Related discovery requires an explicit related `path`.
+Omitted-path `brain_glob` / `brain_grep` collect the current built-in search set (`@global`, `@project`, current `@session` when present) plus `@project/memories/` from every available relation, then perform one combined final ranking/bounding/rendering pass. Explicit `path` continues to route only to the addressed memory tree.
 
 `brain_absolute_path` resolves an addressed resource location and maps the selected target binding. It never applies the relation write gate.
 
@@ -318,7 +320,7 @@ Tests should prove semantics, not prose.
 - addressed namespace: table tests for built-in/related parse/format and invalid shapes.
 - related read: same cognition returned with `#alias` presentation; read-only cat leaves companion bytes unchanged.
 - core cat: built-in and related core exact read succeeds.
-- discovery: omitted search excludes related; explicit related search returns only alias-rooted paths.
+- discovery: omitted search includes all workspace project memories, preserves distinct `@project/...` / `#alias/...` identities, applies one combined bounded priority selection, and does not mutate memory state; explicit related search remains narrowed to that alias.
 - permission: all mutation tools reject read-only relation before state change.
 - move: cross-project write/write succeeds; read endpoint rejects; injected physical failure restores both projects.
 - anchor projection: typed relation data/errors and absence of related core content; semantic prompt eval for guidance behavior/self-relative core references.

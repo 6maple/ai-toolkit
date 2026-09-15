@@ -13,7 +13,8 @@ Covered behaviors:
 - bad aliases degrade independently;
 - `brain_think` exposes alias/access/applicability/core address but not related core content, ProjectId, or canonical source root;
 - related core and archival cognition are readable with alias-rooted public paths;
-- omitted discovery excludes related projects; explicit related discovery stays in that alias;
+- omitted discovery includes available related project memories, treats registered-but-unmaterialized related project cognition as empty, performs one combined bounded priority selection over collected candidates, and leaves search-only memory state unchanged; explicit related discovery stays in that alias and preserves `not-found`;
+- multiple aliases targeting the same Brain project remain available and produce a `brain_think` warning without exposing ProjectId;
 - read-only exact read does not mutate target accessibility/companion state;
 - read-only Brain mutation fails with stable `related-project-read-only` code;
 - relation config/permission is reloaded between tool invocations;

@@ -29,6 +29,7 @@ import {
   listProjectMetadata,
   resolveOrCreateProject,
 } from "../../src/persistence/project-mapping.ts";
+import { encodeScopeState } from "../../src/persistence/codecs.ts";
 import { projectAbsoluteLocation } from "../../src/persistence/storage.ts";
 import { createBrainApplicationServices } from "../../src/runtime/application.ts";
 import { bootstrapBrainRuntimeInfrastructure } from "../../src/runtime/bootstrap.ts";
@@ -139,6 +140,83 @@ describe("v5 related project cognition", () => {
     }
   });
 
+  it("treats a registered but unmaterialized related project as empty only in omitted-path discovery", async () => {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-empty-related-"));
+    const brainRoot = path.join(temp, "brain");
+    const a = path.join(temp, "a");
+    const empty = path.join(temp, "empty");
+    await Promise.all([fs.mkdir(a), fs.mkdir(empty)]);
+    try {
+      const current = await bootstrapProject(brainRoot, a);
+      await resolveOrCreateProject({ brainRoot, sourceRoot: empty });
+      const memoryPath = parsePublicPath("@project/memories/knowledge/current.md");
+      if (memoryPath.kind !== "archival") throw new Error("expected archival");
+      await current.services.maintenance.write(
+        memoryPath,
+        "---\nsummary: current\nimportance: medium\n---\nCURRENT_ONLY_SENTINEL\n",
+      );
+      await writeConfig(a, { relatedProjects: { empty: { path: "../empty", access: "write" } } });
+      const services = await createBrainServicesForRoot(brainRoot, a);
+
+      await withClient(services, async (client) => {
+        const glob = await client.callTool({
+          name: "brain_glob",
+          arguments: { pattern: "**/*.md" },
+        });
+        expect(glob.isError).not.toBe(true);
+        expect(textOf(glob)).toContain("@project/memories/knowledge/current.md");
+
+        const grep = await client.callTool({
+          name: "brain_grep",
+          arguments: { pattern: "CURRENT_ONLY_SENTINEL", literal: true },
+        });
+        expect(grep.isError).not.toBe(true);
+        expect(textOf(grep)).toContain("@project/memories/knowledge/current.md");
+
+        const explicit = await client.callTool({
+          name: "brain_glob",
+          arguments: { path: "#empty/memories/", pattern: "#empty/memories/**/*.md" },
+        });
+        expect(explicit.isError).toBe(true);
+        expect(textOf(explicit)).toMatch(/^error: not-found(?:\n|$)/);
+      });
+    } finally {
+      await fs.rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("warns when multiple aliases resolve to the same related Brain project", async () => {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-duplicate-related-"));
+    const brainRoot = path.join(temp, "brain");
+    const a = path.join(temp, "a");
+    const b = path.join(temp, "b");
+    await Promise.all([fs.mkdir(a), fs.mkdir(b)]);
+    try {
+      await bootstrapProject(brainRoot, a);
+      const target = await bootstrapProject(brainRoot, b);
+      await writeConfig(a, {
+        relatedProjects: {
+          first: { path: "../b", access: "read" },
+          second: { path: "../b", access: "write" },
+        },
+      });
+      const services = await createBrainServicesForRoot(brainRoot, a);
+
+      await withClient(services, async (client) => {
+        const think = await client.callTool({ name: "brain_think", arguments: {} });
+        const text = textOf(think);
+        expect(think.isError).not.toBe(true);
+        expect(text).toContain("### Related Project Warnings");
+        expect(text).toContain("related-project-duplicate-target");
+        expect(text).toContain("#first");
+        expect(text).toContain("#second");
+        expect(text).not.toContain(target.project.projectId);
+      });
+    } finally {
+      await fs.rm(temp, { recursive: true, force: true });
+    }
+  });
+
   it("reads related cognition with alias presentation and keeps read-only retrieval side-effect free", async () => {
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-read-"));
     const brainRoot = path.join(temp, "brain");
@@ -146,7 +224,7 @@ describe("v5 related project cognition", () => {
     const b = path.join(temp, "b");
     await Promise.all([fs.mkdir(a), fs.mkdir(b)]);
     try {
-      await resolveOrCreateProject({ brainRoot, sourceRoot: a });
+      const current = await bootstrapProject(brainRoot, a);
       const target = await bootstrapProject(brainRoot, b);
       await target.services.maintenance.edit({
         path: parsePublicPath("@project/core.md"),
@@ -158,6 +236,10 @@ describe("v5 related project cognition", () => {
       await target.services.maintenance.write(
         memoryPath,
         "---\nsummary: b memory referencing @project/memories/knowledge/b.md\nimportance: high\n---\nB_MEMORY_SENTINEL\nREF @project/memories/knowledge/b.md\n",
+      );
+      await current.services.maintenance.write(
+        memoryPath,
+        "---\nsummary: current memory\nimportance: high\n---\nCURRENT_MEMORY_SENTINEL\n",
       );
       const before = await target.infrastructure.store.loadArchival(memoryPath);
 
@@ -208,11 +290,29 @@ describe("v5 related project cognition", () => {
         expect(grepped.isError).not.toBe(true);
         expect(textOf(grepped)).toMatch(/@project\/\.\.\.[\s\S]*#b\/\.\.\./);
 
-        const omitted = await client.callTool({
+        const discovered = await client.callTool({
           name: "brain_glob",
           arguments: { pattern: "**/*.md" },
         });
-        expect(textOf(omitted)).not.toContain("#b/memories/knowledge/b.md");
+        expect(discovered.isError).not.toBe(true);
+        expect(textOf(discovered)).toContain("@project/memories/knowledge/b.md");
+        expect(textOf(discovered)).toContain("#b/memories/knowledge/b.md");
+
+        const sharedRelativePathGrep = await client.callTool({
+          name: "brain_grep",
+          arguments: { pattern: "MEMORY_SENTINEL", literal: true },
+        });
+        expect(sharedRelativePathGrep.isError).not.toBe(true);
+        expect(textOf(sharedRelativePathGrep)).toContain("@project/memories/knowledge/b.md");
+        expect(textOf(sharedRelativePathGrep)).toContain("#b/memories/knowledge/b.md");
+
+        const discoveredByContent = await client.callTool({
+          name: "brain_grep",
+          arguments: { pattern: "B_MEMORY_SENTINEL", literal: true },
+        });
+        expect(discoveredByContent.isError).not.toBe(true);
+        expect(textOf(discoveredByContent)).toContain("#b/memories/knowledge/b.md");
+        expect(textOf(discoveredByContent)).toContain("B_MEMORY_SENTINEL");
 
         const explicit = await client.callTool({
           name: "brain_glob",
@@ -248,6 +348,85 @@ describe("v5 related project cognition", () => {
       const after = await target.infrastructure.store.loadArchival(memoryPath);
       expect(after?.accessibility).toEqual(before?.accessibility);
       expect(after?.epistemic).toEqual(before?.epistemic);
+    } finally {
+      await fs.rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("ranks default discovery across related projects without changing search-only memory state", async () => {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-workspace-discovery-"));
+    const brainRoot = path.join(temp, "brain");
+    const a = path.join(temp, "a");
+    const lowRoot = path.join(temp, "low");
+    const highRoot = path.join(temp, "high");
+    await Promise.all([fs.mkdir(a), fs.mkdir(lowRoot), fs.mkdir(highRoot)]);
+    try {
+      await resolveOrCreateProject({ brainRoot, sourceRoot: a });
+      const low = await bootstrapProject(brainRoot, lowRoot);
+      const high = await bootstrapProject(brainRoot, highRoot);
+
+      const lowPaths = Array.from({ length: 8 }, (_, index) =>
+        parsePublicPath(
+          `@project/memories/knowledge/ranking-${index.toString().padStart(2, "0")}.md`,
+        ),
+      );
+      const longLowSummary = `low ${"x".repeat(1200)}`;
+      for (const item of lowPaths) {
+        if (item.kind !== "archival") throw new Error("expected archival");
+        await low.services.maintenance.write(
+          item,
+          `---\nsummary: ${longLowSummary}\nimportance: low\n---\nWORKSPACE_RANKING_SENTINEL\n`,
+        );
+      }
+      await low.infrastructure.store.putScopeCycle(
+        { kind: "project" },
+        encodeScopeState({ cycle: 10 }),
+      );
+
+      const highPath = parsePublicPath("@project/memories/knowledge/ranking-high.md");
+      if (highPath.kind !== "archival") throw new Error("expected archival");
+      await high.services.maintenance.write(
+        highPath,
+        "---\nsummary: high\nimportance: critical\n---\nWORKSPACE_RANKING_SENTINEL\n",
+      );
+
+      const firstLowPath = lowPaths[0]!;
+      if (firstLowPath.kind !== "archival") throw new Error("expected archival");
+      const lowBefore = await low.infrastructure.store.loadArchival(firstLowPath);
+      const highBefore = await high.infrastructure.store.loadArchival(highPath);
+
+      await writeConfig(a, {
+        relatedProjects: {
+          aaa: { path: "../low", access: "write" },
+          zzz: { path: "../high", access: "write" },
+        },
+      });
+      const services = await createBrainServicesForRoot(brainRoot, a);
+
+      await withClient(services, async (client) => {
+        const glob = await client.callTool({
+          name: "brain_glob",
+          arguments: { pattern: "**/ranking-*.md" },
+        });
+        expect(glob.isError).not.toBe(true);
+        expect(textOf(glob)).toContain("#zzz/memories/knowledge/ranking-high.md");
+        expect(textOf(glob)).toContain("truncated=true");
+
+        const grep = await client.callTool({
+          name: "brain_grep",
+          arguments: { pattern: "WORKSPACE_RANKING_SENTINEL", literal: true },
+        });
+        expect(grep.isError).not.toBe(true);
+        expect(textOf(grep)).toContain("#zzz/memories/knowledge/ranking-high.md");
+        expect(textOf(grep)).toContain("truncated=true");
+      });
+
+      const lowAfter = await low.infrastructure.store.loadArchival(firstLowPath);
+      const highAfter = await high.infrastructure.store.loadArchival(highPath);
+      expect(lowAfter?.accessibility).toEqual(lowBefore?.accessibility);
+      expect(highAfter?.accessibility).toEqual(highBefore?.accessibility);
+      expect(lowAfter?.epistemic).toEqual(lowBefore?.epistemic);
+      expect(highAfter?.epistemic).toEqual(highBefore?.epistemic);
     } finally {
       await fs.rm(temp, { recursive: true, force: true });
     }

@@ -55,10 +55,11 @@ export type PublicDiscoveryNode = LogicalDirectory | LogicalArchivalPath;
 export type PublicPathFormatter = (path: LogicalBrainPath) => string;
 
 export type DiscoveryNodeRecord =
-  | { readonly kind: "directory"; readonly path: LogicalDirectory }
+  | { readonly kind: "directory"; readonly path: LogicalDirectory; readonly publicPath: string }
   | {
       readonly kind: "archival";
       readonly path: LogicalArchivalPath;
+      readonly publicPath: string;
       readonly summary: string;
       readonly status?: "questioned";
     };
@@ -70,6 +71,7 @@ export interface LogicalLineExcerpt {
 
 export interface GrepMatchRecord {
   readonly path: LogicalArchivalPath;
+  readonly publicPath: string;
   readonly summary: string;
   readonly status?: "questioned";
   readonly lineNumber: number;
@@ -241,15 +243,12 @@ function clipUtf8(value: string, maxBytes: number): { text: string; clipped: boo
   return { text: best, clipped: true };
 }
 
-export function renderDiscoveryRecord(
-  record: DiscoveryNodeRecord,
-  formatPath: PublicPathFormatter = formatPublicPath,
-): string {
-  if (record.kind === "directory") return `${formatPath(record.path)}\tkind=directory`;
+export function renderDiscoveryRecord(record: DiscoveryNodeRecord): string {
+  if (record.kind === "directory") return `${record.publicPath}\tkind=directory`;
   const summary = clipUtf8(record.summary, 2048);
   const status = record.status === "questioned" ? "\tstatus=questioned" : "";
   const clipped = summary.clipped ? "\tsummary_clipped=true" : "";
-  return `${formatPath(record.path)}\tsummary=${summary.text}${status}${clipped}`;
+  return `${record.publicPath}\tsummary=${summary.text}${status}${clipped}`;
 }
 
 export function utf8ByteLength(value: string): number {
@@ -312,13 +311,13 @@ export function canonicalDiscoveryRecordOrder(
       (record): record is Extract<DiscoveryNodeRecord, { kind: "directory" }> =>
         record.kind === "directory",
     )
-    .sort((a, b) => compareText(formatPublicPath(a.path), formatPublicPath(b.path)));
+    .sort((a, b) => compareText(a.publicPath, b.publicPath));
   const archival = records
     .filter(
       (record): record is Extract<DiscoveryNodeRecord, { kind: "archival" }> =>
         record.kind === "archival",
     )
-    .sort((a, b) => compareText(formatPublicPath(a.path), formatPublicPath(b.path)));
+    .sort((a, b) => compareText(a.publicPath, b.publicPath));
   return [...directories, ...archival];
 }
 
@@ -326,7 +325,7 @@ export function canonicalGrepOrder(
   records: readonly GrepMatchRecord[],
 ): readonly GrepMatchRecord[] {
   return [...records].sort((a, b) => {
-    const byPath = compareText(formatPublicPath(a.path), formatPublicPath(b.path));
+    const byPath = compareText(a.publicPath, b.publicPath);
     return byPath !== 0 ? byPath : a.lineNumber - b.lineNumber;
   });
 }
@@ -349,23 +348,17 @@ export function contextForLine(
   return { before, after };
 }
 
-export function renderGrepRecord(
-  record: GrepMatchRecord,
-  formatPath: PublicPathFormatter = formatPublicPath,
-): string {
-  return renderGrepRecords([record], formatPath);
+export function renderGrepRecord(record: GrepMatchRecord): string {
+  return renderGrepRecords([record]);
 }
 
-export function renderGrepRecords(
-  records: readonly GrepMatchRecord[],
-  formatPath: PublicPathFormatter = formatPublicPath,
-): string {
+export function renderGrepRecords(records: readonly GrepMatchRecord[]): string {
   const groups = new Map<
     string,
     { header: GrepMatchRecord; lines: Map<number, { marker: ":" | "-"; text: string }> }
   >();
   for (const record of records) {
-    const key = formatPath(record.path);
+    const key = record.publicPath;
     let group = groups.get(key);
     if (group === undefined) {
       group = { header: record, lines: new Map() };
@@ -386,7 +379,7 @@ export function renderGrepRecords(
   for (const group of groups.values()) {
     const summary = clipUtf8(group.header.summary, 1536);
     const header = [
-      formatPath(group.header.path),
+      group.header.publicPath,
       `summary: ${summary.text}`,
       ...(summary.clipped ? ["summary_clipped=true"] : []),
       ...(group.header.status === "questioned" ? ["status: questioned"] : []),
@@ -402,20 +395,14 @@ export function renderGrepRecords(
   return renderedGroups.join("\n\n");
 }
 
-export function grepRecordsFit(
-  records: readonly GrepMatchRecord[],
-  formatPath: PublicPathFormatter = formatPublicPath,
-): boolean {
+export function grepRecordsFit(records: readonly GrepMatchRecord[]): boolean {
   return (
     records.length <= DISCOVERY_MAX_RECORDS &&
-    utf8ByteLength(renderGrepRecords(records, formatPath)) <= DISCOVERY_MAX_RENDERED_UTF8_BYTES
+    utf8ByteLength(renderGrepRecords(records)) <= DISCOVERY_MAX_RENDERED_UTF8_BYTES
   );
 }
 
-export function packGrepRecords(
-  records: readonly GrepMatchRecord[],
-  formatPath: PublicPathFormatter = formatPublicPath,
-): {
+export function packGrepRecords(records: readonly GrepMatchRecord[]): {
   records: readonly GrepMatchRecord[];
   truncated: boolean;
 } {
@@ -423,7 +410,7 @@ export function packGrepRecords(
   for (const record of records) {
     if (selected.length >= DISCOVERY_MAX_RECORDS) break;
     const candidate = [...selected, record];
-    if (utf8ByteLength(renderGrepRecords(candidate, formatPath)) > DISCOVERY_MAX_RENDERED_UTF8_BYTES) break;
+    if (utf8ByteLength(renderGrepRecords(candidate)) > DISCOVERY_MAX_RENDERED_UTF8_BYTES) break;
     selected.push(record);
   }
   if (selected.length === 0 && records.length > 0) throw new DiscoveryRenderError();

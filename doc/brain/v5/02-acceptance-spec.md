@@ -1,4 +1,4 @@
-﻿# Brain v5 — Acceptance Specification
+# Brain v5 — Acceptance Specification
 
 Status: candidate acceptance baseline after Example / Coverage Design.
 
@@ -17,7 +17,7 @@ Verification avoids copy-sensitive prompt/message assertions. Stable public toke
 | A09 | A project is only listed or mentioned | The model considers the turn | Its core is not loaded solely because of mention | AI Semantic Review / integration prompt eval |
 | A10 | Two or more related file matchers overlap | Work targets a file matching all of them | All matching related cores apply; no hidden most-specific-wins behavior exists | Automated applicability logic + AI Semantic Review |
 | A11 | A valid related project contains core and memories | Exact cognition paths are used | `brain_cat` can read both built-in/related core and archival cognition documents | Automated |
-| A12 | Related memories exist | `brain_glob` or `brain_grep` omits `path` | Related memories are excluded from the default search corpus | Automated |
+| A12 | Related memories exist | `brain_glob` or `brain_grep` omits `path` | Default discovery searches global/current-session memory once and project memory across the current project plus every available related project; related results keep `#alias/...` public paths | Automated |
 | A13 | Related memories exist | Discovery explicitly addresses `#alias/memories/...` | Only the explicitly addressed related memory tree is searched/listed | Automated |
 | A14 | A relation is `read` | Read/discovery/cat/absolute-path operations target it | Reads work normally and `brain_absolute_path` is not blocked by relation access | Automated |
 | A15 | A relation is `read` | A Brain operation would mutate its cognition | The operation fails with `related-project-read-only` and does not partially mutate state | Automated |
@@ -32,6 +32,10 @@ Verification avoids copy-sensitive prompt/message assertions. Stable public toke
 | A24 | A project core declares a mandatory durable cognition | The core is read locally or through a related alias | The mandatory item is expressed as an explicit `立即读取 xxx` directive and is read before continuing project-specific work; the full durable cognition does not need to be duplicated into core | AI Semantic Review / focused prompt eval |
 | A25 | Related project cognition contains `@project/memories/decision/x.md` | `brain_cat`, `brain_ls`, `brain_glob`, or `brain_grep` returns that text through `#alias` | The returned related content stays unchanged, while local output guidance tells the model to follow `@project/...` as `#alias/...` for Brain tool calls and to keep `@project/...` when writing back; a write/edit through the alias does not rewrite untouched `@project/...` text | Automated semantics + AI Semantic Review |
 | A26 | A relation is `read` and an archival cognition has accessibility/companion state | `brain_cat` reads it through `#alias` | The content read succeeds without changing the target project's cognition or auxiliary learning/accessibility state | Automated |
+| A27 | Omitted-path discovery collects more candidate records than the bounded result can return across multiple projects | `brain_glob` or `brain_grep` runs | The candidates actually collected from all workspace search sources are prioritized with the same active-discovery rules used for one project before the final bound is applied; project/alias path order does not decide which project gets the budget, and any lower-level source truncation remains reported | Automated |
+| A28 | A related relation is `write` and matched memories have existing accessibility state | `brain_glob` or `brain_grep` returns those memories | Search may read current memory state for prioritization but does not modify accessibility, exposure, durability, epistemic state, or project cycle | Automated |
+| A29 | A related source root is registered as a Brain project but its project cognition has never been materialized | Omitted-path `brain_glob` or `brain_grep` runs, then discovery explicitly addresses that alias | Omitted-path discovery treats that related project as contributing zero memories and still returns other workspace results; explicit related discovery keeps existing `not-found` behavior | Automated |
+| A30 | Two or more available aliases resolve to the same other ProjectId | `brain_think` restores context | Both aliases remain available with their own access settings, and one warning names the duplicate aliases without exposing ProjectId | Automated structure |
 
 ## Coverage result
 

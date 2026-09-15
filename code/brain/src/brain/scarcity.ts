@@ -132,11 +132,15 @@ export function compareActiveDiscoveryCandidates<T>(
   return compareCanonicalPath(formatPublicPath(a.path), formatPublicPath(b.path));
 }
 
-function validateUniqueCandidatePaths<T>(candidates: readonly ScarcityCandidate<T>[]): void {
+function validateUniqueCandidatePaths<T>(
+  candidates: readonly ScarcityCandidate<T>[],
+  candidateKey: (candidate: ScarcityCandidate<T>) => string = (candidate) =>
+    formatPublicPath(candidate.path),
+): void {
   const seen = new Set<string>();
   for (const candidate of candidates) {
     validateCandidate(candidate);
-    const publicPath = formatPublicPath(candidate.path);
+    const publicPath = candidateKey(candidate);
     if (seen.has(publicPath)) throw new ScarcitySelectionError("duplicate-candidate-path");
     seen.add(publicPath);
   }
@@ -151,7 +155,15 @@ export function rankPassiveL0Candidates<T>(
 
 export function rankActiveDiscoveryCandidates<T>(
   candidates: readonly ScarcityCandidate<T>[],
+  candidateKey: (candidate: ScarcityCandidate<T>) => string = (candidate) =>
+    formatPublicPath(candidate.path),
 ): readonly ScarcityCandidate<T>[] {
-  validateUniqueCandidatePaths(candidates);
-  return [...candidates].sort(compareActiveDiscoveryCandidates);
+  validateUniqueCandidatePaths(candidates, candidateKey);
+  return [...candidates].sort((a, b) => {
+    validateCandidate(a);
+    validateCandidate(b);
+    const byScore = compareScoreDesc(activeDiscoveryScore(a), activeDiscoveryScore(b));
+    if (byScore !== 0) return byScore;
+    return compareCanonicalPath(candidateKey(a), candidateKey(b));
+  });
 }
