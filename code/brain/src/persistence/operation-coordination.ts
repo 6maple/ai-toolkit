@@ -223,9 +223,6 @@ function delayWithAbort(milliseconds: number, signal?: AbortSignal): Promise<voi
   });
 }
 
-function touchesGlobal(scopes: readonly ScopeRef[]): boolean {
-  return scopes.some((scope) => scope.kind === "global");
-}
 
 interface PreparedEntry {
   readonly mutation: ResourceMutation;
@@ -295,7 +292,7 @@ export class PersistentOperationCoordinator {
   ): Promise<T> {
     if (this.fatalStoreError) throw this.fatalStoreError;
     if (signal?.aborted) throw new CoordinationError("aborted");
-    return touchesGlobal(scopes) ? this.globalLease.runExclusive(signal, operation) : operation();
+    return this.globalLease.runExclusive(signal, operation);
   }
 
   private async executeSemanticOperation<T>(request: SemanticOperationRequest<T>): Promise<T> {

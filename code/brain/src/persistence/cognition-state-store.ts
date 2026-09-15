@@ -42,6 +42,7 @@ import {
   type PhysicalResourceRef,
   type StorageBinding,
   type StorageFs,
+  type StoragePlatform,
 } from "./storage.ts";
 
 export type PersistentFileRef =
@@ -50,8 +51,13 @@ export type PersistentFileRef =
   | { readonly kind: "companion"; readonly item: LogicalArchivalPath };
 
 export type ResourceMutation =
-  | { readonly kind: "put"; readonly ref: PersistentFileRef; readonly bytes: Uint8Array }
-  | { readonly kind: "delete"; readonly ref: PersistentFileRef };
+  | {
+      readonly kind: "put";
+      readonly ref: PersistentFileRef;
+      readonly bytes: Uint8Array;
+      readonly binding?: StorageBinding;
+    }
+  | { readonly kind: "delete"; readonly ref: PersistentFileRef; readonly binding?: StorageBinding };
 
 export type ResourceBeforeState =
   | { readonly existed: false }
@@ -61,6 +67,7 @@ export interface PreparedPhysicalMutation {
   readonly ref: PersistentFileRef;
   readonly operation: "put" | "delete";
   readonly absolutePath: string;
+  readonly platform: StoragePlatform;
 }
 
 export interface PersistentResourcePort {
@@ -594,14 +601,16 @@ export class CognitionStateStore implements MaintenanceStatePort, PersistentReso
   }
 
   async preflight(mutation: ResourceMutation): Promise<PreparedPhysicalMutation> {
+    const binding = mutation.binding ?? this.binding;
     const resolved =
       mutation.kind === "put"
-        ? await resolveCreateTarget(this.binding, mutation.ref as PhysicalResourceRef, this.fs)
-        : await resolveExistingResource(this.binding, mutation.ref as PhysicalResourceRef, this.fs);
+        ? await resolveCreateTarget(binding, mutation.ref as PhysicalResourceRef, this.fs)
+        : await resolveExistingResource(binding, mutation.ref as PhysicalResourceRef, this.fs);
     return {
       ref: this.toPersistentFileRef(resolved.canonicalRef),
       operation: mutation.kind,
       absolutePath: resolved.canonicalPath,
+      platform: binding.platform,
     };
   }
 
@@ -618,7 +627,7 @@ export class CognitionStateStore implements MaintenanceStatePort, PersistentReso
   }
 
   async putWhole(prepared: PreparedPhysicalMutation, bytes: Uint8Array): Promise<void> {
-    const pathApi = this.binding.platform === "win32" ? path.win32 : path.posix;
+    const pathApi = prepared.platform === "win32" ? path.win32 : path.posix;
     const parent = pathApi.dirname(prepared.absolutePath);
     await this.fs.mkdir(parent, { recursive: true });
     const temporary = pathApi.join(

@@ -139,6 +139,16 @@ interface TargetScopePreparation {
   readonly wasInitialized: boolean;
 }
 
+export interface PlannedMoveMutation {
+  readonly owner: "source" | "destination";
+  readonly mutation: ResourceMutation;
+}
+
+export interface DerivedMovePlan {
+  readonly mutations: readonly PlannedMoveMutation[];
+  readonly result: Extract<MaintenanceResult, { action: "moved" }>;
+}
+
 function sameScopeRef(a: ScopeRef, b: ScopeRef): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "session" && b.kind === "session") return a.sessionId === b.sessionId;
@@ -220,6 +230,128 @@ function requireArchivalKind(
 ): LogicalArchivalPath {
   if (path.kind !== "archival") throw new MaintenanceTargetError(code);
   return path;
+}
+
+async function requireScopeFrom(
+  persistence: MaintenancePersistencePort,
+  scope: ScopeRef,
+): Promise<MaterializedScopeSnapshot> {
+  const snapshot = await persistence.loadScope(scope);
+  if (snapshot === undefined) throw new MaintenanceTargetError("target-not-found");
+  return snapshot;
+}
+
+async function requireArchivalFrom(
+  persistence: MaintenancePersistencePort,
+  path: LogicalArchivalPath,
+) {
+  const snapshot = await persistence.loadArchival(path);
+  if (snapshot === undefined) throw new MaintenanceTargetError("target-not-found");
+  return snapshot;
+}
+
+async function prepareTargetScopeFrom(
+  persistence: MaintenancePersistencePort,
+  scope: ScopeRef,
+): Promise<TargetScopePreparation> {
+  const snapshot = await persistence.loadScope(scope);
+  if (snapshot !== undefined) {
+    return {
+      scopeState: snapshot.cycle,
+      requiredInitMutations: [],
+      wasInitialized: false,
+    };
+  }
+  if (scope.kind !== "session") throw new MaintenanceStateInvariantError();
+
+  return {
+    scopeState: initialScopeCycleState(),
+    requiredInitMutations: [
+      {
+        kind: "put",
+        ref: persistentCoreRef(scope),
+        bytes: encodeMarkdown(normalizeMarkdownInput("")),
+      },
+    ],
+    wasInitialized: true,
+  };
+}
+
+export async function deriveMovePlan(request: {
+  readonly sourcePersistence: MaintenancePersistencePort;
+  readonly destinationPersistence: MaintenancePersistencePort;
+  readonly requestedSrc: LogicalBrainPath;
+  readonly requestedDst: LogicalBrainPath;
+  readonly sameOwner: boolean;
+}): Promise<DerivedMovePlan> {
+  requireArchivalKind(request.requestedSrc, "mv-requires-archival-source");
+  requireArchivalKind(request.requestedDst, "mv-requires-archival-destination");
+
+  const [resolvedSrc, resolvedDst] = await Promise.all([
+    request.sourcePersistence.resolveExisting(request.requestedSrc),
+    request.destinationPersistence.resolveCreateTarget(request.requestedDst),
+  ]);
+  const src = requireArchivalKind(resolvedSrc.path, "mv-requires-archival-source");
+  const dst = requireArchivalKind(resolvedDst.path, "mv-requires-archival-destination");
+  if (request.sameOwner && isSameLogicalPath(src, dst)) {
+    throw new MaintenanceInputError("same-source-destination");
+  }
+
+  const sourceScope = await requireScopeFrom(request.sourcePersistence, src.scope);
+  const source = await requireArchivalFrom(request.sourcePersistence, src);
+  const sameSemanticScope = request.sameOwner && sameScopeRef(src.scope, dst.scope);
+  const target = sameSemanticScope
+    ? {
+        scopeState: sourceScope.cycle,
+        requiredInitMutations: [] as readonly ResourceMutation[],
+        wasInitialized: false,
+      }
+    : await prepareTargetScopeFrom(request.destinationPersistence, dst.scope);
+  const destination = target.wasInitialized
+    ? undefined
+    : await request.destinationPersistence.loadArchival(dst);
+  const accessibility = sameSemanticScope
+    ? applyDirectEngagement(sourceScope.cycle, source.accessibility)
+    : rebaseAcrossScope(sourceScope.cycle, target.scopeState, source.accessibility);
+
+  return {
+    mutations: [
+      ...target.requiredInitMutations.map((mutation) => ({
+        owner: "destination" as const,
+        mutation,
+      })),
+      {
+        owner: "destination",
+        mutation: {
+          kind: "put",
+          ref: persistentArchivalRef(dst),
+          bytes: encodeMarkdown(source.document.text),
+        },
+      },
+      {
+        owner: "destination",
+        mutation: {
+          kind: "put",
+          ref: persistentCompanionRef(dst),
+          bytes: encodeCompanion({
+            contentHash: hashMarkdownContent(source.document.text),
+            epistemic: source.epistemic,
+            accessibility,
+          }),
+        },
+      },
+      {
+        owner: "source",
+        mutation: { kind: "delete", ref: persistentArchivalRef(src) },
+      },
+    ],
+    result: {
+      action: "moved",
+      from: src,
+      to: dst,
+      replacedExistingDestination: destination !== undefined,
+    },
+  };
 }
 
 export class CognitionMaintenance {
@@ -365,75 +497,29 @@ export class CognitionMaintenance {
     requestedSrc: LogicalBrainPath,
     requestedDst: LogicalBrainPath,
   ): Promise<MaintenanceResult> {
-    requireArchivalKind(requestedSrc, "mv-requires-archival-source");
-    requireArchivalKind(requestedDst, "mv-requires-archival-destination");
-
     const result = await this.operations.runSemanticOperation({
       name: "brain-mv",
       scopes: uniqueOrderedScopes([requestedSrc.scope, requestedDst.scope]),
       derive: async () => {
-        const [resolvedSrc, resolvedDst] = await Promise.all([
-          this.persistence.resolveExisting(requestedSrc),
-          this.persistence.resolveCreateTarget(requestedDst),
-        ]);
-        const src = requireArchivalKind(resolvedSrc.path, "mv-requires-archival-source");
-        const dst = requireArchivalKind(resolvedDst.path, "mv-requires-archival-destination");
-        if (isSameLogicalPath(src, dst)) {
-          throw new MaintenanceInputError("same-source-destination");
-        }
-
-        const sourceScope = await this.requireScope(src.scope);
-        const source = await this.requireArchival(src);
-        const target = sameScopeRef(src.scope, dst.scope)
-          ? {
-              scopeState: sourceScope.cycle,
-              requiredInitMutations: [] as readonly ResourceMutation[],
-              wasInitialized: false,
-            }
-          : await this.prepareTargetScope(dst.scope);
-        const destination = target.wasInitialized
-          ? undefined
-          : await this.persistence.loadArchival(dst);
-        const accessibility = sameScopeRef(src.scope, dst.scope)
-          ? applyDirectEngagement(sourceScope.cycle, source.accessibility)
-          : rebaseAcrossScope(sourceScope.cycle, target.scopeState, source.accessibility);
-
+        const plan = await deriveMovePlan({
+          sourcePersistence: this.persistence,
+          destinationPersistence: this.persistence,
+          requestedSrc,
+          requestedDst,
+          sameOwner: true,
+        });
         return {
-          kind: "change",
-          mutations: [
-            ...target.requiredInitMutations,
-            {
-              kind: "put",
-              ref: persistentArchivalRef(dst),
-              bytes: encodeMarkdown(source.document.text),
-            },
-            {
-              kind: "put",
-              ref: persistentCompanionRef(dst),
-              bytes: encodeCompanion({
-                contentHash: hashMarkdownContent(source.document.text),
-                epistemic: source.epistemic,
-                accessibility,
-              }),
-            },
-            { kind: "delete", ref: persistentArchivalRef(src) },
-          ],
-          result: {
-            action: "moved",
-            from: src,
-            to: dst,
-            replacedExistingDestination: destination !== undefined,
-          } satisfies MaintenanceResult,
+          kind: "change" as const,
+          mutations: plan.mutations.map((entry) => entry.mutation),
+          result: plan.result,
         };
       },
     });
 
-    if (result.action === "moved") {
-      await this.operations.tryApplyAuxiliaryUpdate({
-        scopes: [result.from.scope],
-        deriveAndApply: () => this.persistence.deleteCompanion(result.from),
-      });
-    }
+    await this.operations.tryApplyAuxiliaryUpdate({
+      scopes: [result.from.scope],
+      deriveAndApply: () => this.persistence.deleteCompanion(result.from),
+    });
     return result;
   }
 
@@ -528,39 +614,15 @@ export class CognitionMaintenance {
     });
   }
 
-  private async prepareTargetScope(scope: ScopeRef): Promise<TargetScopePreparation> {
-    const snapshot = await this.persistence.loadScope(scope);
-    if (snapshot !== undefined) {
-      return {
-        scopeState: snapshot.cycle,
-        requiredInitMutations: [],
-        wasInitialized: false,
-      };
-    }
-    if (scope.kind !== "session") throw new MaintenanceStateInvariantError();
-
-    return {
-      scopeState: initialScopeCycleState(),
-      requiredInitMutations: [
-        {
-          kind: "put",
-          ref: persistentCoreRef(scope),
-          bytes: encodeMarkdown(normalizeMarkdownInput("")),
-        },
-      ],
-      wasInitialized: true,
-    };
+  private prepareTargetScope(scope: ScopeRef): Promise<TargetScopePreparation> {
+    return prepareTargetScopeFrom(this.persistence, scope);
   }
 
-  private async requireScope(scope: ScopeRef): Promise<MaterializedScopeSnapshot> {
-    const snapshot = await this.persistence.loadScope(scope);
-    if (snapshot === undefined) throw new MaintenanceTargetError("target-not-found");
-    return snapshot;
+  private requireScope(scope: ScopeRef): Promise<MaterializedScopeSnapshot> {
+    return requireScopeFrom(this.persistence, scope);
   }
 
-  private async requireArchival(path: LogicalArchivalPath) {
-    const snapshot = await this.persistence.loadArchival(path);
-    if (snapshot === undefined) throw new MaintenanceTargetError("target-not-found");
-    return snapshot;
+  private requireArchival(path: LogicalArchivalPath) {
+    return requireArchivalFrom(this.persistence, path);
   }
 }

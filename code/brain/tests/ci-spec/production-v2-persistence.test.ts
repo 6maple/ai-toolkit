@@ -273,7 +273,7 @@ describe("T3 E2 semantic vs auxiliary coordination", () => {
     expect(decoder.decode(resources.files.get("project/a.md")!)).toBe("2");
   });
 
-  it("uses the cross-process lease only when current state includes global scope", async () => {
+  it("uses the brain-root cross-process lease for every semantic operation", async () => {
     const resources = new FakeResourcePort();
     const lease = new FakeLease();
     const coordinator = new PersistentOperationCoordinator(resources, lease);
@@ -283,14 +283,14 @@ describe("T3 E2 semantic vs auxiliary coordination", () => {
       scopes: [projectScope],
       derive: async () => ({ kind: "no-change", result: undefined }),
     });
-    expect(lease.calls).toBe(0);
+    expect(lease.calls).toBe(1);
 
     await coordinator.runSemanticOperation({
       name: "global",
       scopes: [globalScope],
       derive: async () => ({ kind: "no-change", result: undefined }),
     });
-    expect(lease.calls).toBe(1);
+    expect(lease.calls).toBe(2);
   });
 
   it("degrades auxiliary persistence/coordination failure without semantic rollback", async () => {

@@ -8,7 +8,7 @@
 
 ```text
 pnpm test
-→ 9 test files / 144 tests passed
+→ 10 test files / 161 tests passed
 
 pnpm run typecheck
 → passed
@@ -21,6 +21,8 @@ pnpm run typecheck
 - `../../doc/brain/v1/acceptance-spec-brain.md` — Frozen Specification by Example；
 - `../../doc/brain/v1/design-brain-runtime.md` — 完整 Engineering Design；
 - `../../doc/design-rule.md` — 设计与验证方法；
+- `../../doc/brain/v5/01-requirements-contract.md` — v5 跨项目记忆行为契约；
+- [RELATED_PROJECTS.md](RELATED_PROJECTS.md) — v5 跨项目记忆（related projects）的配置与使用；
 
 - `../../doc/brain/archive/` — 历史资料。
 

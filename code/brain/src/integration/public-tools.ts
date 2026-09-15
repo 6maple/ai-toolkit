@@ -17,7 +17,9 @@ export const BRAIN_TOOL_NAMES = [
 
 export type BrainToolName = (typeof BRAIN_TOOL_NAMES)[number];
 
-const scopePattern = "(?:@global|@project|@session/[A-Za-z0-9][A-Za-z0-9._-]{0,127})";
+const builtinScopePattern = "(?:@global|@project|@session/[A-Za-z0-9][A-Za-z0-9._-]{0,127})";
+const relatedProjectRootPattern = "#[A-Za-z0-9][A-Za-z0-9._-]{0,127}";
+const scopePattern = `(?:${builtinScopePattern}|${relatedProjectRootPattern})`;
 const rolePattern = "(?:decision|knowledge|intention|skill)";
 const safeSegmentPattern = "(?!\\.{1,2}(?:/|$))[^/\\\\]+";
 const archivalPathPattern = new RegExp(
@@ -55,13 +57,13 @@ export const absolutePathInputSchema = z.strictObject({
   path: z
     .string()
     .describe(
-      "Brain workspace location to map. Use a scope root (`@global`, `@project`, or `@session/<sid>`), `<scope-root>/core.md`, `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or any safe descendant below one of those role roots, including non-`.md` supporting assets. Use forward slashes; traversal and scope-level internal paths are invalid.",
+      "Brain workspace location to map. Use a built-in scope root (`@global`, `@project`, `@session/<sid>`) or configured related `#alias`, plus its core, memories tree, or safe descendant below a memory role. Use forward slashes; traversal and scope-level internal paths are invalid.",
     ),
 });
 
 export const lsInputSchema = z.strictObject({
   path: memoriesDirectoryPath(
-    "Archival cognition directory to list. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a directory this tool can list.",
+    "Archival cognition directory to list. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a directory this tool can list.",
   ),
 });
 
@@ -73,11 +75,11 @@ export const globInputSchema = z.strictObject({
       "Non-empty glob matched against each candidate document's complete canonical public path, including its scope root and `.md` filename. Familiar operators include `*`, `**`, `?`, and character classes such as `[ab]`. For example, use `**/*.md` for all candidate documents, `**/testing-*.md` for matching filenames at any depth, or `@project/memories/decision/**/*.md` for a path-shaped subset. Use forward slashes. Only active archival cognition documents are candidates; directories, `core.md`, and arbitrary workspace files are not matched.",
     ),
   path: memoriesDirectoryPath(
-    "Optional archival cognition directory used to narrow candidates before `pattern` is matched against their complete public paths. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Omit `path` to search all applicable memories trees. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a search root for this tool.",
+    "Optional archival cognition directory used to narrow candidates before `pattern` is matched against their complete public paths. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Omit `path` to search all applicable memories trees. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a search root for this tool.",
   )
     .optional()
     .describe(
-      "Optional archival cognition directory used to narrow candidates before `pattern` is matched against their complete public paths. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Omit `path` to search all applicable memories trees. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a search root for this tool.",
+      "Optional archival cognition directory used to narrow candidates before `pattern` is matched against their complete public paths. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Omit `path` to search all applicable memories trees. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a search root for this tool.",
     ),
 });
 
@@ -88,11 +90,11 @@ export const grepInputSchema = z.strictObject({
       "Search expression applied to archival Markdown document content. It is parsed as a regular expression by default; set `literal=true` when its characters should be searched as ordinary text instead of regex syntax. Matching is case-sensitive unless `ignoreCase=true`. An invalid regular expression is an input error, not a successful search with no matches.",
     ),
   path: memoriesDirectoryPath(
-    "Optional archival cognition directory used as the content-search root. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Omit `path` to search all applicable memories trees. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a search root for this tool.",
+    "Optional archival cognition directory used as the content-search root. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Omit `path` to search all applicable memories trees. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a search root for this tool.",
   )
     .optional()
     .describe(
-      "Optional archival cognition directory used as the content-search root. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Omit `path` to search all applicable memories trees. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a search root for this tool.",
+      "Optional archival cognition directory used as the content-search root. Use `<scope-root>/memories/`, `<scope-root>/memories/{decision,knowledge,intention,skill}/`, or a nested directory below one role root, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Omit `path` to search all applicable memories trees. Use forward slashes. A bare scope, `core.md`, or a concrete `.md` cognition document is not a search root for this tool.",
     ),
   glob: z
     .string()
@@ -123,8 +125,8 @@ export const grepInputSchema = z.strictObject({
 });
 
 export const catInputSchema = z.strictObject({
-  path: archivalDocumentPath(
-    "Concrete active archival cognition Markdown document to read. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Use forward slashes. This tool does not read `core.md` because applicable core content is already resident in `<brain_think_context>` and is maintained with `brain_edit`. A bare scope, directory, or non-`.md` path is not a readable cognition document for this tool.",
+  path: cognitionDocumentPath(
+    "Concrete cognition Markdown document to read. Use `<scope-root>/core.md` or `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is a built-in Brain scope or configured related `#alias`. Use forward slashes. A bare scope, directory, or non-`.md` path is not a readable cognition document for this tool.",
   ),
   offset: z
     .number()
@@ -146,7 +148,7 @@ export const catInputSchema = z.strictObject({
 
 export const writeInputSchema = z.strictObject({
   path: archivalDocumentPath(
-    "Concrete archival cognition path to create or replace. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. The scope root selects where the cognition continues, and the role directory records its cognitive role. Use forward slashes. `core.md`, bare scopes, directories, and non-`.md` paths are invalid.",
+    "Concrete archival cognition path to create or replace. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. The scope root selects where the cognition continues, and the role directory records its cognitive role. Use forward slashes. `core.md`, bare scopes, directories, and non-`.md` paths are invalid.",
   ),
   content: z
     .string()
@@ -192,7 +194,7 @@ const exactEditSchema = z.strictObject({
 export const editInputSchema = z
   .strictObject({
     path: cognitionDocumentPath(
-      "Concrete existing cognition document to update. Use `<scope-root>/core.md` or `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Use forward slashes. A bare scope, directory, non-`.md` archival path, or missing document is not an editable target.",
+      "Concrete existing cognition document to update. Use `<scope-root>/core.md` or `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Use forward slashes. A bare scope, directory, non-`.md` archival path, or missing document is not an editable target.",
     ),
     edits: z
       .array(exactEditSchema)
@@ -214,23 +216,23 @@ export const editInputSchema = z
 
 export const rmInputSchema = z.strictObject({
   path: archivalDocumentPath(
-    "Concrete existing active archival cognition to remove. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Use forward slashes. `core.md`, bare scopes, directories, non-`.md` paths, and missing documents are invalid targets.",
+    "Concrete existing active archival cognition to remove. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Use forward slashes. `core.md`, bare scopes, directories, non-`.md` paths, and missing documents are invalid targets.",
   ),
 });
 
 export const mvInputSchema = z.strictObject({
   src: archivalDocumentPath(
-    "Concrete existing active archival cognition to move. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Use forward slashes. `core.md`, bare scopes, directories, non-`.md` paths, and missing documents are invalid sources.",
+    "Concrete existing active archival cognition to move. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Use forward slashes. `core.md`, bare scopes, directories, non-`.md` paths, and missing documents are invalid sources.",
   ),
   dst: archivalDocumentPath(
-    "Different concrete archival cognition path where `src` will continue. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. The destination may use a different continuity scope, cognitive role, or relative path. It need not exist; if it already contains another cognition, that cognition is replaced. `dst` must resolve to a different canonical address from `src`. Use forward slashes. `core.md`, bare scopes, directories, and non-`.md` paths are invalid destinations.",
+    "Different concrete archival cognition path where `src` will continue. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. The destination may use a different continuity scope, cognitive role, or relative path. It need not exist; if it already contains another cognition, that cognition is replaced. `dst` must resolve to a different canonical address from `src`. Use forward slashes. `core.md`, bare scopes, directories, and non-`.md` paths are invalid destinations.",
   ),
 });
 
 export const feedbackInputSchema = z
   .strictObject({
     path: archivalDocumentPath(
-      "Concrete existing active archival cognition to receive feedback. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, or `@session/<sid>`. Use forward slashes. `core.md`, bare scopes, directories, non-`.md` paths, and missing documents are invalid targets.",
+      "Concrete existing active archival cognition to receive feedback. Use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`, where `<scope-root>` is `@global`, `@project`, `@session/<sid>`, or a configured related `#alias`. Use forward slashes. `core.md`, bare scopes, directories, non-`.md` paths, and missing documents are invalid targets.",
     ),
     feedback: z
       .enum(["adopt", "question", "resolve"])
@@ -319,7 +321,7 @@ export const PUBLIC_BRAIN_TOOLS: readonly BrainToolDefinition[] = [
   {
     name: "brain_cat",
     description:
-      "Read one concrete active archival cognition Markdown document to obtain the method, conditions, reasoning, or evidence needed for the current task beyond its recalled or discovered summary. The bounded result uses stable 1-based logical lines and includes current `status` and unresolved challenge when present. Continue from `next_offset` when returned. An oversized line is returned as a marked excerpt with instructions for reading the complete file.",
+      "Read one concrete cognition Markdown document, including `core.md` or an archival memory. The bounded result uses stable 1-based logical lines; archival reads also include current status/challenge when present. Continue from `next_offset` when returned.",
     inputSchema: catInputSchema,
     outputSchema: brainTextOutputSchema,
   },
@@ -333,7 +335,7 @@ export const PUBLIC_BRAIN_TOOLS: readonly BrainToolDefinition[] = [
   {
     name: "brain_edit",
     description:
-      "Update one existing core or archival cognition document while preserving its cognition identity. Provide exactly one of `edits` or `content`; both modes preserve an archival target's current unresolved challenge and appropriate learning continuity. For `core.md`, use the complete content already resident in `<brain_think_context>` rather than calling `brain_cat`. This tool does not create missing documents; use `brain_write` for a new archival cognition.",
+      "Update one existing core or archival cognition document while preserving its cognition identity. Provide exactly one of `edits` or `content`; both modes preserve an archival target's current unresolved challenge and appropriate learning continuity. This tool does not create missing documents; use `brain_write` for a new archival cognition.",
     inputSchema: editInputSchema,
     outputSchema: brainTextOutputSchema,
   },

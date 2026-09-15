@@ -300,7 +300,7 @@ describe("brain v2 generic MCP public contract", () => {
     ).toBe(false);
   });
 
-  test("schemas distinguish resident core, archival documents, and memories directories", () => {
+  test("schemas distinguish cognition documents and memories directories across built-in and related roots", () => {
     const byName = new Map(PUBLIC_BRAIN_TOOLS.map((tool) => [tool.name, tool]));
     const validMemory = "@project/memories/knowledge/tool-contracts.md";
     const validDirectory = "@project/memories/knowledge/";
@@ -310,7 +310,15 @@ describe("brain v2 generic MCP public contract", () => {
     );
     expect(
       byName.get("brain_cat")!.inputSchema.safeParse({ path: "@project/core.md" }).success,
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      byName.get("brain_cat")!.inputSchema.safeParse({ path: "#brain/core.md" }).success,
+    ).toBe(true);
+    expect(
+      byName.get("brain_cat")!.inputSchema.safeParse({
+        path: "#brain/memories/knowledge/tool-contracts.md",
+      }).success,
+    ).toBe(true);
     expect(byName.get("brain_cat")!.inputSchema.safeParse({ path: "@project" }).success).toBe(
       false,
     );
@@ -349,14 +357,13 @@ describe("brain v2 generic MCP public contract", () => {
     }
   });
 
-  test("path errors include tool-specific recovery guidance", async () => {
+  test("path errors retain stable error codes without locking recovery prose", async () => {
     const { services } = fakeServices();
     const registered = captureRegistration(services);
 
     const lsResult = await registered.get("brain_ls")!.handler({ path: "@project" });
     expect(lsResult.isError).toBe(true);
-    expect(lsResult.content[0].text).toContain("@project/memories/");
-    expect(lsResult.content[0].text).toContain("Do not pass @project");
+    expect(lsResult.content[0].text).toMatch(/^error: invalid-object-shape(?:\n|$)/);
 
     services.reads.cat = vi.fn(async () => {
       const error = new Error("wrong kind") as Error & { code: string };
@@ -365,8 +372,7 @@ describe("brain v2 generic MCP public contract", () => {
     }) as never;
     const catResult = await registered.get("brain_cat")!.handler({ path: "@project/core.md" });
     expect(catResult.isError).toBe(true);
-    expect(catResult.content[0].text).toContain("cannot read core.md");
-    expect(catResult.content[0].text).toContain("already fully present");
+    expect(catResult.content[0].text).toMatch(/^error: wrong-object-kind(?:\n|$)/);
   });
 
   test("model-correctable errors retain their code and include an actionable affordance", async () => {

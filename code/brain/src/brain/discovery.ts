@@ -6,6 +6,8 @@ import {
   COGNITIVE_ROLES,
   formatPublicPath,
   type LogicalArchivalPath,
+  type LogicalBrainPath,
+  type LogicalCorePath,
   type LogicalDirectory,
   type ScopeRef,
 } from "./namespace.ts";
@@ -50,6 +52,8 @@ export class DiscoveryRenderError extends Error {
 
 export type PublicDiscoveryNode = LogicalDirectory | LogicalArchivalPath;
 
+export type PublicPathFormatter = (path: LogicalBrainPath) => string;
+
 export type DiscoveryNodeRecord =
   | { readonly kind: "directory"; readonly path: LogicalDirectory }
   | {
@@ -75,7 +79,7 @@ export interface GrepMatchRecord {
 }
 
 export interface CatPage {
-  readonly path: LogicalArchivalPath;
+  readonly path: LogicalCorePath | LogicalArchivalPath;
   readonly startLine: number;
   readonly lines: readonly string[];
   readonly nextOffset?: number;
@@ -237,12 +241,15 @@ function clipUtf8(value: string, maxBytes: number): { text: string; clipped: boo
   return { text: best, clipped: true };
 }
 
-export function renderDiscoveryRecord(record: DiscoveryNodeRecord): string {
-  if (record.kind === "directory") return `${formatPublicPath(record.path)}\tkind=directory`;
+export function renderDiscoveryRecord(
+  record: DiscoveryNodeRecord,
+  formatPath: PublicPathFormatter = formatPublicPath,
+): string {
+  if (record.kind === "directory") return `${formatPath(record.path)}\tkind=directory`;
   const summary = clipUtf8(record.summary, 2048);
   const status = record.status === "questioned" ? "\tstatus=questioned" : "";
   const clipped = summary.clipped ? "\tsummary_clipped=true" : "";
-  return `${formatPublicPath(record.path)}\tsummary=${summary.text}${status}${clipped}`;
+  return `${formatPath(record.path)}\tsummary=${summary.text}${status}${clipped}`;
 }
 
 export function utf8ByteLength(value: string): number {
@@ -342,17 +349,23 @@ export function contextForLine(
   return { before, after };
 }
 
-export function renderGrepRecord(record: GrepMatchRecord): string {
-  return renderGrepRecords([record]);
+export function renderGrepRecord(
+  record: GrepMatchRecord,
+  formatPath: PublicPathFormatter = formatPublicPath,
+): string {
+  return renderGrepRecords([record], formatPath);
 }
 
-export function renderGrepRecords(records: readonly GrepMatchRecord[]): string {
+export function renderGrepRecords(
+  records: readonly GrepMatchRecord[],
+  formatPath: PublicPathFormatter = formatPublicPath,
+): string {
   const groups = new Map<
     string,
     { header: GrepMatchRecord; lines: Map<number, { marker: ":" | "-"; text: string }> }
   >();
   for (const record of records) {
-    const key = formatPublicPath(record.path);
+    const key = formatPath(record.path);
     let group = groups.get(key);
     if (group === undefined) {
       group = { header: record, lines: new Map() };
@@ -373,7 +386,7 @@ export function renderGrepRecords(records: readonly GrepMatchRecord[]): string {
   for (const group of groups.values()) {
     const summary = clipUtf8(group.header.summary, 1536);
     const header = [
-      formatPublicPath(group.header.path),
+      formatPath(group.header.path),
       `summary: ${summary.text}`,
       ...(summary.clipped ? ["summary_clipped=true"] : []),
       ...(group.header.status === "questioned" ? ["status: questioned"] : []),
@@ -389,14 +402,20 @@ export function renderGrepRecords(records: readonly GrepMatchRecord[]): string {
   return renderedGroups.join("\n\n");
 }
 
-export function grepRecordsFit(records: readonly GrepMatchRecord[]): boolean {
+export function grepRecordsFit(
+  records: readonly GrepMatchRecord[],
+  formatPath: PublicPathFormatter = formatPublicPath,
+): boolean {
   return (
     records.length <= DISCOVERY_MAX_RECORDS &&
-    utf8ByteLength(renderGrepRecords(records)) <= DISCOVERY_MAX_RENDERED_UTF8_BYTES
+    utf8ByteLength(renderGrepRecords(records, formatPath)) <= DISCOVERY_MAX_RENDERED_UTF8_BYTES
   );
 }
 
-export function packGrepRecords(records: readonly GrepMatchRecord[]): {
+export function packGrepRecords(
+  records: readonly GrepMatchRecord[],
+  formatPath: PublicPathFormatter = formatPublicPath,
+): {
   records: readonly GrepMatchRecord[];
   truncated: boolean;
 } {
@@ -404,7 +423,7 @@ export function packGrepRecords(records: readonly GrepMatchRecord[]): {
   for (const record of records) {
     if (selected.length >= DISCOVERY_MAX_RECORDS) break;
     const candidate = [...selected, record];
-    if (utf8ByteLength(renderGrepRecords(candidate)) > DISCOVERY_MAX_RENDERED_UTF8_BYTES) break;
+    if (utf8ByteLength(renderGrepRecords(candidate, formatPath)) > DISCOVERY_MAX_RENDERED_UTF8_BYTES) break;
     selected.push(record);
   }
   if (selected.length === 0 && records.length > 0) throw new DiscoveryRenderError();
@@ -412,15 +431,16 @@ export function packGrepRecords(records: readonly GrepMatchRecord[]): {
 }
 
 function renderCatCandidate(
-  path: LogicalArchivalPath,
+  path: LogicalCorePath | LogicalArchivalPath,
   startLine: number,
   lines: readonly string[],
   status?: "questioned",
   challenge?: string,
   clipped = false,
+  formatPath: PublicPathFormatter = formatPublicPath,
 ): string {
   const header = [
-    `path: ${formatPublicPath(path)}`,
+    `path: ${formatPath(path)}`,
     ...(status === "questioned" ? ["status: questioned"] : []),
     ...(challenge === undefined ? [] : [`challenge: ${challenge}`]),
     ...(clipped ? ["safety_truncated=true"] : []),
@@ -430,7 +450,7 @@ function renderCatCandidate(
 }
 
 export function buildCatPageFromPiRead(
-  path: LogicalArchivalPath,
+  path: LogicalCorePath | LogicalArchivalPath,
   text: LogicalMarkdownText,
   offset: number,
   limit: number,
@@ -483,7 +503,10 @@ export function buildCatPageFromPiRead(
   };
 }
 
-export function renderCatPage(page: CatPage): string {
+export function renderCatPage(
+  page: CatPage,
+  formatPath: PublicPathFormatter = formatPublicPath,
+): string {
   const rendered = renderCatCandidate(
     page.path,
     page.startLine,
@@ -491,13 +514,14 @@ export function renderCatPage(page: CatPage): string {
     page.status,
     page.challenge,
     page.safetyTruncated,
+    formatPath,
   );
   if (page.oversizedLine === undefined) {
     if (page.nextOffset === undefined) return rendered;
     return [
       rendered,
       `next_offset: ${page.nextOffset}`,
-      `continue_with: brain_cat(path=${formatPublicPath(page.path)}, offset=${page.nextOffset})`,
+      `continue_with: brain_cat(path=${formatPath(page.path)}, offset=${page.nextOffset})`,
     ].join("\n");
   }
   const oversized = page.oversizedLine;
@@ -507,12 +531,12 @@ export function renderCatPage(page: CatPage): string {
     `${oversized.lineNumber}: ${oversized.prefix}`,
     `shown_utf8_bytes: ${oversized.shownUtf8Bytes}`,
     `full_line_utf8_bytes: ${oversized.fullUtf8Bytes}`,
-    `complete_with: brain_absolute_path(path=${formatPublicPath(page.path)}) and the host filesystem read capability`,
+    `complete_with: brain_absolute_path(path=${formatPath(page.path)}) and the host filesystem read capability`,
   ];
   if (page.nextOffset !== undefined) {
     parts.push(
       `next_offset: ${page.nextOffset}`,
-      `continue_with: brain_cat(path=${formatPublicPath(page.path)}, offset=${page.nextOffset})`,
+      `continue_with: brain_cat(path=${formatPath(page.path)}, offset=${page.nextOffset})`,
     );
   }
   return parts.join("\n");

@@ -27,6 +27,7 @@ import {
   type CatPage,
   type DiscoveryNodeRecord,
   type GrepMatchRecord,
+  type PublicPathFormatter,
 } from "../brain/discovery.ts";
 import { deriveEpistemicStatus } from "../brain/epistemic.ts";
 import {
@@ -40,7 +41,10 @@ import {
   type SessionId,
 } from "../brain/namespace.ts";
 import { rankActiveDiscoveryCandidates, type ScarcityCandidate } from "../brain/scarcity.ts";
-import type { ArchivalSnapshot } from "../persistence/cognition-state-store.ts";
+import type {
+  ArchivalSnapshot,
+  MaterializedScopeSnapshot,
+} from "../persistence/cognition-state-store.ts";
 import { encodeCompanion, hashMarkdownContent } from "../persistence/codecs.ts";
 import type {
   AuxiliaryUpdateOutcome,
@@ -76,6 +80,7 @@ export interface LoadedArchival extends ArchivalSnapshot {
 }
 
 export interface ReadDiscoveryStatePort {
+  loadScope(scope: ScopeRef): Promise<MaterializedScopeSnapshot | undefined>;
   isScopeMaterialized(scope: ScopeRef): Promise<boolean>;
   resolveDiscoveryRoot(path: LogicalDirectory): Promise<CanonicalDiscoveryRoot | undefined>;
   listActiveArchivalPaths(scope: ScopeRef): Promise<ArchivalPathListing>;
@@ -202,6 +207,7 @@ export class ReadDiscovery {
     private readonly state: ReadDiscoveryStatePort & ReadDiscoveryAuxiliaryPersistencePort,
     private readonly piTools: PiDiscoveryToolPort,
     private readonly operations: ReadDiscoveryOperationPort,
+    private readonly formatPath: PublicPathFormatter = formatPublicPath,
   ) {}
 
   async ls(
@@ -228,10 +234,10 @@ export class ReadDiscovery {
       throw new DiscoveryObjectError("not-found");
     }
     const children = directChildren(directory, namespace);
-    const childByKey = new Map(children.map((child) => [formatPublicPath(child), child]));
+    const childByKey = new Map(children.map((child) => [this.formatPath(child), child]));
     const pi = await this.piTools.ls(
       children.map((child) => ({
-        key: formatPublicPath(child),
+        key: this.formatPath(child),
         name: directChildName(child),
         directory: child.kind === "directory",
       })),
@@ -252,7 +258,8 @@ export class ReadDiscovery {
       }
     }
 
-    const ordered = recordsFit(records, renderDiscoveryRecord)
+    const renderRecord = (record: DiscoveryNodeRecord) => renderDiscoveryRecord(record, this.formatPath);
+    const ordered = recordsFit(records, renderRecord)
       ? records
       : [
           ...records.filter((record) => record.kind === "directory"),
@@ -263,7 +270,7 @@ export class ReadDiscovery {
     const trailer = "narrow path or use brain_glob/brain_grep; brain_ls is not pageable";
     const packed = packDiscoveryRecords(
       ordered,
-      renderDiscoveryRecord,
+      renderRecord,
       `truncated=true; ${trailer}`,
     );
     const truncated = pi.truncated || packed.truncated;
@@ -289,12 +296,12 @@ export class ReadDiscovery {
     const matcher = compilePublicGlob(request.pattern);
     const candidates = await this.resolveCandidates(request.path, context);
     const candidateByKey = new Map(
-      candidates.map((candidate) => [formatPublicPath(candidate), candidate]),
+      candidates.map((candidate) => [this.formatPath(candidate), candidate]),
     );
     const pi = await this.piTools.find(
       candidates.map((candidate) => ({
-        key: formatPublicPath(candidate),
-        publicPath: formatPublicPath(candidate),
+        key: this.formatPath(candidate),
+        publicPath: this.formatPath(candidate),
       })),
       request.pattern,
       (_pattern, publicPath) => matcher(publicPath),
@@ -308,7 +315,8 @@ export class ReadDiscovery {
         .map((candidate) => this.enrich(candidate)),
     );
     const records = enriched.map((item) => item.record);
-    const ordered = recordsFit(records, renderDiscoveryRecord)
+    const renderRecord = (record: DiscoveryNodeRecord) => renderDiscoveryRecord(record, this.formatPath);
+    const ordered = recordsFit(records, renderRecord)
       ? records
       : rankActiveDiscoveryCandidates(enriched.map((item) => item.scarcity)).map(
           (candidate) => candidate.value,
@@ -316,7 +324,7 @@ export class ReadDiscovery {
     const trailer = "narrow pattern/path and search again; brain_glob is not pageable";
     const packed = packDiscoveryRecords(
       ordered,
-      renderDiscoveryRecord,
+      renderRecord,
       `truncated=true; ${trailer}`,
     );
     const truncated = pi.truncated || packed.truncated;
@@ -398,7 +406,7 @@ export class ReadDiscovery {
 
     const canonical = canonicalGrepOrder([...dedup.values()]);
     let sequence: readonly GrepMatchRecord[] = canonical;
-    if (!grepRecordsFit(canonical)) {
+    if (!grepRecordsFit(canonical, this.formatPath)) {
       const unique = new Map<string, EnrichedArchival>();
       for (const item of byPath.values()) {
         unique.set(formatPublicPath(item.enriched.snapshot.path), item.enriched);
@@ -418,10 +426,10 @@ export class ReadDiscovery {
       });
     }
 
-    const packed = packGrepRecords(sequence);
+    const packed = packGrepRecords(sequence, this.formatPath);
     const truncated = piTruncated || packed.truncated;
     const text = appendTruncation(
-      renderGrepRecords(packed.records) || "no matching archival cognition content",
+      renderGrepRecords(packed.records, this.formatPath) || "no matching archival cognition content",
       truncated,
       "narrow pattern/path/glob and search again",
     );
@@ -430,13 +438,32 @@ export class ReadDiscovery {
 
   async cat(request: CatRequest): Promise<CatResult> {
     request.signal?.throwIfAborted();
+    const args = normalizeCatArguments(request.offset ?? 1, request.limit ?? 100);
+
+    if (request.path.kind === "core") {
+      const scope = await this.state.loadScope(request.path.scope);
+      if (scope === undefined) throw new DiscoveryObjectError("not-found");
+      const logicalLines = splitLogicalLines(scope.core.text);
+      const piRead =
+        args.offset - 1 >= logicalLines.length
+          ? { outputLines: 0, truncated: false, firstLineExceedsLimit: false }
+          : await this.piTools.read(scope.core.text, args.offset, args.limit, request.signal);
+      const page = buildCatPageFromPiRead(
+        request.path,
+        scope.core.text,
+        args.offset,
+        args.limit,
+        piRead,
+      );
+      return { page, text: renderCatPage(page, this.formatPath) };
+    }
+
     if (request.path.kind !== "archival") throw new DiscoveryObjectError("wrong-object-kind");
     const initial = await this.loadExactArchival(request.path);
     request.signal?.throwIfAborted();
     if (initial === undefined) throw new DiscoveryObjectError("not-found");
     const pathValue = initial.path;
     const status = deriveEpistemicStatus(initial.epistemic);
-    const args = normalizeCatArguments(request.offset ?? 1, request.limit ?? 100);
     const logicalLines = splitLogicalLines(initial.document.text);
     const piRead =
       args.offset - 1 >= logicalLines.length
@@ -451,7 +478,7 @@ export class ReadDiscovery {
       status === "questioned" ? "questioned" : undefined,
       initial.epistemic.challenge,
     );
-    const result = { page, text: renderCatPage(page) };
+    const result = { page, text: renderCatPage(page, this.formatPath) };
     if (page.lines.length === 0) return result;
 
     // Exact content already exists as a valid result. Learning persistence is a

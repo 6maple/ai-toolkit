@@ -19,10 +19,25 @@ export interface AnchorCandidateProjection {
   readonly status?: "questioned";
 }
 
+export interface RelatedProjectProjection {
+  readonly alias: string;
+  readonly access: "read" | "write";
+  readonly files: string;
+  readonly corePath: string;
+}
+
+export interface RelatedProjectErrorProjection {
+  readonly alias?: string;
+  readonly code: string;
+  readonly message: string;
+}
+
 export interface AnchorProjection {
   readonly currentSessionId?: SessionId;
   readonly cores: readonly AnchorCoreProjection[];
   readonly candidates: readonly AnchorCandidateProjection[];
+  readonly relatedProjects?: readonly RelatedProjectProjection[];
+  readonly relatedProjectErrors?: readonly RelatedProjectErrorProjection[];
 }
 
 export function escapeXmlAttribute(value: string): string {
@@ -119,6 +134,43 @@ function renderResidentCognition(cores: readonly AnchorCoreProjection[]): string
   return ["## Resident Working Cognition", "", cores.map(renderCore).join("\n\n")].join("\n");
 }
 
+function renderRelatedProjects(
+  projects: readonly RelatedProjectProjection[] = [],
+  errors: readonly RelatedProjectErrorProjection[] = [],
+): string {
+  if (projects.length === 0 && errors.length === 0) return "";
+  const lines = ["## Related Projects", ""];
+  if (projects.length > 0) {
+    lines.push(
+      "These projects have separate Brain cognition. Their core is not loaded automatically.",
+      "",
+    );
+    for (const project of projects) {
+      lines.push(
+        `#${project.alias} [${project.access}]`,
+        `- files: ${project.files}`,
+        `- core: ${project.corePath}`,
+        "",
+      );
+    }
+    lines.push(
+      "Before reading, changing, or analyzing matching project files, or making a project-specific decision, read every matching related core first.",
+      "After reading a core, follow its own cognition-reading directives; explicit `立即读取 ...` items are mandatory before continuing.",
+      "Do not read a related core merely because the project is listed or mentioned.",
+    );
+  }
+  if (errors.length > 0) {
+    if (projects.length > 0) lines.push("");
+    lines.push("### Related Project Errors", "");
+    for (const error of errors) {
+      lines.push(
+        `${error.alias === undefined ? "related-project config" : `#${error.alias}`} - ${error.code}: ${error.message}`,
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
 function renderArchivalCognition(candidates: readonly AnchorCandidateProjection[]): string {
   const recalled =
     candidates.length === 0
@@ -211,6 +263,9 @@ export function renderAnchorContext(projection: AnchorProjection): string {
     "",
     renderResidentCognition(projection.cores),
     "",
+    ...(renderRelatedProjects(projection.relatedProjects, projection.relatedProjectErrors)
+      ? [renderRelatedProjects(projection.relatedProjects, projection.relatedProjectErrors), ""]
+      : []),
     renderArchivalCognition(projection.candidates),
     "",
     PRESERVING_AND_MAINTAINING,

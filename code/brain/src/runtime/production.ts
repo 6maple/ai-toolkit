@@ -15,7 +15,7 @@ export interface ProductionBrainRestoreRequest {
   readonly sessionId?: string;
 }
 
-async function createBrainServices(
+export async function createBrainServicesForRoot(
   brainRoot: string,
   sourceRoot: string,
 ): Promise<BrainApplicationServices> {
@@ -29,13 +29,13 @@ async function createBrainServices(
       `brain history unavailable: ${infrastructure.historyPreparation.diagnostic.code}`,
     );
   }
-  return createBrainApplicationServices(infrastructure);
+  return createBrainApplicationServices(infrastructure, { sourceRoot });
 }
 
 export async function createProductionBrainServices(
   sourceRoot: string = process.cwd(),
 ): Promise<BrainApplicationServices> {
-  return createBrainServices(BRAIN_HOME, sourceRoot);
+  return createBrainServicesForRoot(BRAIN_HOME, sourceRoot);
 }
 
 /**
@@ -49,5 +49,7 @@ export async function restoreProductionBrainContext(
   const services = await createProductionBrainServices(request.sourceRoot);
   const currentSessionId =
     request.sessionId === undefined ? undefined : parseSessionId(request.sessionId);
-  return services.anchor.runAnchor(currentSessionId === undefined ? {} : { currentSessionId });
+  return services.routed === undefined
+    ? services.anchor.runAnchor(currentSessionId === undefined ? {} : { currentSessionId })
+    : services.routed.think(currentSessionId);
 }

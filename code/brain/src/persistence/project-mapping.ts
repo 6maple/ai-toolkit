@@ -34,6 +34,16 @@ export interface ResolveProjectOptions {
   readonly sourceRoot: string;
 }
 
+export type RegisteredProjectLookup =
+  | { readonly kind: "resolved"; readonly project: ProjectMetadata }
+  | { readonly kind: "not-found" }
+  | { readonly kind: "error"; readonly error: ProjectMappingError };
+
+export interface ResolveRegisteredProjectsOptions {
+  readonly brainRoot: string;
+  readonly sourceRoots: readonly string[];
+}
+
 function normalizeCanonicalPath(value: string): string {
   if (process.platform === "win32" && /^[A-Za-z]:\\/.test(value)) {
     return `${value[0]!.toUpperCase()}${value.slice(1)}`;
@@ -202,6 +212,71 @@ async function writeMetadata(brainRoot: string, metadata: ProjectMetadata): Prom
   const temporary = `${target}.tmp-${randomUUID()}`;
   await fs.writeFile(temporary, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
   await fs.rename(temporary, target);
+}
+
+
+export async function resolveRegisteredProjects(
+  options: ResolveRegisteredProjectsOptions,
+): Promise<readonly RegisteredProjectLookup[]> {
+  const canonical = await Promise.all(
+    options.sourceRoots.map(async (sourceRoot): Promise<
+      | { readonly kind: "canonical"; readonly sourceRoot: string }
+      | { readonly kind: "error"; readonly error: ProjectMappingError }
+    > => {
+      try {
+        return { kind: "canonical", sourceRoot: await canonicalExistingDirectory(sourceRoot) };
+      } catch (error) {
+        return {
+          kind: "error",
+          error:
+            error instanceof ProjectMappingError
+              ? error
+              : new ProjectMappingError("source-root-invalid", { cause: error }),
+        };
+      }
+    }),
+  );
+  if (canonical.every((entry) => entry.kind === "error")) {
+    return canonical.map((entry) => ({ kind: "error", error: entry.error }));
+  }
+
+  try {
+    return await withProjectMappingLock(options.brainRoot, async () => {
+      const projects = await listProjectMetadata(options.brainRoot);
+      return canonical.map((entry): RegisteredProjectLookup => {
+        if (entry.kind === "error") return entry;
+        const matches = projects.filter((project) =>
+          project.sourceRoots.some((candidate) => samePath(candidate, entry.sourceRoot)),
+        );
+        if (matches.length > 1) {
+          return { kind: "error", error: new ProjectMappingError("source-root-conflict") };
+        }
+        return matches.length === 1
+          ? { kind: "resolved", project: matches[0]! }
+          : { kind: "not-found" };
+      });
+    });
+  } catch (error) {
+    const mappingError =
+      error instanceof ProjectMappingError
+        ? error
+        : new ProjectMappingError("project-mapping-unavailable", { cause: error });
+    return canonical.map((entry) =>
+      entry.kind === "error" ? entry : { kind: "error" as const, error: mappingError },
+    );
+  }
+}
+
+export async function resolveRegisteredProject(
+  options: ResolveProjectOptions,
+): Promise<ProjectMetadata | undefined> {
+  const [lookup] = await resolveRegisteredProjects({
+    brainRoot: options.brainRoot,
+    sourceRoots: [options.sourceRoot],
+  });
+  if (lookup === undefined || lookup.kind === "not-found") return undefined;
+  if (lookup.kind === "error") throw lookup.error;
+  return lookup.project;
 }
 
 export async function resolveOrCreateProject(

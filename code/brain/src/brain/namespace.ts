@@ -252,3 +252,82 @@ export function isSameLogicalPath(a: LogicalBrainPath, b: LogicalBrainPath): boo
   }
   return false;
 }
+
+export type RelatedProjectAlias = string & { readonly __brand: "RelatedProjectAlias" };
+
+const RELATED_PROJECT_ALIAS_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+export function parseRelatedProjectAlias(raw: string): RelatedProjectAlias {
+  if (!RELATED_PROJECT_ALIAS_PATTERN.test(raw) || raw === "." || raw === "..") {
+    throw new NamespaceParseError("invalid-root", `#${raw}`);
+  }
+  return raw as RelatedProjectAlias;
+}
+
+export type PublicBrainRoot =
+  | { readonly kind: "builtin"; readonly scope: ScopeRef }
+  | { readonly kind: "related"; readonly alias: RelatedProjectAlias };
+
+export interface AddressedBrainPath {
+  readonly root: PublicBrainRoot;
+  readonly path: LogicalBrainPath;
+}
+
+export interface AddressedResourceLocation {
+  readonly root: PublicBrainRoot;
+  readonly location: LogicalResourceLocation;
+}
+
+function parseRelatedPrefix(raw: string): {
+  readonly alias: RelatedProjectAlias;
+  readonly suffix: string;
+} {
+  if (!raw.startsWith("#")) throw new NamespaceParseError("invalid-root", raw);
+  const slash = raw.indexOf("/");
+  const aliasRaw = raw.slice(1, slash < 0 ? undefined : slash);
+  const alias = parseRelatedProjectAlias(aliasRaw);
+  return { alias, suffix: slash < 0 ? "" : raw.slice(slash + 1) };
+}
+
+export function parseAddressedPublicPath(raw: string): AddressedBrainPath {
+  if (!raw.startsWith("#")) {
+    const path = parsePublicPath(raw);
+    return { root: { kind: "builtin", scope: path.scope }, path };
+  }
+  const { alias, suffix } = parseRelatedPrefix(raw);
+  if (suffix.length === 0) throw new NamespaceParseError("invalid-object-shape", raw);
+  const path = parsePublicPath(`@project/${suffix}`);
+  return { root: { kind: "related", alias }, path };
+}
+
+export function parseAddressedResourceLocation(raw: string): AddressedResourceLocation {
+  if (!raw.startsWith("#")) {
+    const location = parseResourceLocation(raw);
+    return { root: { kind: "builtin", scope: location.scope }, location };
+  }
+  const { alias, suffix } = parseRelatedPrefix(raw);
+  const location = parseResourceLocation(suffix.length === 0 ? "@project" : `@project/${suffix}`);
+  return { root: { kind: "related", alias }, location };
+}
+
+function formatRelatedSuffix(path: LogicalBrainPath): string {
+  if (path.scope.kind !== "project") throw new NamespaceParseError("invalid-root");
+  return formatPublicPath(path).slice("@project/".length);
+}
+
+export function formatAddressedPublicPath(address: AddressedBrainPath): string {
+  if (address.root.kind === "builtin") return formatPublicPath(address.path);
+  return `#${address.root.alias}/${formatRelatedSuffix(address.path)}`;
+}
+
+export function formatAddressedResourceLocation(address: AddressedResourceLocation): string {
+  if (address.root.kind === "builtin") {
+    const root = formatScopePrefix(address.location.scope);
+    return address.location.relativeSegments.length === 0
+      ? root
+      : `${root}/${address.location.relativeSegments.join("/")}`;
+  }
+  return address.location.relativeSegments.length === 0
+    ? `#${address.root.alias}`
+    : `#${address.root.alias}/${address.location.relativeSegments.join("/")}`;
+}

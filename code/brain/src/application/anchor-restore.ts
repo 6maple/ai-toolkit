@@ -40,6 +40,8 @@ import {
   type AnchorCandidateProjection,
   type AnchorCoreProjection,
   type AnchorProjection,
+  type RelatedProjectErrorProjection,
+  type RelatedProjectProjection,
 } from "./anchor-renderer.ts";
 
 export const L0_MAX_CANDIDATES = 10;
@@ -47,6 +49,8 @@ export const L0_CANDIDATE_ITEMS_MAX_RENDERED_UTF8_BYTES = 8192;
 
 export interface AnchorRequest {
   readonly currentSessionId?: SessionId;
+  readonly relatedProjects?: readonly RelatedProjectProjection[];
+  readonly relatedProjectErrors?: readonly RelatedProjectErrorProjection[];
 }
 
 export interface AnchorDiagnostic {
@@ -220,6 +224,10 @@ export class AnchorRestore {
         : { currentSessionId: request.currentSessionId }),
       cores,
       candidates: shown.map((item) => item.projection),
+      ...(request.relatedProjects === undefined ? {} : { relatedProjects: request.relatedProjects }),
+      ...(request.relatedProjectErrors === undefined
+        ? {}
+        : { relatedProjectErrors: request.relatedProjectErrors }),
     };
     const context = renderAnchorContext(projection);
 
