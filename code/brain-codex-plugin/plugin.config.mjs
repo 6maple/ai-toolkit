@@ -33,9 +33,9 @@ export const pluginConfig = {
     additionalContextLimit: 0,
   },
   permissionHook: {
-    matcher: "^mcp__brain__brain_edit$",
+    matcher: "^mcp__brain__brain_(absolute_path|ls|glob|grep|cat|write|edit|rm|mv|feedback)$",
     timeout: 10,
-    statusMessage: "Checking Brain edit safety",
+    statusMessage: "Checking Brain permission",
   },
   marketplace: {
     manifest: ".agents/plugins/marketplace.json",

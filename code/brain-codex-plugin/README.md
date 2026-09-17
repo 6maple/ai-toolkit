@@ -11,6 +11,7 @@ Codex host adapter for `../brain`.
 - Each MCP call resolves project services and trusted session identity from that
   binding, so one long-lived server can safely serve tasks from different projects.
 - Brain remains the owner of cognition, persistence, ranking, and tool semantics.
+- Brain MCP reads are auto-approved. Mutations are auto-approved only when the current `UserPromptSubmit` restore finished with a Git history checkpoint (or no pending change), so the model can work without per-operation prompts while retaining a turn-start recovery point. If that checkpoint is unavailable or fails, reads remain automatic and mutations fall back to Codex approval. Explicit no-edit modes are not bypassed.
 
 ## Development
 

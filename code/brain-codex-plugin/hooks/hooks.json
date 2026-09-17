@@ -17,14 +17,14 @@
     ],
     "PermissionRequest": [
       {
-        "matcher": "^mcp__brain__brain_edit$",
+        "matcher": "^mcp__brain__brain_(absolute_path|ls|glob|grep|cat|write|edit|rm|mv|feedback)$",
         "hooks": [
           {
             "type": "command",
             "command": "node \"D:/Workspace/ai-projects/ai-toolkit/code/brain-codex-plugin/dist/permission-request.mjs\"",
             "commandWindows": "node \"D:\\Workspace\\ai-projects\\ai-toolkit\\code\\brain-codex-plugin\\dist\\permission-request.mjs\"",
             "timeout": 10,
-            "statusMessage": "Checking Brain edit safety"
+            "statusMessage": "Checking Brain permission"
           }
         ]
       }

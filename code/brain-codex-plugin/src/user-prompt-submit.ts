@@ -56,14 +56,18 @@ const brainThinkInstructions = [
 
 async function main(): Promise<void> {
   const input = parseInput(JSON.parse(await readStdin()) as unknown);
+  const result = await restoreProductionBrainContext({
+    sourceRoot: input.cwd,
+    sessionId: input.session_id,
+  });
+  const historyCheckpointReady = !result.diagnostics.some(
+    (diagnostic) => diagnostic.kind === "history-checkpoint-degraded",
+  );
   await writeCodexInvocationBinding({
     sessionId: input.session_id,
     sourceRoot: input.cwd,
     ...(input.turn_id === undefined ? {} : { turnId: input.turn_id }),
-  });
-  const result = await restoreProductionBrainContext({
-    sourceRoot: input.cwd,
-    sessionId: input.session_id,
+    historyCheckpointReady,
   });
   for (const diagnostic of result.diagnostics) {
     console.error(`brain restore diagnostic: ${diagnostic.message}`);

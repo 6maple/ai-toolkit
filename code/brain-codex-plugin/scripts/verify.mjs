@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -140,16 +140,21 @@ async function main() {
   console.log("PASS UserPromptSubmit is configured to deliver complete Brain context");
 
   const permissionHook = hookConfig.hooks.PermissionRequest[0];
-  assert.equal(permissionHook.matcher, "^mcp__brain__brain_edit$");
+  assert.equal(
+    permissionHook.matcher,
+    "^mcp__brain__brain_(absolute_path|ls|glob|grep|cat|write|edit|rm|mv|feedback)$",
+  );
   assert.match(permissionHook.hooks[0].command, /dist\/permission-request\.mjs/);
   assert.match(permissionHook.hooks[0].commandWindows, /dist\\permission-request\.mjs/);
-  console.log("PASS PermissionRequest targets only Codex Brain edits");
+  console.log("PASS PermissionRequest covers the complete Brain MCP surface");
 
   const temp = await mkdtemp(join(tmpdir(), "brain-codex-plugin-"));
   const firstSourceRoot = join(temp, "project-one");
   const secondSourceRoot = join(temp, "project-two");
+  const degradedSourceRoot = join(temp, "project-no-history");
   await mkdir(firstSourceRoot, { recursive: true });
   await mkdir(secondSourceRoot, { recursive: true });
+  await mkdir(degradedSourceRoot, { recursive: true });
   const env = { ...process.env, HOME: temp, USERPROFILE: temp };
 
   try {
@@ -181,45 +186,98 @@ async function main() {
       cwd: firstSourceRoot,
       hook_event_name: "PermissionRequest",
       permission_mode: "default",
-      tool_name: "mcp__brain__brain_edit",
-      tool_input: {
-        path: "@global/core.md",
-        content: "# Initialized global cognition\n",
-      },
+      tool_name: "mcp__brain__brain_cat",
+      tool_input: { path: "@global/core.md" },
     };
-    const emptyCorePermission = await runProcess(permissionHookEntry, {
+    const readPermission = await runProcess(permissionHookEntry, {
       cwd: firstSourceRoot,
       env,
       input: `${JSON.stringify(permissionInput)}\n`,
     });
-    assert.equal(emptyCorePermission.code, 0, emptyCorePermission.stderr);
+    assert.equal(readPermission.code, 0, readPermission.stderr);
+    assert.equal(JSON.parse(readPermission.stdout).hookSpecificOutput.decision.behavior, "allow");
+
+    const mutationInput = {
+      ...permissionInput,
+      tool_name: "mcp__brain__brain_rm",
+      tool_input: { path: "@global/memories/knowledge/example.md" },
+    };
+    const mutationPermission = await runProcess(permissionHookEntry, {
+      cwd: firstSourceRoot,
+      env,
+      input: `${JSON.stringify(mutationInput)}\n`,
+    });
+    assert.equal(mutationPermission.code, 0, mutationPermission.stderr);
     assert.equal(
-      JSON.parse(emptyCorePermission.stdout).hookSpecificOutput.decision.behavior,
+      JSON.parse(mutationPermission.stdout).hookSpecificOutput.decision.behavior,
       "allow",
     );
-
-    await writeFile(
-      join(temp, ".brain-data", "global", "core.md"),
-      "# Existing global cognition\n",
-      "utf8",
-    );
-    const existingCorePermission = await runProcess(permissionHookEntry, {
-      cwd: firstSourceRoot,
-      env,
-      input: `${JSON.stringify(permissionInput)}\n`,
-    });
-    assert.equal(existingCorePermission.code, 0, existingCorePermission.stderr);
-    assert.equal(existingCorePermission.stdout, "");
 
     const planPermission = await runProcess(permissionHookEntry, {
       cwd: firstSourceRoot,
       env,
-      input: `${JSON.stringify({ ...permissionInput, permission_mode: "plan" })}\n`,
+      input: `${JSON.stringify({ ...mutationInput, permission_mode: "plan" })}\n`,
     });
     assert.equal(planPermission.code, 0, planPermission.stderr);
     assert.equal(planPermission.stdout, "");
-    console.log("PASS PermissionRequest allows only empty-target initialization in edit modes");
 
+    const staleTurnPermission = await runProcess(permissionHookEntry, {
+      cwd: firstSourceRoot,
+      env,
+      input: `${JSON.stringify({ ...mutationInput, turn_id: "stale-turn" })}\n`,
+    });
+    assert.equal(staleTurnPermission.code, 0, staleTurnPermission.stderr);
+    assert.equal(staleTurnPermission.stdout, "");
+    console.log("PASS current-turn Git recovery auto-allows Brain reads and mutations");
+
+    const degradedEnv = { ...env };
+    for (const key of Object.keys(degradedEnv)) {
+      if (key.toLowerCase() === "path") degradedEnv[key] = "";
+    }
+    const degradedHookInput = {
+      session_id: "codex-verify-session-no-history",
+      turn_id: "turn-no-history",
+      cwd: degradedSourceRoot,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "verify degraded history",
+    };
+    const degradedPrompted = await runProcess(hookEntry, {
+      cwd: degradedSourceRoot,
+      env: degradedEnv,
+      input: `${JSON.stringify(degradedHookInput)}\n`,
+    });
+    assert.equal(degradedPrompted.code, 0, degradedPrompted.stderr);
+    assert.match(degradedPrompted.stderr, /history/i);
+
+    const degradedReadPermission = await runProcess(permissionHookEntry, {
+      cwd: degradedSourceRoot,
+      env,
+      input: `${JSON.stringify({
+        ...permissionInput,
+        session_id: degradedHookInput.session_id,
+        turn_id: degradedHookInput.turn_id,
+        cwd: degradedSourceRoot,
+      })}\n`,
+    });
+    assert.equal(degradedReadPermission.code, 0, degradedReadPermission.stderr);
+    assert.equal(
+      JSON.parse(degradedReadPermission.stdout).hookSpecificOutput.decision.behavior,
+      "allow",
+    );
+
+    const degradedMutationPermission = await runProcess(permissionHookEntry, {
+      cwd: degradedSourceRoot,
+      env,
+      input: `${JSON.stringify({
+        ...mutationInput,
+        session_id: degradedHookInput.session_id,
+        turn_id: degradedHookInput.turn_id,
+        cwd: degradedSourceRoot,
+      })}\n`,
+    });
+    assert.equal(degradedMutationPermission.code, 0, degradedMutationPermission.stderr);
+    assert.equal(degradedMutationPermission.stdout, "");
+    console.log("PASS degraded Git history keeps reads automatic but mutations in normal approval flow");
     const refreshed = await runProcess(hookEntry, {
       cwd: firstSourceRoot,
       env,

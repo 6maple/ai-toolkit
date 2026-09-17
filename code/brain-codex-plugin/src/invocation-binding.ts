@@ -10,6 +10,7 @@ interface StoredCodexInvocationBinding {
   readonly sessionId: string;
   readonly sourceRoot: string;
   readonly turnId?: string;
+  readonly historyCheckpointReady?: boolean;
   readonly updatedAt: string;
 }
 
@@ -17,6 +18,7 @@ export interface CodexInvocationBinding {
   readonly sessionId: SessionId;
   readonly sourceRoot: string;
   readonly turnId?: string;
+  readonly historyCheckpointReady: boolean;
 }
 
 export class CodexInvocationBindingError extends Error {
@@ -63,6 +65,7 @@ export async function writeCodexInvocationBinding(input: {
   readonly sessionId: string;
   readonly sourceRoot: string;
   readonly turnId?: string;
+  readonly historyCheckpointReady: boolean;
 }): Promise<CodexInvocationBinding> {
   const sessionId = validatedSessionId(input.sessionId);
   const sourceRoot = await canonicalExistingDirectory(input.sourceRoot);
@@ -74,6 +77,7 @@ export async function writeCodexInvocationBinding(input: {
     sessionId,
     sourceRoot,
     ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
+    historyCheckpointReady: input.historyCheckpointReady,
     updatedAt: new Date().toISOString(),
   };
 
@@ -96,6 +100,7 @@ export async function writeCodexInvocationBinding(input: {
     sessionId,
     sourceRoot,
     ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
+    historyCheckpointReady: input.historyCheckpointReady,
   };
 }
 
@@ -121,6 +126,8 @@ export async function readCodexInvocationBinding(
     record.sessionId !== sessionId ||
     typeof record.sourceRoot !== "string" ||
     (record.turnId !== undefined && typeof record.turnId !== "string") ||
+    (record.historyCheckpointReady !== undefined &&
+      typeof record.historyCheckpointReady !== "boolean") ||
     typeof record.updatedAt !== "string"
   ) {
     throw new CodexInvocationBindingError("Stored Codex invocation context is invalid");
@@ -131,5 +138,6 @@ export async function readCodexInvocationBinding(
     sessionId,
     sourceRoot,
     ...(typeof record.turnId === "string" ? { turnId: record.turnId } : {}),
+    historyCheckpointReady: record.historyCheckpointReady === true,
   };
 }
