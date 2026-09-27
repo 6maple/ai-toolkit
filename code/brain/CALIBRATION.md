@@ -72,7 +72,7 @@ Acceptance tests 不锁 calibration 数字；Invariant/Mechanism tests 可以读
 
 ### Context economics
 
-观察三层 core 总长度和 L0 candidate 数量对上下文质量的影响。`CORE_DOC_MAX_CHARS` / `CANDIDATE_LIMIT` 应在“足够信息”和“避免无效上下文”之间找 benefit knee。
+观察 Global / Project 两个 Core 的总长度和 L0 candidate 数量对上下文质量的影响。`CORE_DOC_MAX_CHARS` / `CANDIDATE_LIMIT` 应在“足够信息”和“避免无效上下文”之间找 benefit knee。
 
 ## 4. 数据与验证边界
 

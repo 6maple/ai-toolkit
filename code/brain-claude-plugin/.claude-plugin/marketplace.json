@@ -1,0 +1,12 @@
+{
+  "name": "ai-toolkit-local",
+  "description": "Local development plugins for AI Toolkit.",
+  "owner": { "name": "Maple" },
+  "plugins": [
+    {
+      "name": "brain-claude-plugin",
+      "source": ".",
+      "category": "Productivity"
+    }
+  ]
+}

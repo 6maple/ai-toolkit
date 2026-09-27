@@ -5,7 +5,10 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import {
+  BRAIN_EXPLICIT_RESTORE_INSTRUCTIONS,
+  brainMcpServerInstructions,
   registerBrainTools,
+  resolveBrainMcpRestoreMode,
   type BrainApplicationServices,
   type BrainToolRegistrationOptions,
 } from "../../src/index.ts";
@@ -25,6 +28,8 @@ const EXPECTED_TOOLS = [
   "brain_think",
   "brain_write",
 ] as const;
+
+const EXPECTED_SEMANTIC_TOOLS = [...EXPECTED_TOOLS, "brain_ask_search"].sort();
 
 function fakeServices(projectId = "project-1") {
   const calls: Array<{ name: string; args: unknown }> = [];
@@ -120,23 +125,42 @@ function captureRegistration(
       registered.set(name, { config: config as never, handler });
     }),
   };
-  registerBrainTools(server as never, services, undefined, options);
+  registerBrainTools(server as never, services, options);
   return registered;
 }
 
-describe("brain v2 generic MCP public contract", () => {
-  test("registers exactly the Frozen 11-tool surface from one in-code definition source", () => {
+describe("generic MCP public contract", () => {
+  test("explicit MCP restore advertises turn bootstrap guidance while host restore does not", () => {
+    expect(brainMcpServerInstructions("explicit")).toBe(BRAIN_EXPLICIT_RESTORE_INSTRUCTIONS);
+    expect(brainMcpServerInstructions("host")).toBeUndefined();
+    expect(resolveBrainMcpRestoreMode(undefined)).toBe("explicit");
+    expect(resolveBrainMcpRestoreMode("host")).toBe("host");
+    expect(() => resolveBrainMcpRestoreMode("unknown")).toThrow(
+      "BRAIN_MCP_RESTORE_MODE must be explicit or host",
+    );
+  });
+
+  test("keeps semantic search off by default while the canonical tool source contains the optional definition", () => {
     const { services } = fakeServices();
     const registered = captureRegistration(services);
     expect([...registered.keys()].sort()).toEqual([...EXPECTED_TOOLS]);
-    expect(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOLS]);
-    expect(new Set(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name)).size).toBe(11);
+    expect(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort()).toEqual(EXPECTED_SEMANTIC_TOOLS);
+    expect(new Set(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name)).size).toBe(12);
     for (const tool of PUBLIC_BRAIN_TOOLS) {
       expect(tool.description.length).toBeGreaterThan(0);
+      if (tool.name === "brain_ask_search") continue;
       expect(registered.get(tool.name)?.config.inputSchema).toBe(tool.inputSchema);
       expect(registered.get(tool.name)?.config.outputSchema).toBe(tool.outputSchema);
       expect(registered.get(tool.name)?.config.annotations).toBe(tool.annotations);
     }
+  });
+
+  test("semantic feature exposes brain_ask_search from the same canonical tool source", () => {
+    const { services } = fakeServices();
+    const registered = captureRegistration(services, {
+      features: { semanticSearch: true },
+    } as BrainToolRegistrationOptions);
+    expect([...registered.keys()].sort()).toEqual(EXPECTED_SEMANTIC_TOOLS);
   });
 
   test("declares brain_think as closed-world and non-destructive without claiming read-only or idempotent behavior", () => {
@@ -155,10 +179,10 @@ describe("brain v2 generic MCP public contract", () => {
     expect([...registered.keys()].sort()).toEqual(
       EXPECTED_TOOLS.filter((name) => name !== "brain_think"),
     );
-    expect(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOLS]);
+    expect(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort()).toEqual(EXPECTED_SEMANTIC_TOOLS);
   });
 
-  test("the real MCP SDK can list and call the registered v2 tools", async () => {
+  test("the real MCP SDK can list and call the registered Brain tools", async () => {
     const { services, calls } = fakeServices();
     const server = new McpServer({ name: "brain-test", version: "0.0.0" });
     registerBrainTools(server, services);
@@ -187,7 +211,7 @@ describe("brain v2 generic MCP public contract", () => {
         name: "brain_write",
         arguments: {
           path: "@project/memories/knowledge/sdk.md",
-          content: "---\nsummary: sdk\nimportance: medium\n---\nbody\n",
+          content: "---\ndescription: sdk\nimportance: medium\n---\nbody\n",
         },
       });
       expect(called.isError).not.toBe(true);
@@ -205,7 +229,7 @@ describe("brain v2 generic MCP public contract", () => {
       Object.keys(
         (byName.get(name)!.inputSchema as unknown as { shape: Record<string, unknown> }).shape,
       );
-    expect(keys("brain_think")).toEqual(["session_id"]);
+    expect(keys("brain_think")).toEqual([]);
     expect(keys("brain_absolute_path")).toEqual(["path"]);
     expect(keys("brain_ls")).toEqual(["path"]);
     expect(keys("brain_glob")).toEqual(["pattern", "path"]);
@@ -311,9 +335,9 @@ describe("brain v2 generic MCP public contract", () => {
     expect(
       byName.get("brain_cat")!.inputSchema.safeParse({ path: "@project/core.md" }).success,
     ).toBe(true);
-    expect(
-      byName.get("brain_cat")!.inputSchema.safeParse({ path: "#brain/core.md" }).success,
-    ).toBe(true);
+    expect(byName.get("brain_cat")!.inputSchema.safeParse({ path: "#brain/core.md" }).success).toBe(
+      true,
+    );
     expect(
       byName.get("brain_cat")!.inputSchema.safeParse({
         path: "#brain/memories/knowledge/tool-contracts.md",
@@ -398,7 +422,6 @@ describe("brain v2 generic MCP public contract", () => {
       edits: [{ oldText: "a", newText: "b" }],
     });
     expect(edit.content[0].text).toMatch(/^error: old-text-not-unique\n/);
-    expect(edit.content[0].text).toContain("unique region");
 
     services.maintenance.write = vi.fn(async () => {
       const error = new Error("missing metadata") as Error & { code: string };
@@ -407,72 +430,18 @@ describe("brain v2 generic MCP public contract", () => {
     }) as never;
     const write = await registered.get("brain_write")!.handler({
       path: "@project/memories/knowledge/a.md",
-      content: "---\nsummary: a\n---\n",
+      content: "---\ndescription: a\n---\n",
     });
     expect(write.content[0].text).toMatch(/^error: missing-importance\n/);
-    expect(write.content[0].text).toContain("summary and importance frontmatter");
   });
 
-  test("maintenance results describe execution facts without implying cognition adoption", async () => {
-    const { services } = fakeServices();
-    services.maintenance.feedback = vi.fn(async (path, feedback) =>
-      feedback === "question"
-        ? { action: "questioned", path, changed: false }
-        : { action: "adopted", path },
-    ) as never;
-    services.maintenance.edit = vi.fn(async (request) => ({
-      action: "edited",
-      path: request.path,
-      changed: false,
-    })) as never;
-    const registered = captureRegistration(services);
-    const path = "@project/memories/knowledge/a.md";
-
-    const adopt = await registered.get("brain_feedback")!.handler({ path, feedback: "adopt" });
-    expect(adopt.content[0].text).toContain("validated use");
-    expect(adopt.content[0].text).toContain(path);
-
-    const question = await registered
-      .get("brain_feedback")!
-      .handler({ path, feedback: "question", challenge: "basis" });
-    expect(question.content[0].text).toContain("challenge unchanged");
-    expect(question.content[0].text).toContain(path);
-
-    const edit = await registered.get("brain_edit")!.handler({ path, content: "same" });
-    expect(edit.content[0].text).toMatch(/^no changes:/);
-    expect(edit.content[0].text).toContain(path);
-  });
-
-  test("trusted host session wins, conflicts are rejected, and explicit session remains a fallback", async () => {
-    const { services, calls } = fakeServices();
-    const registered = captureRegistration(services);
-    const think = registered.get("brain_think")!.handler;
-
-    await think({ session_id: "trusted" }, { _meta: { threadId: "trusted" } });
-    await think({}, { _meta: { threadId: "trusted" } });
-    await think({ session_id: "explicit" }, {});
-    await think({}, {});
-    const conflict = await think({ session_id: "different" }, { _meta: { threadId: "trusted" } });
-    expect(calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([
-      { currentSessionId: "trusted" },
-      { currentSessionId: "trusted" },
-      { currentSessionId: "explicit" },
-      {},
-    ]);
-    expect(conflict.isError).toBe(true);
-    expect(conflict.content[0].text).toMatch(/^error: session-id-conflict\n/);
-    expect(conflict.content[0].text).toContain("session_id");
-  });
-
-  test("an invocation resolver keeps project services and trusted session identity together", async () => {
+  test("an invocation resolver selects project services for each call", async () => {
     const first = fakeServices("project-1");
     const second = fakeServices("project-2");
     const registered = captureRegistration(first.services, {
       resolveInvocation: async (extra) => {
         const route = (extra as { route?: unknown }).route;
-        return route === "second"
-          ? { services: second.services, currentSessionId: "session-2" as never }
-          : { services: first.services, currentSessionId: "session-1" as never };
+        return { services: route === "second" ? second.services : first.services };
       },
     });
 
@@ -480,35 +449,11 @@ describe("brain v2 generic MCP public contract", () => {
     await registered.get("brain_think")!.handler({}, { route: "second" });
     await registered.get("brain_glob")!.handler({ pattern: "**/*.md" }, { route: "second" });
 
-    expect(first.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([
-      { currentSessionId: "session-1" },
-    ]);
-    expect(second.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([
-      { currentSessionId: "session-2" },
-    ]);
+    expect(first.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([{}]);
+    expect(second.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([{}]);
     expect(second.calls.find((call) => call.name === "glob")?.args).toMatchObject({
-      context: { currentSessionId: "session-2" },
+      context: {},
     });
-  });
-
-  test("omitted glob/grep path can consume trusted current session without mutating model args", async () => {
-    const { services, calls } = fakeServices();
-    const registered = captureRegistration(services);
-    await registered
-      .get("brain_glob")!
-      .handler({ pattern: "**/*.md" }, { _meta: { threadId: "s1" } });
-    await registered
-      .get("brain_grep")!
-      .handler({ pattern: "needle" }, { _meta: { threadId: "s1" } });
-    const discovery = calls.filter((call) => call.name === "glob" || call.name === "grep");
-    expect(discovery).toEqual([
-      expect.objectContaining({
-        args: expect.objectContaining({ context: { currentSessionId: "s1" } }),
-      }),
-      expect.objectContaining({
-        args: expect.objectContaining({ context: { currentSessionId: "s1" } }),
-      }),
-    ]);
   });
 
   test("MCP cancellation signal is forwarded internally to ls and glob without becoming a model argument", async () => {
@@ -550,13 +495,13 @@ describe("brain v2 generic MCP public contract", () => {
     const write = registered.get("brain_write")!.handler;
     const result = await write({
       path: "@project/memories/knowledge/a.md",
-      content: "---\nsummary: a\nimportance: medium\n---\nbody\n",
+      content: "---\ndescription: a\nimportance: medium\n---\nbody\n",
     });
     expect(calls.at(-1)).toMatchObject({
       name: "write",
       args: { path: parsePublicPath("@project/memories/knowledge/a.md") },
     });
-    expect(result.content[0].text).toContain("created @project/memories/knowledge/a.md");
+    expect(result.isError).not.toBe(true);
   });
 
   test("brain_absolute_path projects a wide workspace location without requiring it to exist", async () => {

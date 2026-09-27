@@ -369,9 +369,12 @@ Generic MCP protocol本身不能保证模型一定在每个新用户消息后主
 因此无 hook host：
 
 ```text
-Tool contract / description
+MCP server instructions
++ brain_think tool description
 → strong best-effort guidance: think before substantive reasoning
 ```
+
+server instruction 只属于 explicit restore mode。host hook 已机械完成 restore 时，MCP surface 不再要求模型调用 `brain_think`；模型只接收恢复后的 context 及其使用 guidance。
 
 有 host hook时：
 

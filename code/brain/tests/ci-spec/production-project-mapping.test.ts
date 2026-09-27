@@ -1,8 +1,12 @@
 import { promises as fs } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
-import properLockfile from "proper-lockfile";
+const require = createRequire(import.meta.url);
+const properLockfile = require("proper-lockfile") as {
+  lock(target: string, options: Record<string, unknown>): Promise<() => Promise<void>>;
+};
 import { describe, expect, it } from "vite-plus/test";
 
 import { FileGlobalSemanticLease } from "../../src/persistence/operation-coordination.ts";
@@ -13,7 +17,7 @@ import {
   resolveOrCreateProject,
 } from "../../src/persistence/project-mapping.ts";
 
-describe("v2 project mapping", () => {
+describe("project mapping", () => {
   it("keeps project-mapping and semantic lock ownership independent in one process", async () => {
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-independent-locks-"));
     const brainRoot = path.join(temp, "brain");
@@ -31,6 +35,7 @@ describe("v2 project mapping", () => {
 
       const semantic = new FileGlobalSemanticLease(brainRoot);
       await expect(semantic.runExclusive(undefined, async () => "ok")).resolves.toBe("ok");
+      if (releaseMapping === undefined) throw new Error("mapping lock was not acquired");
       await expect(releaseMapping()).resolves.toBeUndefined();
       releaseMapping = undefined;
     } finally {

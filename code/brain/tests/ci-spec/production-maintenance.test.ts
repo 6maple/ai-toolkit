@@ -4,11 +4,14 @@ import {
   projectAccessibility,
   type AccessibilityPersistenceState,
 } from "../../src/brain/accessibility.ts";
-import { parseArchivalDocument, validateCoreDocument } from "../../src/brain/documents.ts";
+import {
+  CoreCapacityError,
+  parseArchivalDocument,
+  validateCoreDocument,
+} from "../../src/brain/documents.ts";
 import {
   formatPublicPath,
   parsePublicPath,
-  parseSessionId,
   type LogicalArchivalPath,
   type LogicalBrainPath,
   type ScopeRef,
@@ -45,8 +48,6 @@ import type {
 
 const globalScope: ScopeRef = { kind: "global" };
 const projectScope: ScopeRef = { kind: "project" };
-const session1: ScopeRef = { kind: "session", sessionId: parseSessionId("s1") };
-const session2: ScopeRef = { kind: "session", sessionId: parseSessionId("s2") };
 
 function archival(raw: string): LogicalArchivalPath {
   const parsed = parsePublicPath(raw);
@@ -54,12 +55,12 @@ function archival(raw: string): LogicalArchivalPath {
   return parsed;
 }
 
-function memory(summary: string, body: string, importance = "medium"): string {
-  return `---\nsummary: ${summary}\nimportance: ${importance}\n---\n${body}`;
+function memory(description: string, body: string, importance = "medium"): string {
+  return `---\ndescription: ${description}\nimportance: ${importance}\n---\n${body}`;
 }
 
 function scopeKey(scope: ScopeRef): string {
-  return scope.kind === "session" ? `session:${scope.sessionId}` : scope.kind;
+  return scope.kind;
 }
 
 class InMemoryMaintenanceHarness
@@ -144,6 +145,7 @@ class InMemoryMaintenanceHarness
       scope,
       core: validateCoreDocument(decodeMarkdown(core)),
       cycle: cycle === undefined ? { cycle: 0 } : decodeScopeState(cycle),
+      cycleWasFresh: false,
     };
   }
 
@@ -239,7 +241,7 @@ function expectAccessibility(
   expect(actual).toMatchObject(expected);
 }
 
-describe("T4 exact edit engine", () => {
+describe("exact edit engine", () => {
   it("validates every replacement against the original document and applies a complete deterministic result", () => {
     expect(
       applyExactEdits("alpha beta gamma", [
@@ -278,7 +280,7 @@ describe("T4 exact edit engine", () => {
   });
 });
 
-describe("T4 cognition maintenance", () => {
+describe("cognition maintenance", () => {
   it("write create builds fresh active cognition; overwrite replaces prior challenge and learning", async () => {
     const { harness, app } = createHarness();
     harness.seedScope(projectScope, 5);
@@ -309,7 +311,7 @@ describe("T4 cognition maintenance", () => {
       path,
     });
     snapshot = await harness.loadArchival(path);
-    expect(snapshot?.document.summary).toBe("replacement");
+    expect(snapshot?.document.description).toBe("replacement");
     expect(snapshot?.epistemic).toEqual({});
     expect(snapshot?.accessibility).toEqual({
       ageCycles: 0,
@@ -328,18 +330,6 @@ describe("T4 cognition maintenance", () => {
     expect(await app.write(path, memory("same", "body"))).toMatchObject({ action: "overwrote" });
     expect(harness.changePlans).toBe(beforeChanges);
     expect(harness.noChangePlans).toBe(1);
-  });
-
-  it("write to fresh session requires empty core while cycle0 remains a fresh auxiliary fallback", async () => {
-    const { harness, app } = createHarness();
-    const path = archival("@session/s1/memories/intention/next.md");
-    expect(await app.write(path, memory("next", "do it"))).toMatchObject({ action: "created" });
-    expect(await harness.loadScope(session1)).toMatchObject({
-      cycle: { cycle: 0 },
-      core: { text: "" },
-    });
-    expect(harness.lastMutations).toHaveLength(3);
-    expect(harness.lastMutations.some((m) => m.ref.kind === "scope-state")).toBe(false);
   });
 
   it("write refuses to repair absent global/project runtime scopes", async () => {
@@ -413,26 +403,37 @@ describe("T4 cognition maintenance", () => {
     expect(harness.changePlans).toBe(before);
   });
 
-  it("core edit supports empty resident content and enforces capacity without lazy creation", async () => {
+  it("non-empty Core requires exact edits while empty Core can use content initialization", async () => {
     const { harness, app } = createHarness();
     harness.seedScope(projectScope, 0, "resident");
     const core = parsePublicPath("@project/core.md");
     if (core.kind !== "core") throw new Error("expected core");
-    expect(await app.edit({ path: core, content: "" })).toMatchObject({
+
+    await expect(app.edit({ path: core, content: "" })).rejects.toMatchObject({
+      code: "nonempty-core-requires-exact-edit",
+    });
+    expect((await harness.loadScope(projectScope))?.core.text).toBe("resident");
+
+    expect(
+      await app.edit({ path: core, edits: [{ oldText: "resident", newText: "" }] }),
+    ).toMatchObject({
       action: "edited",
       changed: true,
     });
     expect((await harness.loadScope(projectScope))?.core.text).toBe("");
-    await expect(app.edit({ path: core, content: "x".repeat(4001) })).rejects.toMatchObject({
-      code: "core-capacity-exceeded",
-    });
 
-    const missingSessionCore = parsePublicPath("@session/s2/core.md");
-    if (missingSessionCore.kind !== "core") throw new Error("expected core");
-    await expect(app.edit({ path: missingSessionCore, content: "x" })).rejects.toBeInstanceOf(
-      MaintenanceTargetError,
-    );
-    expect(await harness.loadScope(session2)).toBeUndefined();
+    expect(await app.edit({ path: core, content: "route" })).toMatchObject({
+      action: "edited",
+      changed: true,
+    });
+    expect((await harness.loadScope(projectScope))?.core.text).toBe("route");
+
+    await expect(
+      app.edit({
+        path: core,
+        edits: [{ oldText: "route", newText: "x".repeat(4001) }],
+      }),
+    ).rejects.toBeInstanceOf(CoreCapacityError);
   });
 
   it("edit mode requires exactly one of edits/content", async () => {
@@ -467,7 +468,7 @@ describe("T4 cognition maintenance", () => {
     });
     expect(await harness.loadArchival(src)).toBeUndefined();
     const moved = await harness.loadArchival(dst);
-    expect(moved?.document.summary).toBe("source");
+    expect(moved?.document.description).toBe("source");
     expect(moved?.epistemic).toEqual({ challenge: "source challenge" });
     expect(moved?.accessibility).toEqual({
       ageCycles: 2,
@@ -477,11 +478,12 @@ describe("T4 cognition maintenance", () => {
     });
   });
 
-  it("cross-scope move preserves instantaneous retrievability and can initialize fresh session destination", async () => {
+  it("cross-scope move between Project and Global preserves instantaneous retrievability", async () => {
     const { harness, app } = createHarness();
     harness.seedScope(projectScope, 10);
+    harness.seedScope(globalScope, 3);
     const src = archival("@project/memories/knowledge/src.md");
-    const dst = archival("@session/s1/memories/knowledge/dst.md");
+    const dst = archival("@global/memories/knowledge/dst.md");
     harness.seedArchival(src, memory("source", "S"), {
       ageCycles: 1,
       anchorCycle: 6,
@@ -495,9 +497,8 @@ describe("T4 cognition maintenance", () => {
       action: "moved",
       replacedExistingDestination: false,
     });
-    const targetScope = await harness.loadScope(session1);
+    const targetScope = await harness.loadScope(globalScope);
     const moved = await harness.loadArchival(dst);
-    expect(targetScope?.cycle).toEqual({ cycle: 0 });
     const afterProjection = projectAccessibility(targetScope!.cycle, moved!.accessibility);
     expect(afterProjection.retrievability).toBeCloseTo(beforeProjection.retrievability, 12);
     expect(moved?.accessibility.durability).toBe(3);

@@ -1,6 +1,7 @@
 import { PiDiscoveryTools } from "../adapters/pi-tools.ts";
 import { CognitionMaintenance } from "../application/cognition-maintenance.ts";
 import { ReadDiscovery } from "../application/read-discovery.ts";
+import { SemanticAwareMaintenance } from "../application/semantic-maintenance.ts";
 import {
   formatAddressedPublicPath,
   type LogicalBrainPath,
@@ -15,13 +16,17 @@ import {
 } from "../persistence/operation-coordination.ts";
 import { createStorageBinding, type ProjectId } from "../persistence/storage.ts";
 import type { RelatedAccess } from "./project-relations.ts";
+import type { SemanticIndex } from "./semantic-index.ts";
 
 export interface ProjectCognitionAccess {
   readonly binding: Awaited<ReturnType<typeof createStorageBinding>>;
   readonly store: CognitionStateStore;
   readonly operations: PersistentOperationCoordinator;
   readonly reads: ReadDiscovery;
-  readonly maintenance: CognitionMaintenance;
+  readonly maintenance: Pick<
+    CognitionMaintenance,
+    "write" | "edit" | "remove" | "move" | "feedback"
+  >;
 }
 
 const READ_ONLY_AUXILIARY = {
@@ -35,6 +40,7 @@ export async function createRelatedProjectAccess(options: {
   projectId: ProjectId;
   alias: RelatedProjectAlias;
   access: RelatedAccess;
+  semanticIndex?: SemanticIndex;
 }): Promise<ProjectCognitionAccess> {
   const binding = await createStorageBinding({
     brainRoot: options.brainRoot,
@@ -53,11 +59,15 @@ export async function createRelatedProjectAccess(options: {
     options.access === "write" ? operations : READ_ONLY_AUXILIARY,
     formatPath,
   );
+  const baseMaintenance = new CognitionMaintenance(store, operations);
   return {
     binding,
     store,
     operations,
     reads,
-    maintenance: new CognitionMaintenance(store, operations),
+    maintenance:
+      options.semanticIndex === undefined
+        ? baseMaintenance
+        : new SemanticAwareMaintenance(baseMaintenance, binding, options.semanticIndex),
   };
 }

@@ -89,6 +89,7 @@ async function generatePluginFiles() {
       [pluginConfig.entries.mcp.serverName]: {
         command: "node",
         args: [portablePath(mcpEntry)],
+        omit_tools_from: pluginConfig.mcp.omitToolsFrom,
       },
     },
   });

@@ -24,6 +24,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { brainRestoreFailureDiagnostic } from 'brain/shared'
 import { extractAnchorContext, extractText } from './mcp.js'
 import type { InstanceManager } from './instances.js'
 
@@ -70,6 +71,12 @@ export function setupAutoThink(
   const injectedSeq = new Map<string, number>()
   /** assemble 缓存 → pre-step 消费的待注入消息。 */
   const pending = new Map<string, ReturnType<typeof createUserMessage>>()
+  const stage = (agentId: string, text: string): void => {
+    pending.set(agentId, createUserMessage({
+      content: [{ type: 'text', text }],
+      source: { kind: 'plugin', plugin: SOURCE_PLUGIN },
+    }))
+  }
 
   // 基线快照：现存 agent 以其当前最后用户消息 seq 为基线（不重复注入历史消息）。
   for (const agent of ctx.agents?.list?.() ?? []) {
@@ -90,33 +97,27 @@ export function setupAutoThink(
       const result = await manager.call(
           resolveSourceRoot(agent),
           'brain_think',
-          { session_id: agent.id },
+          {},
           signal,
-          { threadId: agent.id },
       )
       const text = extractAnchorContext(result.content)
       if (result.isError === true) {
         ctx.logger.warn(`brain: auto think rejected for ${agent.id}: ${extractText(result.content, 'brain_think')}`)
+        stage(agent.id, brainRestoreFailureDiagnostic(extractText(result.content, 'brain_think')))
         return assembled
       }
       if (!text) {
         ctx.logger.warn(`brain: auto think returned no cognition context for ${agent.id}`)
+        stage(agent.id, brainRestoreFailureDiagnostic('brain_think 未返回工作上下文'))
         return assembled
       }
       const warnings = result.content.slice(1).filter((block) => block.type === 'text' && block.text)
       for (const warning of warnings) ctx.logger.warn(`brain: auto think diagnostic for ${agent.id}: ${warning.text}`)
-      pending.set(
-        agent.id,
-        createUserMessage({
-          content: [{ type: 'text', text }],
-          // 自定义来源：GUI 显示"上下文注入 @dsh-external/brain-dsh-plugin"。
-          // 不声明 form（undeclared context 是文档默认，GUI 用普通文本展示正文）。
-          source: { kind: 'plugin', plugin: SOURCE_PLUGIN },
-        }),
-      )
+      stage(agent.id, text)
       ctx.logger.debug(`brain: auto think staged for ${agent.id} (splice seq ${last})`)
     } catch (error) {
       ctx.logger.warn(`brain: auto think failed for ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
+      stage(agent.id, brainRestoreFailureDiagnostic(error))
     }
     return assembled
   })

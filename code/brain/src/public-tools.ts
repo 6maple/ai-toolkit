@@ -1,7 +1,9 @@
 export {
   BRAIN_TOOL_NAMES,
   PUBLIC_BRAIN_TOOLS,
+  selectPublicBrainTools,
   absolutePathInputSchema,
+  askSearchInputSchema,
   catInputSchema,
   editInputSchema,
   feedbackInputSchema,

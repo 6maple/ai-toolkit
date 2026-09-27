@@ -4,8 +4,8 @@
  * Part A — 假 server：验证 InstanceManager 的 spawn / tools/list / call /
  *   timeout / abort / 崩溃重启冷却 / 崩溃风暴熔断。
  * Part B — AutoThink hook：验证单边界、逐字注入、diagnostic 隔离与失败不重试。
- * Part C — 真 server：连接 brain dist，验证 v2 11-tool surface、trusted
- *   session metadata 及 write/glob/grep/feedback 转发。
+ * Part C — 真 server：连接 brain dist，验证当前 public tool surface、
+ *   Project cognition restore 及 write/glob/grep/feedback 转发。
  *
  * 通过输出 PASS 清单；任一失败 exit 1。
  */
@@ -33,21 +33,27 @@ const { isJsonValue } = await import(pathToFileURL(dshValuesEntry).href)
 
 const hookVisible = visibleToolDefinitions(true, true)
 const manualVisible = visibleToolDefinitions(false, true)
+const semanticHookVisible = visibleToolDefinitions(true, true, true)
+const semanticManualVisible = visibleToolDefinitions(false, true, true)
 if (hookVisible.length === 10 && !hookVisible.some((tool) => tool.name === 'brain_think')) ok('A0 hook hides think')
 else fail('A0 hook hides think', hookVisible.map((tool) => tool.name).join(','))
 if (manualVisible.length === 11 && manualVisible.some((tool) => tool.name === 'brain_think')) ok('A0 manual exposes think')
 else fail('A0 manual exposes think', manualVisible.map((tool) => tool.name).join(','))
+if (semanticHookVisible.length === 11 &&
+    semanticHookVisible.some((tool) => tool.name === 'brain_ask_search') &&
+    !semanticHookVisible.some((tool) => tool.name === 'brain_think')) ok('A0 semantic hook surface')
+else fail('A0 semantic hook surface', semanticHookVisible.map((tool) => tool.name).join(','))
+if (semanticManualVisible.length === 12 &&
+    semanticManualVisible.some((tool) => tool.name === 'brain_ask_search') &&
+    semanticManualVisible.some((tool) => tool.name === 'brain_think')) ok('A0 semantic manual surface')
+else fail('A0 semantic manual surface', semanticManualVisible.map((tool) => tool.name).join(','))
 const thinkDefinition = PUBLIC_BRAIN_TOOLS.find((tool) => tool.name === 'brain_think')
 if (thinkDefinition?.inputSchema.safeParse({ unknown: true }).success === false) ok('A0 strict host contract source')
 else fail('A0 strict host contract source', 'unknown argument accepted')
 if (extractAnchorContext([{ type: 'text', text: '<context />' }, { type: 'text', text: 'warning: degraded' }]) === '<context />') ok('A0 anchor diagnostics stay separate')
 else fail('A0 anchor diagnostics stay separate', 'warning leaked into context')
-if (buildCallArgs({ session_id: 'explicit' }, { id: 'host-session' }, true).session_id === 'explicit') ok('A0 explicit session wins')
-else fail('A0 explicit session wins', 'host session overwrote explicit session')
-if (buildCallArgs({}, { id: 'host-session' }, true).session_id === 'host-session') ok('A0 trusted session injection')
-else fail('A0 trusted session injection', 'host session was not injected')
-if (!('session_id' in buildCallArgs({}, undefined, true))) ok('A0 no default session injection')
-else fail('A0 no default session injection', 'session_id was invented')
+if (buildCallArgs({ query: 'x' }, undefined, true).query === 'x') ok('A0 Brain args pass through')
+else fail('A0 Brain args pass through', 'model argument changed')
 const invalidHostSchemas = PUBLIC_BRAIN_TOOLS
   .filter((definition) => !isJsonValue(toHostSchema(definition)))
   .map((definition) => definition.name)
@@ -128,7 +134,7 @@ rl.on('line', (line) => {
     send({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'fake-brain', version: '0.0.1' } } })
   } else if (msg.method === 'tools/list') {
     send({ jsonrpc: '2.0', id: msg.id, result: { tools: [
-      { name: 'brain_think', description: 'fake think', inputSchema: { type: 'object', properties: { session_id: { type: 'string' } } } },
+      { name: 'brain_think', description: 'fake think', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
       { name: 'brain_write', description: 'fake write', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
       { name: 'brain_slow', description: 'sleeps', inputSchema: { type: 'object', properties: {} } },
       { name: 'brain_crash', description: 'exits', inputSchema: { type: 'object', properties: {} } },
@@ -165,6 +171,21 @@ async function main() {
     if (names.join(',') === 'brain_think,brain_write,brain_slow,brain_crash') ok('A1 tools/list')
     else fail('A1 tools/list', names.join(','))
   } catch (e) { fail('A1 tools/list', String(e)) }
+
+  const mgrSemanticMismatch = new InstanceManager({
+    command: process.execPath,
+    args: [fakeServer],
+    timeoutMs: 2000,
+    expectedSemanticSearchEnabled: true,
+  })
+  try {
+    await mgrSemanticMismatch.tools(fakeRoot)
+    fail('A1 semantic config mismatch', 'mismatched child unexpectedly accepted')
+  } catch {
+    ok('A1 semantic config mismatch')
+  } finally {
+    mgrSemanticMismatch.dispose()
+  }
 
   try {
     const r = await mgr.call(fakeRoot, 'brain_think', {})
@@ -261,8 +282,8 @@ async function main() {
     const injected = decision.messages?.[0]?.content?.[0]?.text
     if (calls.length === 1) ok('B1 one anchor per user splice')
     else fail('B1 one anchor per user splice', `${calls.length} calls`)
-    if (calls[0]?.[2]?.session_id === agent.id && calls[0]?.[4]?.threadId === agent.id) ok('B2 AutoThink trusted session metadata')
-    else fail('B2 AutoThink trusted session metadata', JSON.stringify(calls[0]))
+    if (calls[0]?.[1] === 'brain_think' && Object.keys(calls[0]?.[2] ?? {}).length === 0) ok('B2 AutoThink calls brain_think with empty args')
+    else fail('B2 AutoThink calls brain_think with empty args', JSON.stringify(calls[0]))
     if (injected === exactContext) ok('B3 context injected byte-for-byte')
     else fail('B3 context injected byte-for-byte', JSON.stringify(injected))
     if (!String(injected).includes('degraded detail') && warnings.some((line) => line.includes('degraded detail'))) ok('B4 diagnostics log only')
@@ -312,39 +333,39 @@ async function main() {
     try {
       const tools = await mgrReal.tools(realRoot)
       const liveNames = [...tools.keys()].sort()
-      const publicNames = PUBLIC_BRAIN_TOOLS.map((t) => t.name).sort()
-      if (JSON.stringify(liveNames) === JSON.stringify(publicNames) && liveNames.length === 11) ok('C1 v2 public tool names')
-      else fail('C1 v2 public tool names', `live=${liveNames.join(',')} public=${publicNames.join(',')}`)
+      const publicNames = visibleToolDefinitions(false, true).map((t) => t.name).sort()
+      if (JSON.stringify(liveNames) === JSON.stringify(publicNames) && liveNames.length === 11) ok('C1 default public tool names')
+      else fail('C1 default public tool names', `live=${liveNames.join(',')} public=${publicNames.join(',')}`)
       const liveThink = tools.get('brain_think')?.inputSchema ?? {}
       const props = Object.keys(liveThink.properties ?? {})
-      if (props.length === 1 && props.includes('session_id') && liveThink.additionalProperties === false) ok('C2 brain_think v2 schema')
+      if (props.length === 0 && liveThink.additionalProperties === false) ok('C2 brain_think schema')
       else fail('C2 brain_think schema', JSON.stringify(liveThink))
-      const r = await mgrReal.call(realRoot, 'brain_think', {}, undefined, { threadId: 'dsh-verify-session' })
+      const r = await mgrReal.call(realRoot, 'brain_think', {})
       const text = r.content?.map((b) => b.text ?? '').join('\n') ?? ''
-      if (!r.isError && text.includes('<brain_think_context') && text.includes('@session/dsh-verify-session')) ok('C3 brain_think metadata session anchor')
-      else fail('C3 brain_think metadata session anchor', text.slice(0, 300))
+      if (!r.isError && text.includes('# 本轮 Brain 工作上下文') && text.includes('@project/core.md')) ok('C3 brain_think restores Project cognition')
+      else fail('C3 brain_think restores Project cognition', text.slice(0, 300))
       const absolute = await mgrReal.call(realRoot, 'brain_absolute_path', { path: '@project' })
       if (!absolute.isError && absolute.content?.[0]?.text) ok('C4 brain_absolute_path forwarding')
       else fail('C4 brain_absolute_path forwarding', JSON.stringify(absolute))
-      const sessionPath = '@session/dsh-verify-session/memories/knowledge/plugin-session.md'
-      const token = 'plugin-session-fact-826'
+      const projectPath = '@project/memories/knowledge/plugin-project.md'
+      const token = 'plugin-project-fact-826'
       const write = await mgrReal.call(realRoot, 'brain_write', {
-        path: sessionPath,
-        content: `---\nsummary: plugin session verification\nimportance: high\n---\n${token}\n`,
-      }, undefined, { threadId: 'dsh-verify-session' })
-      if (!write.isError) ok('C5 brain_write session forwarding')
-      else fail('C5 brain_write session forwarding', JSON.stringify(write))
-      const glob = await mgrReal.call(realRoot, 'brain_glob', { pattern: '**/plugin-session.md' }, undefined, { threadId: 'dsh-verify-session' })
+        path: projectPath,
+        content: `---\ndescription: plugin project verification\nimportance: high\n---\n${token}\n`,
+      })
+      if (!write.isError) ok('C5 brain_write project forwarding')
+      else fail('C5 brain_write project forwarding', JSON.stringify(write))
+      const glob = await mgrReal.call(realRoot, 'brain_glob', { pattern: '**/plugin-project.md' })
       const globText = glob.content?.map((b) => b.text ?? '').join('\n') ?? ''
-      if (!glob.isError && globText.includes(sessionPath)) ok('C6 omitted-path glob uses host session')
-      else fail('C6 omitted-path glob uses host session', globText)
-      const grep = await mgrReal.call(realRoot, 'brain_grep', { pattern: token, literal: true }, undefined, { threadId: 'dsh-verify-session' })
+      if (!glob.isError && globText.includes(projectPath)) ok('C6 omitted-path glob uses Project cognition')
+      else fail('C6 omitted-path glob uses Project cognition', globText)
+      const grep = await mgrReal.call(realRoot, 'brain_grep', { pattern: token, literal: true })
       const grepText = grep.content?.map((b) => b.text ?? '').join('\n') ?? ''
-      if (!grep.isError && grepText.includes(sessionPath) && grepText.includes(token)) ok('C7 omitted-path grep uses host session')
-      else fail('C7 omitted-path grep uses host session', grepText)
-      const feedback = await mgrReal.call(realRoot, 'brain_feedback', { path: sessionPath, feedback: 'adopt' }, undefined, { threadId: 'dsh-verify-session' })
-      if (!feedback.isError) ok('C8 brain_feedback success forwarding')
-      else fail('C8 brain_feedback success forwarding', JSON.stringify(feedback))
+      if (!grep.isError && grepText.includes(projectPath) && grepText.includes(token)) ok('C7 omitted-path grep uses Project cognition')
+      else fail('C7 omitted-path grep uses Project cognition', grepText)
+      const feedback = await mgrReal.call(realRoot, 'brain_feedback', { path: projectPath, feedback: 'adopt' })
+      if (!feedback.isError) ok('C8 brain_feedback project forwarding')
+      else fail('C8 brain_feedback project forwarding', JSON.stringify(feedback))
     } catch (e) {
       fail('B real server', String(e))
     }

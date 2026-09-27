@@ -466,12 +466,7 @@ export class CognitionStateStore implements MaintenanceStatePort, PersistentReso
       }
     };
 
-    const prefix =
-      scope.kind === "global"
-        ? "@global"
-        : scope.kind === "project"
-          ? "@project"
-          : `@session/${scope.sessionId}`;
+    const prefix = scope.kind === "global" ? "@global" : "@project";
     for (const role of COGNITIVE_ROLES) {
       const parsed = parsePublicPath(`${prefix}/memories/${role}/`);
       if (parsed.kind === "directory") await resolveDirectoryAndVisit(parsed);

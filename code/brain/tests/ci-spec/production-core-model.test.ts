@@ -22,7 +22,6 @@ import {
   isSameLogicalPath,
   parsePublicPath,
   parseResourceLocation,
-  parseSessionId,
   type LogicalArchivalPath,
 } from "../../src/brain/namespace.ts";
 import {
@@ -64,11 +63,11 @@ function errorCode(run: () => unknown): string | undefined {
   }
 }
 
-describe("v2 namespace", () => {
+describe("namespace", () => {
   it("parses canonical memories directories, core, nested directories and archival paths", () => {
     const cases = [
       ["@project/memories", "@project/memories/"],
-      ["@session/abc-123/core.md", "@session/abc-123/core.md"],
+      ["@global/core.md", "@global/core.md"],
       ["@project/memories/skill/coding/typescript", "@project/memories/skill/coding/typescript/"],
       [
         "@project/memories/skill/coding/typescript/refactor.md",
@@ -90,12 +89,11 @@ describe("v2 namespace", () => {
     ).toBe(true);
   });
 
-  it("rejects invalid session ids, separators, traversal, roles, empty segments and item trailing slash", () => {
-    expect(() => parseSessionId("default/other")).toThrow(NamespaceParseError);
+  it("rejects unknown roots, separators, traversal, roles, empty segments and item trailing slash", () => {
     expect(errorCode(() => parsePublicPath("@project\\core.md"))).toBe("invalid-separator");
     expect(errorCode(() => parsePublicPath("@global"))).toBe("invalid-object-shape");
     expect(errorCode(() => parsePublicPath("@project/"))).toBe("invalid-object-shape");
-    expect(errorCode(() => parsePublicPath("@session/s1"))).toBe("invalid-object-shape");
+    expect(errorCode(() => parsePublicPath("@unknown/core.md"))).toBe("invalid-root");
     expect(errorCode(() => parsePublicPath("@project//memories"))).toBe("invalid-segment");
     expect(errorCode(() => parsePublicPath("@project/memories/nope/a.md"))).toBe("invalid-role");
     expect(errorCode(() => parsePublicPath("@project/memories/knowledge/../a.md"))).toBe(
@@ -112,17 +110,9 @@ describe("v2 namespace", () => {
     expect(errorCode(() => parsePublicPath("@project/memories/other/x.md"))).toBe("invalid-role");
   });
 
-  it("accepts the frozen session-id baseline only", () => {
-    expect(parseSessionId("01a02871-e448-7bb1-b50c-3525cd2da5da")).toBe(
-      "01a02871-e448-7bb1-b50c-3525cd2da5da",
-    );
-    expect(() => parseSessionId(".")).toThrow(NamespaceParseError);
-    expect(() => parseSessionId("..")).toThrow(NamespaceParseError);
-    expect(() => parseSessionId("x".repeat(129))).toThrow(NamespaceParseError);
-  });
 });
 
-describe("v2 markdown and cognition codecs", () => {
+describe("markdown and cognition codecs", () => {
   it("normalizes BOM/CRLF/lone CR once and writes UTF-8 without BOM", () => {
     const logical = decodeMarkdown(encoder.encode("\uFEFFa\r\nb\rc"));
     expect(logical).toBe("a\nb\nc");
@@ -135,12 +125,12 @@ describe("v2 markdown and cognition codecs", () => {
     expect(errorCode(() => decodeMarkdown(Uint8Array.from([0xff])))).toBe("invalid-utf8");
   });
 
-  it("parses archival summary/importance as the only mechanism frontmatter keys", () => {
+  it("parses archival description/importance as the only mechanism frontmatter keys", () => {
     const text = normalizeMarkdownInput(
-      "---\nsummary: '  Current gist  '\nimportance: high\ntype: knowledge\ncustom:\n  x: 1\n---\n\nBody\n",
+      "---\ndescription: '  Current gist  '\nimportance: high\ntype: knowledge\ncustom:\n  x: 1\n---\n\nBody\n",
     );
     const doc = parseArchivalDocument(text);
-    expect(doc.summary).toBe("Current gist");
+    expect(doc.description).toBe("Current gist");
     expect(doc.importance).toBe("high");
     expect(doc.body).toBe("\nBody\n");
     expect(doc.text).toBe(text);
@@ -149,12 +139,12 @@ describe("v2 markdown and cognition codecs", () => {
   it("rejects malformed archival envelopes and semantic fields without repairing them", () => {
     const invalid = [
       ["body", "missing-frontmatter"],
-      ["---\nsummary: x\nimportance: high", "unterminated-frontmatter"],
+      ["---\ndescription: x\nimportance: high", "unterminated-frontmatter"],
       ["---\n- x\n---\n", "frontmatter-not-map"],
-      ["---\nimportance: high\n---\n", "missing-summary"],
-      ["---\nsummary: '   '\nimportance: high\n---\n", "invalid-summary"],
-      ["---\nsummary: x\n---\n", "missing-importance"],
-      ["---\nsummary: x\nimportance: HIGH\n---\n", "invalid-importance"],
+      ["---\nimportance: high\n---\n", "missing-description"],
+      ["---\ndescription: '   '\nimportance: high\n---\n", "invalid-description"],
+      ["---\ndescription: x\n---\n", "missing-importance"],
+      ["---\ndescription: x\nimportance: HIGH\n---\n", "invalid-importance"],
     ] as const;
 
     for (const [raw, code] of invalid) {
@@ -326,7 +316,7 @@ class FakePosixStorageFs implements StorageFs {
   }
 }
 
-describe("v2 storage projection and containment", () => {
+describe("storage projection and containment", () => {
   it("binds a project and projects public/hidden resources without raw hidden paths", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
@@ -339,13 +329,13 @@ describe("v2 storage projection and containment", () => {
     expect(scopeRoot(binding, { kind: "global" })).toBe("/brain/global");
 
     const item = parsePublicPath(
-      "@session/s1/memories/skill/coding/refactor.md",
+      "@project/memories/skill/coding/refactor.md",
     ) as LogicalArchivalPath;
     expect(projectPhysicalResource(binding, { kind: "public", path: item }).absolutePath).toBe(
-      "/brain/projects/project-1/sessions/s1/memories/skill/coding/refactor.md",
+      "/brain/projects/project-1/memories/skill/coding/refactor.md",
     );
     expect(projectPhysicalResource(binding, companionRef(item)).absolutePath).toBe(
-      "/brain/projects/project-1/sessions/s1/.state/memories/skill/coding/refactor.json",
+      "/brain/projects/project-1/.state/memories/skill/coding/refactor.json",
     );
   });
 
@@ -370,11 +360,9 @@ describe("v2 storage projection and containment", () => {
     expect(
       projectAbsoluteLocation(
         binding,
-        parseResourceLocation("@session/s1/memories/skill/report/future/run.py"),
+        parseResourceLocation("@global/memories/skill/report/future/run.py"),
       ),
-    ).toBe(
-      "/brain/projects/project-1/sessions/s1/memories/skill/report/future/run.py",
-    );
+    ).toBe("/brain/global/memories/skill/report/future/run.py");
 
     expect(() => parseResourceLocation("@project/.state/scope.json")).toThrow(NamespaceParseError);
     expect(() => parseResourceLocation("@project/memories/skill/../secret.txt")).toThrow(
@@ -451,7 +439,7 @@ describe("v2 storage projection and containment", () => {
     ).rejects.toBeInstanceOf(StorageContainmentError);
   });
 });
-describe("v2 frozen foundation seam coverage", () => {
+describe("cross-cutting core model invariants", () => {
   it("round-trips all public ontology shapes and keeps hidden state outside the grammar", () => {
     const paths = [
       "@global/core.md",
@@ -459,19 +447,15 @@ describe("v2 frozen foundation seam coverage", () => {
       "@project/memories/decision/",
       "@project/memories/knowledge/topic/",
       "@project/memories/intention/roadmap/next.md",
-      "@session/s1/core.md",
-      "@session/s1/memories/skill/coding/refactor.md",
+      "@global/memories/skill/coding/refactor.md",
     ];
     for (const raw of paths) expect(formatPublicPath(parsePublicPath(raw))).toBe(raw);
     expect(errorCode(() => parsePublicPath("@global/"))).toBe("invalid-object-shape");
-    expect(errorCode(() => parsePublicPath("@session/s1/"))).toBe("invalid-object-shape");
+    expect(errorCode(() => parsePublicPath("@unknown/core.md"))).toBe("invalid-root");
     expect(errorCode(() => parsePublicPath("@project/.state/"))).toBe("invalid-object-shape");
-    expect(errorCode(() => parsePublicPath("@session/s1/memories/skill/a.md/"))).toBe(
-      "invalid-object-shape",
-    );
   });
 
-  it("maps global, project and session roots symmetrically", async () => {
+  it("maps the two built-in cognition roots symmetrically", async () => {
     const fs = new FakePosixStorageFs();
     const binding = await createStorageBinding({
       brainRoot: "/brain",
@@ -481,9 +465,6 @@ describe("v2 frozen foundation seam coverage", () => {
     });
     expect(scopeRoot(binding, { kind: "global" })).toBe("/brain/global");
     expect(scopeRoot(binding, { kind: "project" })).toBe("/brain/projects/project-1");
-    expect(scopeRoot(binding, { kind: "session", sessionId: parseSessionId("s1") })).toBe(
-      "/brain/projects/project-1/sessions/s1",
-    );
   });
 
   it("resolves an existing contained file and rejects a missing existing file", async () => {
@@ -667,10 +648,10 @@ describe("v2 frozen foundation seam coverage", () => {
 
   it("preserves archival YAML text while handling comments and indented delimiter-like block content", () => {
     const text = normalizeMarkdownInput(
-      "---\n# comment\nsummary: |\n  Current gist\n  ---\nimportance: critical\ncustom:\n  nested: true\n---\nBody",
+      "---\n# comment\ndescription: |\n  Current gist\n  ---\nimportance: critical\ncustom:\n  nested: true\n---\nBody",
     );
     const doc = parseArchivalDocument(text);
-    expect(doc.summary).toBe("Current gist\n---");
+    expect(doc.description).toBe("Current gist\n---");
     expect(doc.importance).toBe("critical");
     expect(doc.body).toBe("Body");
     expect(doc.text).toBe(text);
@@ -680,7 +661,7 @@ describe("v2 frozen foundation seam coverage", () => {
     for (const importance of ["low", "medium", "high", "critical"] as const) {
       expect(
         parseArchivalDocument(
-          normalizeMarkdownInput(`---\nsummary: x\nimportance: ${importance}\n---`),
+          normalizeMarkdownInput(`---\ndescription: x\nimportance: ${importance}\n---\nbody`),
         ).importance,
       ).toBe(importance);
     }
@@ -688,23 +669,26 @@ describe("v2 frozen foundation seam coverage", () => {
       expect(
         errorCode(() =>
           parseArchivalDocument(
-            normalizeMarkdownInput(`---\nsummary: x\nimportance: ${value}\n---`),
+            normalizeMarkdownInput(`---\ndescription: x\nimportance: ${value}\n---`),
           ),
         ),
       ).toBe("invalid-importance");
     }
   });
 
-  it("rejects non-string summary and accepts a minimal archival document with empty body", () => {
+  it("requires a string description and a non-empty cognition body", () => {
     expect(
       errorCode(() =>
-        parseArchivalDocument(normalizeMarkdownInput("---\nsummary: 42\nimportance: low\n---")),
+        parseArchivalDocument(
+          normalizeMarkdownInput("---\ndescription: 42\nimportance: low\n---\nbody"),
+        ),
       ),
-    ).toBe("invalid-summary");
-    const minimal = parseArchivalDocument(
-      normalizeMarkdownInput("---\nsummary: x\nimportance: low\n---"),
-    );
-    expect(minimal.body).toBe("");
+    ).toBe("invalid-description");
+    expect(
+      errorCode(() =>
+        parseArchivalDocument(normalizeMarkdownInput("---\ndescription: x\nimportance: low\n---")),
+      ),
+    ).toBe("empty-body");
   });
 
   it("normalizes core newlines before applying the code-point boundary and keeps empty core valid", () => {

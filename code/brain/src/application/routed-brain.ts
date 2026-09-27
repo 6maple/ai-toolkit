@@ -10,7 +10,6 @@ import {
   type LogicalBrainPath,
   type LogicalCorePath,
   type PublicBrainRoot,
-  type SessionId,
 } from "../brain/namespace.ts";
 import { CognitionStateStore } from "../persistence/cognition-state-store.ts";
 import type { PersistentOperationCoordinator } from "../persistence/operation-coordination.ts";
@@ -28,6 +27,7 @@ import {
   type FeedbackKind,
   type MaintenanceResult,
 } from "./cognition-maintenance.ts";
+import type { SemanticDiscovery, SemanticSearchResult } from "./semantic-discovery.ts";
 import type {
   CatResult,
   CollectedGlobResult,
@@ -38,6 +38,8 @@ import type {
   ReadDiscoveryContext,
 } from "./read-discovery.ts";
 import { createRelatedProjectAccess, type ProjectCognitionAccess } from "../runtime/project-access.ts";
+import type { SemanticIndex } from "../runtime/semantic-index.ts";
+import { SemanticSearchUnavailableError } from "../runtime/semantic-runtime.ts";
 import {
   loadProjectRelationCatalog,
   type AvailableProjectRelation,
@@ -75,6 +77,8 @@ export interface RoutedBrainCurrentServices {
     CognitionMaintenance,
     "write" | "edit" | "remove" | "move" | "feedback"
   >;
+  readonly semantic?: Pick<SemanticDiscovery, "search">;
+  readonly semanticIndex?: SemanticIndex;
   readonly store: CognitionStateStore;
   readonly operations: PersistentOperationCoordinator;
 }
@@ -155,17 +159,19 @@ function duplicateTargetWarnings(relations: readonly AvailableProjectRelation[])
     });
 }
 
-function withWorkspaceRelatedReferenceNote<T extends DiscoveryListResult | GrepResult>(result: T): T {
+function withWorkspaceRelatedReferenceNote<
+  T extends DiscoveryListResult | GrepResult | SemanticSearchResult,
+>(result: T): T {
   const containsRelatedProjectReference = result.records.some((record) => {
     if (!record.publicPath.startsWith("#")) return false;
     return "lineText" in record
       ? [
-          record.summary,
+          record.description,
           record.lineText,
           ...record.contextBefore.map((line) => line.text),
           ...record.contextAfter.map((line) => line.text),
         ].some((text) => text.includes("@project/"))
-      : record.kind === "archival" && record.summary.includes("@project/");
+      : record.kind === "archival" && record.description.includes("@project/");
   });
   if (!containsRelatedProjectReference) return result;
   const note =
@@ -235,6 +241,9 @@ export class RoutedBrainApplication {
       projectId: relation.projectId,
       alias: relation.alias,
       access: relation.access,
+      ...(this.current.semanticIndex === undefined
+        ? {}
+        : { semanticIndex: this.current.semanticIndex }),
     });
   }
 
@@ -275,7 +284,7 @@ export class RoutedBrainApplication {
     }
   }
 
-  async think(currentSessionId?: SessionId): Promise<AnchorResult> {
+  async think(): Promise<AnchorResult> {
     const catalog = await this.loadCatalog();
     const availableRelations = catalog.entries.filter(
       (entry): entry is AvailableProjectRelation => entry.kind === "available",
@@ -305,7 +314,6 @@ export class RoutedBrainApplication {
         })),
     ];
     const request: AnchorRequest = {
-      ...(currentSessionId === undefined ? {} : { currentSessionId }),
       ...(relatedProjects.length === 0 ? {} : { relatedProjects }),
       ...(relatedProjectWarnings.length === 0 ? {} : { relatedProjectWarnings }),
       ...(relatedProjectErrors.length === 0 ? {} : { relatedProjectErrors }),
@@ -405,6 +413,58 @@ export class RoutedBrainApplication {
       context,
     );
     return withRelatedProjectReferenceNote(result, target.address.root);
+  }
+
+  async askSearch(
+    query: string,
+    context: ReadDiscoveryContext = {},
+  ): Promise<SemanticSearchResult> {
+    const startedAt = Date.now();
+    const debug = process.env.BRAIN_SEMANTIC_DEBUG === "1";
+    if (debug) {
+      console.error(
+        "brain semantic debug " +
+          JSON.stringify({
+            event: "routed.search.start",
+            pid: process.pid,
+            sourceRoot: this.current.sourceRoot,
+          }),
+      );
+    }
+    const semantic = this.current.semantic;
+    if (semantic === undefined) {
+      throw new SemanticSearchUnavailableError("semantic search is unavailable");
+    }
+    const catalog = await this.loadCatalog();
+    if (debug) {
+      console.error(
+        "brain semantic debug " +
+          JSON.stringify({
+            event: "routed.search.catalog-ready",
+            pid: process.pid,
+            elapsedMs: Date.now() - startedAt,
+            entries: catalog.entries.length,
+          }),
+      );
+    }
+    const relatedProjects = catalog.entries
+      .filter((entry): entry is AvailableProjectRelation => entry.kind === "available")
+      .map((entry) => ({ projectId: entry.projectId, alias: entry.alias }));
+    const result = await semantic.search(query, {
+      ...(context.signal === undefined ? {} : { signal: context.signal }),
+      ...(relatedProjects.length === 0 ? {} : { relatedProjects }),
+    });
+    if (debug) {
+      console.error(
+        "brain semantic debug " +
+          JSON.stringify({
+            event: "routed.search.end",
+            pid: process.pid,
+            elapsedMs: Date.now() - startedAt,
+          }),
+      );
+    }
+    return withWorkspaceRelatedReferenceNote(result);
   }
 
   async cat(request: { path: string; offset?: number; limit?: number; signal?: AbortSignal }): Promise<CatResult> {
@@ -508,6 +568,15 @@ export class RoutedBrainApplication {
       scopes: [result.from.scope],
       deriveAndApply: () => sourceTarget.store.deleteCompanion(result.from),
     });
+
+    if (this.current.semanticIndex !== undefined) {
+      try {
+        await this.current.semanticIndex.refreshPath(sourceTarget.binding, result.from);
+        await this.current.semanticIndex.refreshPath(destinationTarget.binding, result.to);
+      } catch (error) {
+        console.error("brain semantic index update degraded", error);
+      }
+    }
 
     return `moved ${formatThrough(sourceTarget.address.root, result.from)} -> ${formatThrough(destinationTarget.address.root, result.to)}${result.replacedExistingDestination ? "; replaced existing destination" : ""}`;
   }

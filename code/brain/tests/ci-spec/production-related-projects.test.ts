@@ -36,9 +36,19 @@ import { bootstrapBrainRuntimeInfrastructure } from "../../src/runtime/bootstrap
 import { createBrainServicesForRoot } from "../../src/runtime/production.ts";
 import { loadProjectRelationCatalog } from "../../src/runtime/project-relations.ts";
 
-function textOf(result: { content?: unknown }): string {
-  if (!Array.isArray(result.content)) return "";
-  return result.content
+function cognitionPath(raw: string) {
+  const parsed = parsePublicPath(raw);
+  if (parsed.kind === "directory") throw new Error("expected cognition path");
+  return parsed;
+}
+
+function textOf(result: unknown): string {
+  const content =
+    typeof result === "object" && result !== null
+      ? (result as { content?: unknown }).content
+      : undefined;
+  if (!Array.isArray(content)) return "";
+  return content
     .filter(
       (item): item is { type: "text"; text: string } =>
         typeof item === "object" &&
@@ -53,7 +63,11 @@ function textOf(result: { content?: unknown }): string {
 async function writeConfig(sourceRoot: string, value: unknown): Promise<void> {
   const directory = path.join(sourceRoot, ".brain");
   await fs.mkdir(directory, { recursive: true });
-  await fs.writeFile(path.join(directory, "config.json"), `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await fs.writeFile(
+    path.join(directory, "config.json"),
+    `${JSON.stringify(value, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 async function bootstrapProject(brainRoot: string, sourceRoot: string) {
@@ -73,9 +87,9 @@ async function withClient<T>(
   services: Awaited<ReturnType<typeof createBrainServicesForRoot>>,
   run: (client: Client) => Promise<T>,
 ): Promise<T> {
-  const server = new McpServer({ name: "brain-v5-test", version: "0.0.0" });
+  const server = new McpServer({ name: "brain-related-project-test", version: "0.0.0" });
   registerBrainTools(server, services);
-  const client = new Client({ name: "brain-v5-client", version: "0.0.0" });
+  const client = new Client({ name: "brain-related-project-client", version: "0.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -86,7 +100,7 @@ async function withClient<T>(
   }
 }
 
-describe("v5 related project cognition", () => {
+describe("related project cognition", () => {
   it("parses related public addresses without adding a related cognition scope", () => {
     const core = parseAddressedPublicPath("#mobile/core.md");
     expect(core.root).toEqual({ kind: "related", alias: "mobile" });
@@ -98,11 +112,11 @@ describe("v5 related project cognition", () => {
     expect(memory.path.scope).toEqual({ kind: "project" });
     expect(formatAddressedPublicPath(memory)).toBe("#mobile/memories/decision/a.md");
 
-    expect(() => parseAddressedPublicPath("#mobile/session/s1/core.md")).toThrow();
+    expect(() => parseAddressedPublicPath("#mobile/unknown/core.md")).toThrow();
   });
 
   it("resolves only already-registered related projects and degrades aliases independently", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-relations-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-related-projects-"));
     const brainRoot = path.join(temp, "brain");
     const a = path.join(temp, "a");
     const b = path.join(temp, "b");
@@ -120,7 +134,11 @@ describe("v5 related project cognition", () => {
       });
 
       const before = await listProjectMetadata(brainRoot);
-      const catalog = await loadProjectRelationCatalog({ brainRoot, sourceRoot: a, projectId: active.projectId });
+      const catalog = await loadProjectRelationCatalog({
+        brainRoot,
+        sourceRoot: a,
+        projectId: active.projectId,
+      });
       const after = await listProjectMetadata(brainRoot);
 
       expect(after).toEqual(before);
@@ -141,7 +159,7 @@ describe("v5 related project cognition", () => {
   });
 
   it("treats a registered but unmaterialized related project as empty only in omitted-path discovery", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-empty-related-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-empty-related-projects-"));
     const brainRoot = path.join(temp, "brain");
     const a = path.join(temp, "a");
     const empty = path.join(temp, "empty");
@@ -153,7 +171,7 @@ describe("v5 related project cognition", () => {
       if (memoryPath.kind !== "archival") throw new Error("expected archival");
       await current.services.maintenance.write(
         memoryPath,
-        "---\nsummary: current\nimportance: medium\n---\nCURRENT_ONLY_SENTINEL\n",
+        "---\ndescription: current\nimportance: medium\n---\nCURRENT_ONLY_SENTINEL\n",
       );
       await writeConfig(a, { relatedProjects: { empty: { path: "../empty", access: "write" } } });
       const services = await createBrainServicesForRoot(brainRoot, a);
@@ -186,7 +204,7 @@ describe("v5 related project cognition", () => {
   });
 
   it("warns when multiple aliases resolve to the same related Brain project", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-duplicate-related-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-duplicate-related-projects-"));
     const brainRoot = path.join(temp, "brain");
     const a = path.join(temp, "a");
     const b = path.join(temp, "b");
@@ -206,7 +224,6 @@ describe("v5 related project cognition", () => {
         const think = await client.callTool({ name: "brain_think", arguments: {} });
         const text = textOf(think);
         expect(think.isError).not.toBe(true);
-        expect(text).toContain("### Related Project Warnings");
         expect(text).toContain("related-project-duplicate-target");
         expect(text).toContain("#first");
         expect(text).toContain("#second");
@@ -218,7 +235,7 @@ describe("v5 related project cognition", () => {
   });
 
   it("reads related cognition with alias presentation and keeps read-only retrieval side-effect free", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-read-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-related-project-read-"));
     const brainRoot = path.join(temp, "brain");
     const a = path.join(temp, "a");
     const b = path.join(temp, "b");
@@ -227,19 +244,18 @@ describe("v5 related project cognition", () => {
       const current = await bootstrapProject(brainRoot, a);
       const target = await bootstrapProject(brainRoot, b);
       await target.services.maintenance.edit({
-        path: parsePublicPath("@project/core.md"),
-        content:
-          "# B core\nB_CORE_SENTINEL\n- Read `@project/memories/knowledge/b.md`.\n",
+        path: cognitionPath("@project/core.md"),
+        content: "# B core\nB_CORE_SENTINEL\n- Read `@project/memories/knowledge/b.md`.\n",
       });
       const memoryPath = parsePublicPath("@project/memories/knowledge/b.md");
       if (memoryPath.kind !== "archival") throw new Error("expected archival");
       await target.services.maintenance.write(
         memoryPath,
-        "---\nsummary: b memory referencing @project/memories/knowledge/b.md\nimportance: high\n---\nB_MEMORY_SENTINEL\nREF @project/memories/knowledge/b.md\n",
+        "---\ndescription: b memory referencing @project/memories/knowledge/b.md\nimportance: high\n---\nB_MEMORY_SENTINEL\nREF @project/memories/knowledge/b.md\n",
       );
       await current.services.maintenance.write(
         memoryPath,
-        "---\nsummary: current memory\nimportance: high\n---\nCURRENT_MEMORY_SENTINEL\n",
+        "---\ndescription: current memory\nimportance: high\n---\nCURRENT_MEMORY_SENTINEL\n",
       );
       const before = await target.infrastructure.store.loadArchival(memoryPath);
 
@@ -341,7 +357,10 @@ describe("v5 related project cognition", () => {
           arguments: { path: "#b/core.md" },
         });
         expect(textOf(absolute).trim()).toBe(
-          projectAbsoluteLocation(target.infrastructure.binding, parseResourceLocation("@project/core.md")),
+          projectAbsoluteLocation(
+            target.infrastructure.binding,
+            parseResourceLocation("@project/core.md"),
+          ),
         );
       });
 
@@ -354,7 +373,7 @@ describe("v5 related project cognition", () => {
   });
 
   it("ranks default discovery across related projects without changing search-only memory state", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-workspace-discovery-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-related-workspace-discovery-"));
     const brainRoot = path.join(temp, "brain");
     const a = path.join(temp, "a");
     const lowRoot = path.join(temp, "low");
@@ -370,12 +389,12 @@ describe("v5 related project cognition", () => {
           `@project/memories/knowledge/ranking-${index.toString().padStart(2, "0")}.md`,
         ),
       );
-      const longLowSummary = `low ${"x".repeat(1200)}`;
+      const longLowDescription = `low ${"x".repeat(1200)}`;
       for (const item of lowPaths) {
         if (item.kind !== "archival") throw new Error("expected archival");
         await low.services.maintenance.write(
           item,
-          `---\nsummary: ${longLowSummary}\nimportance: low\n---\nWORKSPACE_RANKING_SENTINEL\n`,
+          `---\ndescription: ${longLowDescription}\nimportance: low\n---\nWORKSPACE_RANKING_SENTINEL\n`,
         );
       }
       await low.infrastructure.store.putScopeCycle(
@@ -387,7 +406,7 @@ describe("v5 related project cognition", () => {
       if (highPath.kind !== "archival") throw new Error("expected archival");
       await high.services.maintenance.write(
         highPath,
-        "---\nsummary: high\nimportance: critical\n---\nWORKSPACE_RANKING_SENTINEL\n",
+        "---\ndescription: high\nimportance: critical\n---\nWORKSPACE_RANKING_SENTINEL\n",
       );
 
       const firstLowPath = lowPaths[0]!;
@@ -433,7 +452,7 @@ describe("v5 related project cognition", () => {
   });
 
   it("reloads relation permission per invocation and degrades a bad sibling alias locally", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-reload-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-related-project-reload-"));
     const brainRoot = path.join(temp, "brain");
     const a = path.join(temp, "a");
     const b = path.join(temp, "b");
@@ -442,7 +461,7 @@ describe("v5 related project cognition", () => {
       await resolveOrCreateProject({ brainRoot, sourceRoot: a });
       const target = await bootstrapProject(brainRoot, b);
       await target.services.maintenance.edit({
-        path: parsePublicPath("@project/core.md"),
+        path: cognitionPath("@project/core.md"),
         content: "before\nref @project/memories/knowledge/x.md\n",
       });
 
@@ -455,11 +474,17 @@ describe("v5 related project cognition", () => {
       const services = await createBrainServicesForRoot(brainRoot, a);
 
       await withClient(services, async (client) => {
-        const bad = await client.callTool({ name: "brain_cat", arguments: { path: "#bad/core.md" } });
+        const bad = await client.callTool({
+          name: "brain_cat",
+          arguments: { path: "#bad/core.md" },
+        });
         expect(bad.isError).toBe(true);
         expect(textOf(bad)).toMatch(/^error: related-project-unavailable(?:\n|$)/);
 
-        const good = await client.callTool({ name: "brain_cat", arguments: { path: "#b/core.md" } });
+        const good = await client.callTool({
+          name: "brain_cat",
+          arguments: { path: "#b/core.md" },
+        });
         expect(good.isError).not.toBe(true);
 
         await writeConfig(a, {
@@ -488,7 +513,7 @@ describe("v5 related project cognition", () => {
   });
 
   it("moves cognition across writable related projects and rejects any read-only endpoint before mutation", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-move-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-related-project-move-"));
     const brainRoot = path.join(temp, "brain");
     const a = path.join(temp, "a");
     const b = path.join(temp, "b");
@@ -500,14 +525,15 @@ describe("v5 related project cognition", () => {
       const destination = await bootstrapProject(brainRoot, c);
       const first = parsePublicPath("@project/memories/decision/first.md");
       const second = parsePublicPath("@project/memories/decision/second.md");
-      if (first.kind !== "archival" || second.kind !== "archival") throw new Error("expected archival");
+      if (first.kind !== "archival" || second.kind !== "archival")
+        throw new Error("expected archival");
       await source.services.maintenance.write(
         first,
-        "---\nsummary: first\nimportance: high\n---\nFIRST_BODY\n",
+        "---\ndescription: first\nimportance: high\n---\nFIRST_BODY\n",
       );
       await source.services.maintenance.write(
         second,
-        "---\nsummary: second\nimportance: high\n---\nSECOND_BODY\n",
+        "---\ndescription: second\nimportance: high\n---\nSECOND_BODY\n",
       );
 
       await writeConfig(a, {
@@ -529,9 +555,9 @@ describe("v5 related project cognition", () => {
         expect(moved.isError).not.toBe(true);
 
         expect(await source.infrastructure.store.loadArchival(first)).toBeUndefined();
-        expect((await destination.infrastructure.store.loadArchival(first))?.document.text).toContain(
-          "FIRST_BODY",
-        );
+        expect(
+          (await destination.infrastructure.store.loadArchival(first))?.document.text,
+        ).toContain("FIRST_BODY");
 
         await writeConfig(a, {
           relatedProjects: {
@@ -558,7 +584,7 @@ describe("v5 related project cognition", () => {
   });
 
   it("rolls back both projects when a cross-project physical apply fails after destination writes", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v5-rollback-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-related-project-rollback-"));
     const brainRoot = path.join(temp, "brain");
     const a = path.join(temp, "a");
     const b = path.join(temp, "b");
@@ -572,7 +598,7 @@ describe("v5 related project cognition", () => {
       if (item.kind !== "archival") throw new Error("expected archival");
       await source.services.maintenance.write(
         item,
-        "---\nsummary: rollback\nimportance: high\n---\nSOURCE_BODY\n",
+        "---\ndescription: rollback\nimportance: high\n---\nSOURCE_BODY\n",
       );
       await writeConfig(a, {
         relatedProjects: {
@@ -592,7 +618,8 @@ describe("v5 related project cognition", () => {
         putWhole: (prepared: PreparedPhysicalMutation, bytes: Uint8Array) =>
           delegate.putWhole(prepared, bytes),
         deleteFile: async (prepared: PreparedPhysicalMutation) => {
-          if (prepared.absolutePath === sourceDocumentPath) throw new Error("injected delete failure");
+          if (prepared.absolutePath === sourceDocumentPath)
+            throw new Error("injected delete failure");
           await delegate.deleteFile(prepared);
         },
         restoreBefore: (prepared: PreparedPhysicalMutation, before: ResourceBeforeState) =>
@@ -613,10 +640,7 @@ describe("v5 related project cognition", () => {
       });
 
       await expect(
-        routed.move(
-          "#b/memories/decision/rollback.md",
-          "#c/memories/decision/rollback.md",
-        ),
+        routed.move("#b/memories/decision/rollback.md", "#c/memories/decision/rollback.md"),
       ).rejects.toThrow("injected delete failure");
 
       expect((await source.infrastructure.store.loadArchival(item))?.document.text).toContain(
@@ -627,5 +651,4 @@ describe("v5 related project cognition", () => {
       await fs.rm(temp, { recursive: true, force: true });
     }
   });
-
 });

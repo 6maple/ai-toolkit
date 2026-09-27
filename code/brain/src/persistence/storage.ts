@@ -229,8 +229,6 @@ export function scopeRoot(binding: StorageBinding, scope: ScopeRef): string {
       return p.join(binding.brainRoot, "global");
     case "project":
       return projectScopeRoot(binding);
-    case "session":
-      return p.join(projectScopeRoot(binding), "sessions", scope.sessionId);
   }
 }
 

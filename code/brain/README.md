@@ -1,159 +1,230 @@
 # brain
 
-通用 MCP cognitive memory runtime：三层持久记忆（global / project / session）+ 每轮认知锚 + 渐进披露 + 用进废退学习状态。
+通用 MCP cognition runtime。当前 production cognition scope 只有 Global / Project；宿主可以有自己的 session/thread，但它不属于 Brain cognition namespace。
 
 ## 当前基线
 
-2026-08-26 已完成 Frozen BDD / Acceptance → Engineering Design → Production CI Red/Green → project-mapping re-freeze：
+当前 production contract 以 Brain v6 为准：
+
+- `../../doc/brain/v6/01-requirements-contract.md` — cognition scope / continuity contract；
+- `../../doc/brain/v6/02-acceptance-spec.md` — acceptance；
+- `../../doc/brain/v6/03-system-design.md` — system design；
+- `../../doc/brain/v6/04-detailed-design.md` — detailed design；
+- `../../doc/brain/v6/05-verification-delivery.md` — implementation / verification evidence；
+- `../../doc/brain/v5/01-requirements-contract.md` — v6 继续继承的 multi-project predecessor contract；
+- [RELATED_PROJECTS.md](RELATED_PROJECTS.md) — related projects 配置与使用；
+- [MCP_HOSTS.md](MCP_HOSTS.md) — host/source-root routing。
+
+历史版本保留在 `../../doc/brain/archive/` 和对应 version directory，不作为当前 production contract。
+
+## Cognition scope
+
+内置 Brain cognition 地址只有：
 
 ```text
-pnpm test
-→ 10 test files / 161 tests passed
+@global/core.md
+@global/memories/{decision,knowledge,intention,skill}/...
 
-pnpm run typecheck
-→ passed
+@project/core.md
+@project/memories/{decision,knowledge,intention,skill}/...
 ```
 
-权威文档：
-
-- `../../doc/brain/v1/bdd-brain-behavior-requirements.md` — 行为需求；
-- `../../doc/brain/v1/brain-tools-contract.md` — 模型可见/public tool contract；
-- `../../doc/brain/v1/acceptance-spec-brain.md` — Frozen Specification by Example；
-- `../../doc/brain/v1/design-brain-runtime.md` — 完整 Engineering Design；
-- `../../doc/design-rule.md` — 设计与验证方法；
-- `../../doc/brain/v5/01-requirements-contract.md` — v5 跨项目记忆行为契约；
-- [RELATED_PROJECTS.md](RELATED_PROJECTS.md) — v5 跨项目记忆（related projects）的配置与使用；
-
-- `../../doc/brain/archive/` — 历史资料。
-
-## 模型可见契约
-
-### `brain_think`
-
-收到**每一条新的用户消息后立即调用一次**；拿到返回的 global/project/session core、L0 candidates 和 signals 后，把它们作为当前记忆继续思考、回答和行动。
-
-公开参数只有：
+配置 related projects 后，还可以通过：
 
 ```text
-session_id?
+#<alias>/core.md
+#<alias>/memories/{decision,knowledge,intention,skill}/...
 ```
 
-project不由模型逐次选择；MCP server启动时用cwd source root解析稳定ProjectId。
+访问对应项目的 Project cognition。
 
-### 7 个熟悉动作工具
+`@session/...` 不是合法 Brain 地址。Host session/thread 可以用于 Codex/DSH 等宿主自己的 invocation routing、cwd、approval 或 UI 状态，但不会选择 Brain cognition scope。
 
-- `brain_ls` — 浏览公开 memory directory；
-- `brain_grep` — regex/literal 检索公开 archival memory；
-- `brain_cat` — 渐进读取：L1 summary/metadata；带 offset 时 L2 body page；
-- `brain_write` — 写完整 archival Markdown，**create / overwrite**；overwrite 保留已有内部 id 与 learning state；
-- `brain_edit` — 精确修改已有 item，或以 `content` 整篇替换 core；
-- `brain_rm` — 逻辑删除 archival item；
-- `brain_mv` — 熟悉的 file→file move/replace 语义；source/destination 使用明确文件级 @-path，支持跨层、类型迁移、item↔core、core→core。
+## brain_think
 
-所有地址使用 @-scheme：
+收到每条新的用户消息后，显式 restore 模式应立即调用一次 `brain_think({})`，再继续解释、规划、回答或调用其他工具。
 
-```text
-@/memories/<type>/<name>.md
-@/sessions/<sid>/memories/<type>/<name>.md
-@global/memories/<type>/<name>.md
-@core/project.md
-@core/global.md
-@core/sessions/<sid>.md
-```
+Host hook 已自动 restore 时，由宿主注入返回的 cognition context，并隐藏或避免再次要求模型调用 `brain_think`。
 
-机制文件、真实 filesystem path、`memories/history/` 不对模型开放。
+`brain_think` 没有模型可见参数。当前 source root 决定 ProjectId；relatedProjects 仍按 active source root 的配置解析。
 
-## 记忆语义
+返回的 resident cognition 包括 Global Core、Project Core、bounded archival descriptions，以及 applicable related-project routing。不存在 Session Core。
 
-archival item 是 Markdown：
+## Public tools
+
+主要模型可见工具：
+
+- `brain_think` — restore 当前 Global / Project working cognition；
+- `brain_absolute_path` — 把 Brain workspace 地址映射为 filesystem path；
+- `brain_ls` — 浏览一个 archival cognition directory；
+- `brain_glob` — 按 public path glob 查找 archival cognition；
+- `brain_grep` — 按 Markdown content 查找 archival cognition；
+- `brain_cat` — 读取一个 Scope Core 或 archival cognition；
+- `brain_write` — 创建新的 archival cognition，或有意用另一份 cognition 替换目标；
+- `brain_edit` — 更新同一份 Scope Core / archival cognition；
+- `brain_rm` — 删除一个 archival cognition；
+- `brain_mv` — 移动一个 archival cognition；
+- `brain_feedback` — 记录 adopt / question / resolve；
+- `brain_ask_search` — Semantic Search 启用时提供的语义检索工具。
+
+具体 model-visible schema / guidance 以 `src/integration/public-tools.ts` 为准。
+
+## Archival cognition
+
+Archival cognition 使用 Markdown + YAML frontmatter：
 
 ```md
 ---
-type: knowledge
-summary: 一句话摘要
-importance: 0.7
+description: 什么时候应该读取这份 cognition
+summary: 正文当前记录的主要认识和适用边界
+importance: high
 ---
 
 # 正文
 
-...
+完整 cognition。
 ```
 
-- `type`: `decision | knowledge | intention | skill`；必须与路径 type directory 一致；
-- `summary`: 模型自己生成；
-- `importance`: `[0,1]`，模型语义值；
-- id / difficulty / stability / retrievability / exposure / usage / status 等由机制维护，不写入 frontmatter。
+规则：
 
-读取/学习事件：
+- cognitive role 由路径目录决定：`decision | knowledge | intention | skill`；
+- `description` 必须是非空字符串，说明适用条件 / 读取触发；
+- 写入与更新工具要求模型提供并核对 `summary`；为了兼容旧记忆，存储解析不因缺少摘要而拒绝读取。缺摘要的记忆不参加语义发现，仍可按路径读取或按正文词句搜索；
+- `importance` 必须是 `low | medium | high | critical`；
+- body 必须非空；
+- learning、retrievability、exposure、challenge 等内部状态由 companion state 维护，不写入 archival frontmatter。
 
-- L0：看到候选，只增加 exposure；
-- L1：摘要级读取；
-- L2：正文深读，只刷新 retrieval 状态，**不等于成功 adopt**；
-- `feedback="adopt"`：成功使用；
-- `feedback="correct"`：轻纠正，questioned；
-- `feedback="attribute"`：失败归因，不质疑内容本身。
+## Scope Core
 
-feedback 必须显式提供；普通 edit/write overwrite 不会根据 importance 变化自动猜 adopt/correct。
+每个 active built-in scope 恰有一个 Core：
 
-## Core
+- Global Core：跨项目必须 resident 的极少量 guidance / routing；
+- Project Core：当前项目必须 resident 的极少量 guidance，以及重要 active work 的 trigger + exact memory path + usage guidance。
 
-每层恰有 1 篇逻辑 core Markdown，物理内嵌于该层 `state.json`：
+完整 cognition 应放在 archival memories；Core 只保留让它能够稳定被找到和使用的最小路由。
 
-- global — 跨项目长期原则/偏好；
-- project — 项目目标/架构/约定；
-- session — 当前会话状态/承诺/进度。
+Core 不使用 archival frontmatter，最大长度为 4000 Unicode code points。
 
-适用 core 会在每轮 `<brain_think_context>` 中完整恢复；直接使用其中内容，并通过 `brain_edit` 维护，不使用 `brain_cat` 重读，也不使用 `brain_write` 创建。写入 core 有长度保护。当前 v2 的 `brain_mv` 仅移动 archival cognition，不支持 core→archival；需要归档 core 内容时，先用 `brain_write` 创建具备合法 archival frontmatter 的 memory，再用 `brain_edit` 清理 core。
+Core mutation：
 
-## 审批
+- 空 Core 可以用 `brain_edit(content=...)` 初始化；
+- 非空 Core 必须使用 exact `edits`；
+- 需要整体重写非空 Core 时，用一个 exact edit，把完整当前 Core 作为 `oldText`；
+- stale `oldText` 不匹配时 edit 失败，不静默覆盖较新的 Core；
+- `brain_write`、`brain_rm`、`brain_mv` 不作用于 Core。
+
+## brain_edit / brain_mv
+
+`brain_edit`：
+
+- archival cognition 可以用 exact `edits`，也可以用完整 `content` 重写同一 cognition；
+- non-empty Scope Core 只能 exact edit；
+- missing document 不由 `brain_edit` 创建。
+
+`brain_mv`：
+
+- 只移动 archival cognition；
+- 可以改变 Global / Project continuity scope、cognitive role 或 relative path；
+- destination 已存在时是 replace，不是 merge；
+- 不移动 Core、directory 或 supporting assets。
+
+## Feedback
+
+`brain_feedback` 只改变 learning / challenge state，不改 cognition document：
+
+- `adopt`：实际使用过该 cognition，且观察结果支持这次使用时记录；
+- `question`：有具体 evidence materially challenge 当前 cognition，且问题仍未解决时设置 / 替换 current challenge；
+- `resolve`：当前 challenge 已解决后清除 challenge；如果 cognition 本身需要修改，先 `brain_edit`。
+
+仅仅读取、提及、同意或准备使用 cognition，不构成 `adopt`。
+
+## Discovery
+
+不提供 `path` 的 lexical discovery 搜索：
 
 ```text
-BRAIN_ASK_LONG_TERM=none      # 默认
-BRAIN_ASK_LONG_TERM=protect
+Global memories
++ current Project memories
++ available related Project memories
 ```
 
-`protect` 下，只要一次 mutation 实际修改 project/global 就返回 pending-approval；`brain_mv` 同时检查 source 和 destination。`confirmed:true` 重试后提交。
+不存在 current-session memory source。
+
+显式 `path` 只搜索被指定的 Global / Project / related-project memory tree。
+
+Semantic Search 使用同样的 cognition universe。
 
 ## 并发与一致性
 
-部署拓扑：每项目最多一个 brain MCP process；多个项目共享 global memory。
+Brain semantic mutation 使用 brain-root cross-process lease 串行化。derive / compare / commit 在同一个受协调 operation 中完成。
 
-- project/session：当前 MCP process 内 mutation queue；
-- global：同进程 queue + 跨进程 exclusive lock；
-- 所有会修改 global 的 think/read-review/write/edit/core-edit/rm/mv/sync 都使用同一 global lock；
-- mutation 在一个 tool call 内同步 plan/validate → commit → verify → return；success 后立即 read-your-writes；
-- `state.json/index.json` 普通覆盖采用同目录 temp → close → rename；
-- 当前 v1 不引入 durable WAL/journal；若 crash 造成跨文件 invariant 不一致，下一次加载 fail loud，不静默猜测恢复。
+这意味着多个 host session/process 可以共享同一 Project Core；non-empty Core 的 exact-edit contract 提供 compare-and-apply，stale edit 会失败而不是覆盖更新后的内容。
 
-## 环境变量
+Semantic operation 成功后提供 read-your-writes。Git checkpoint / history 是辅助能力；Git 不可用不能阻止 cognition tools 正常工作。
 
-| 变量                  | 默认   | 说明               |
-| --------------------- | ------ | ------------------ |
-| `BRAIN_ASK_LONG_TERM` | `none` | `none` / `protect` |
+## Brain repository / Project mapping
 
-Brain repository固定为 `~/.brain-data`。入口层以内部 `BRAIN_HOME`常量计算该路径，并作为必填 `brainRoot`传给storage；当前不读取同名环境变量。当前进程cwd作为source root，通过 `projects/*/project.json`映射到稳定ProjectId。一个project可以对应多个source roots。
+Brain repository 固定为：
 
-## 开发与运行
+```text
+~/.brain-data
+```
+
+当前不使用同名环境变量改变这个根目录。
+
+Source root 通过 `projects/*/project.json` 映射到稳定 ProjectId；一个 ProjectId 可以登记多个 source roots。Multiplexed host 必须为每次调用解析正确的 source root / project services，不能把长驻 server process cwd 当作当前 project。
+
+## Semantic Search
+
+Agent 的 Brain MCP 安装与更新、Global 记忆导入导出和可选 `brain-ai` 记忆包安装，见 [Brain CLI](../brain-cli/README.md)。
+
+Semantic Search 默认关闭。全局配置位于：
+
+```text
+~/.brain-data/config.json
+```
+
+启用：
+
+```json
+{
+  "semanticSearch": {
+    "enabled": true
+  }
+}
+```
+
+本机 embedding runtime 安装：
+
+```bash
+node ../brain-cli/index.mjs semantic-search install
+```
+
+配置在 runtime 启动时读取；修改后需要重启相应 Brain host。
+
+启用后，Brain 在 `~/.brain-data/.runtime/semantic-search/` 维护 SQLite derived index，并公开 `brain_ask_search`。向量只使用 archival frontmatter 的 `summary`；结果返回路径、`description`、`summary` 和可用争议标记。正文仍由 `brain_grep` 搜索和 `brain_cat` 读取。Index 只包含 Global / Project cognition；Markdown + companion state 仍是 authoritative state。
+
+## Brain Web
+
+`code/brain-web` 只投影当前 Global / Project cognition。
+
+Brain Web 的页面 Markdown 是 projection；search document 保留 cognition 原始文本作为检索内容。
+
+## 开发与验证
 
 ```bash
 pnpm install
-vp run stub
-node dist/index.mjs
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
-`stub` 使用 unbuild/Jiti 把开发入口写到与 production 相同的 `dist/index.mjs`。源码变化后不需要
-重新 build；重启 MCP process 即会加载当前 `src`。正式 `pnpm run build` 会重新生成 production
-bundle 并覆盖 stub。MCP从source directory cwd执行该文件的绝对路径；Brain会查找或创建该目录对应的project mapping。
+开发 stub：
 
 ```bash
-pnpm exec vitest run --configLoader native
-pnpm exec tsc --noEmit
+pnpm run stub
 ```
 
-发布/打包方式按项目现有 package scripts 执行。
+`stub` 与 production 都使用 `dist/index.mjs` 入口。源码或 build 更新后，已经运行的 MCP / host process 需要重启，才会加载新的 runtime。
 
-不同 MCP host 的挂载与 session `_meta` 接线见 [MCP_HOSTS.md](MCP_HOSTS.md)。DSH 的 AutoThink 增强由独立 `brain-dsh-plugin` 提供，它是宿主适配层，不改变 brain 核心契约。
-
-## 仍需真实使用标定
-
-机制闭环已经完成；后续主要是基于真实使用数据调整 α、questioned penalty、promotion/demotion 阈值、core 容量和 FSRS 系数。参数调整不能反向改变 BDD 行为边界。
+不同 host 的接线见 [MCP_HOSTS.md](MCP_HOSTS.md)。DSH AutoThink 由独立 `brain-dsh-plugin` 提供；Codex 的 thread/session binding 由 `brain-codex-plugin` 持有；Claude Code 的 turn-start restore 与 MCP 接线由 `brain-claude-plugin` 提供。这些 host adapter 不改变 Brain cognition scope。

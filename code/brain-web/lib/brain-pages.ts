@@ -9,11 +9,9 @@ import {
   formatPublicPath,
   listProjectMetadata,
   nodeCognitionStoreFs,
-  parseSessionId,
   projectAccessibility,
   type CognitiveRole,
   type ProjectMetadata,
-  type SessionId,
   type ScopeRef,
 } from 'brain/shared'
 
@@ -28,10 +26,9 @@ export interface BrainSearchDocument {
   route: string
   title: string
   path: string
-  scope: 'global' | 'project' | 'session'
+  scope: 'global' | 'project'
   project?: string
   projectId?: string
-  sessionId?: string
   role?: CognitiveRole
   summary?: string
   importance?: string
@@ -65,31 +62,18 @@ interface ScopeSnapshot {
   memories: MemoryMeta[]
 }
 
-const BRAIN_ROOT = process.env.BRAIN_ROOT || path.join(homedir(), '.brain-data')
+const DEFAULT_BRAIN_ROOT = process.env.BRAIN_ROOT || path.join(homedir(), '.brain-data')
 
-async function bindingFor(projectId: string) {
-  return createStorageBinding({ brainRoot: BRAIN_ROOT, projectId })
-}
-
-async function listSessions(projectId: string): Promise<SessionId[]> {
-  const binding = await bindingFor(projectId)
-  const sessionsRoot = path.join(binding.brainRoot, 'projects', projectId, 'sessions')
-  try {
-    const entries = await fs.readdir(sessionsRoot, { withFileTypes: true })
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => parseSessionId(entry.name))
-      .sort()
-  } catch {
-    return []
-  }
+async function bindingFor(projectId: string, brainRoot: string) {
+  return createStorageBinding({ brainRoot, projectId })
 }
 
 async function loadScopeSnapshot(
   projectId: string,
   scope: ScopeRef,
+  brainRoot: string,
 ): Promise<ScopeSnapshot | undefined> {
-  const binding = await bindingFor(projectId)
+  const binding = await bindingFor(projectId, brainRoot)
   const store = new CognitionStateStore(binding, nodeCognitionStoreFs)
   const scopeSnapshot = await store.loadScope(scope)
   if (!scopeSnapshot) return undefined
@@ -101,7 +85,7 @@ async function loadScopeSnapshot(
     memories.push({
       path: formatPublicPath(item.path),
       role: item.path.role,
-      summary: item.document.summary,
+      summary: item.document.description,
       importance: item.document.importance,
       status: deriveEpistemicStatus(item.epistemic),
       challenge: item.epistemic.challenge,
@@ -119,20 +103,75 @@ async function loadScopeSnapshot(
   }
 }
 
-function memoryPathKey(publicPath: string, projectId?: string, sessionId?: string): string {
+function memoryPathKey(publicPath: string, projectId?: string): string {
   return publicPath
     .replace(/^@global\//, 'global/')
     .replace(/^@project\//, projectId ? `projects/${projectId}/` : 'project/')
-    .replace(
-      /^@session\/[^/]+\//,
-      projectId && sessionId ? `projects/${projectId}/sessions/${sessionId}/` : 'session/',
-    )
     .replace(/\.md$/, '')
 }
 
-function memoryLink(memory: MemoryMeta, projectId?: string, sessionId?: string): string {
-  const key = memoryPathKey(memory.path, projectId, sessionId)
-  return `- [${memory.summary}](/brain/${key})`
+function memoryLink(memory: MemoryMeta, projectId?: string): string {
+  const key = memoryPathKey(memory.path, projectId)
+  return `- [${escapeVueText(memory.summary)}](/brain/${key})`
+}
+
+function escapeVueText(value: string): string {
+  return value.replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+}
+
+function escapeInlineVueTags(line: string): string {
+  let result = ''
+  let index = 0
+  while (index < line.length) {
+    if (line[index] !== '`') {
+      const next = line.indexOf('`', index)
+      const end = next === -1 ? line.length : next
+      result += escapeVueText(line.slice(index, end))
+      index = end
+      continue
+    }
+
+    let markerEnd = index
+    while (markerEnd < line.length && line[markerEnd] === '`') markerEnd += 1
+    const marker = line.slice(index, markerEnd)
+    const close = line.indexOf(marker, markerEnd)
+    if (close === -1) {
+      result += escapeVueText(line.slice(index))
+      break
+    }
+    result += line.slice(index, close + marker.length)
+    index = close + marker.length
+  }
+  return result
+}
+
+export function escapeVueTagsInMarkdown(value: string): string {
+  const lines = value.split('\n')
+  let fence: { marker: string; length: number } | undefined
+
+  return lines
+    .map((line) => {
+      const fenceMatch = /^( {0,3})(`{3,}|~{3,})/.exec(line)
+      if (fence !== undefined) {
+        if (
+          fenceMatch !== null &&
+          fenceMatch[2]![0] === fence.marker &&
+          fenceMatch[2]!.length >= fence.length
+        ) {
+          fence = undefined
+        }
+        return line
+      }
+
+      if (fenceMatch !== null) {
+        fence = { marker: fenceMatch[2]![0]!, length: fenceMatch[2]!.length }
+        return line
+      }
+
+      if (/^( {4}|\t)/.test(line)) return line
+      return escapeInlineVueTags(line)
+    })
+    .join('\n')
 }
 
 function renderMemory(memory: MemoryMeta): string {
@@ -144,22 +183,22 @@ function renderMemory(memory: MemoryMeta): string {
     '| Field | Value |',
     '| --- | --- |',
     `| Brain path | \`${memory.path}\` |`,
-    `| summary | ${memory.summary} |`,
+    `| summary | ${escapeVueText(memory.summary)} |`,
     `| role | ${memory.role} |`,
     `| importance | ${memory.importance} |`,
     `| status | ${memory.status} |`,
-    `| challenge | ${memory.challenge ?? ''} |`,
+    `| challenge | ${escapeVueText(memory.challenge ?? '')} |`,
     `| retrievability | ${memory.retrievability.toFixed(3)} |`,
     `| exposure | ${memory.exposure} |`,
     '',
     '## Content',
     '',
-    memory.body || '',
+    escapeVueTagsInMarkdown(memory.body || ''),
   ].join('\n')
 }
 
 function renderOverview(title: string, scope: ScopeSnapshot): string {
-  const lines = [`# ${title}`, '', scope.core || '_empty_', '', '## Memories', '']
+  const lines = [`# ${title}`, '', escapeVueTagsInMarkdown(scope.core || '_empty_'), '', '## Memories', '']
   for (const memory of scope.memories) lines.push(memoryLink(memory))
   return lines.join('\n')
 }
@@ -173,22 +212,12 @@ function renderProjectOverview(project: ProjectMetadata, scope: ScopeSnapshot): 
     '',
     '## Core',
     '',
-    scope.core || '_empty_',
+    escapeVueTagsInMarkdown(scope.core || '_empty_'),
     '',
     '## Memories',
     '',
   ]
   for (const memory of scope.memories) lines.push(memoryLink(memory, project.projectId))
-  return lines.join('\n')
-}
-
-function renderSessionOverview(
-  sessionId: string,
-  scope: ScopeSnapshot,
-  projectId: string,
-): string {
-  const lines = [`# Session ${sessionId}`, '', scope.core || '_empty_', '', '## Memories', '']
-  for (const memory of scope.memories) lines.push(memoryLink(memory, projectId, sessionId))
   return lines.join('\n')
 }
 
@@ -202,7 +231,10 @@ function firstH1(text: string): string | undefined {
   return line ? line.replace(/^#\s+/, '').trim() : undefined
 }
 
-export async function loadBrainCatalog(): Promise<BrainCatalog> {
+export async function loadBrainCatalog(
+  options: { brainRoot?: string } = {},
+): Promise<BrainCatalog> {
+  const brainRoot = options.brainRoot ?? DEFAULT_BRAIN_ROOT
   const pages: BrainPage[] = []
   const searchDocuments: BrainSearchDocument[] = []
   const searchIds = new Set<string>()
@@ -222,7 +254,6 @@ export async function loadBrainCatalog(): Promise<BrainCatalog> {
     scope: BrainSearchDocument['scope'],
     context: {
       project?: ProjectMetadata
-      sessionId?: string
     } = {},
   ): BrainSearchDocument => {
     const route = `/brain/${pathValue}`
@@ -237,7 +268,6 @@ export async function loadBrainCatalog(): Promise<BrainCatalog> {
       memory.challenge ? `challenge ${memory.challenge}` : '',
       context.project ? `project ${context.project.name} ${context.project.projectId}` : '',
       context.project ? `sourceRoots ${context.project.sourceRoots.join(' ')}` : '',
-      context.sessionId ? `session ${context.sessionId}` : '',
     ]
       .filter(Boolean)
       .join('\n')
@@ -251,7 +281,6 @@ export async function loadBrainCatalog(): Promise<BrainCatalog> {
       ...(context.project
         ? { project: context.project.name, projectId: context.project.projectId }
         : {}),
-      ...(context.sessionId ? { sessionId: context.sessionId } : {}),
       role: memory.role,
       summary: memory.summary,
       importance: memory.importance,
@@ -262,13 +291,13 @@ export async function loadBrainCatalog(): Promise<BrainCatalog> {
     }
   }
 
-  const global = await loadScopeSnapshot('global', { kind: 'global' })
+  const global = await loadScopeSnapshot('global', { kind: 'global' }, brainRoot)
   if (global) {
     if (global.memories.length > 0 || global.core.length > 0) {
       push('global/index', renderOverview('Global', global))
     }
     if (global.core.length > 0) {
-      push('global/core', `# Global Core\n\n${global.core}`, firstH1(global.core))
+      push('global/core', `# Global Core\n\n${escapeVueTagsInMarkdown(global.core)}`, firstH1(global.core))
       pushSearch({
         id: '/brain/global/core',
         route: '/brain/global/core',
@@ -288,16 +317,16 @@ export async function loadBrainCatalog(): Promise<BrainCatalog> {
     }
   }
 
-  const projects = await listProjectMetadata(BRAIN_ROOT).catch(() => [])
+  const projects = await listProjectMetadata(brainRoot).catch(() => [])
   for (const project of projects) {
-    const scope = await loadScopeSnapshot(project.projectId, { kind: 'project' })
+    const scope = await loadScopeSnapshot(project.projectId, { kind: 'project' }, brainRoot)
     if (!scope) continue
     const projectPrefix = `projects/${project.projectId}`
     if (scope.memories.length > 0 || scope.core.length > 0) {
       push(`${projectPrefix}/index`, renderProjectOverview(project, scope))
     }
     if (scope.core.length > 0) {
-      push(`${projectPrefix}/core`, `# Project Core\n\n${scope.core}`, firstH1(scope.core))
+      push(`${projectPrefix}/core`, `# Project Core\n\n${escapeVueTagsInMarkdown(scope.core)}`, firstH1(scope.core))
       pushSearch({
         id: `/brain/${projectPrefix}/core`,
         route: `/brain/${projectPrefix}/core`,
@@ -324,47 +353,6 @@ export async function loadBrainCatalog(): Promise<BrainCatalog> {
       }
     }
 
-    const sessions = await listSessions(project.projectId)
-    for (const sessionId of sessions) {
-      const sessionScope = await loadScopeSnapshot(project.projectId, {
-        kind: 'session',
-        sessionId,
-      })
-      if (!sessionScope) continue
-      const sessionPrefix = `${projectPrefix}/sessions/${sessionId}`
-      if (sessionScope.memories.length > 0 || sessionScope.core.length > 0) {
-        push(`${sessionPrefix}/index`, renderSessionOverview(sessionId, sessionScope, project.projectId))
-      }
-      if (sessionScope.core.length > 0) {
-        push(`${sessionPrefix}/core`, `# Session Core\n\n${sessionScope.core}`, firstH1(sessionScope.core))
-        pushSearch({
-          id: `/brain/${sessionPrefix}/core`,
-          route: `/brain/${sessionPrefix}/core`,
-          title: `${project.name} · Session ${sessionId} Core`,
-          path: `@session/${sessionId}/core.md`,
-          scope: 'session',
-          project: project.name,
-          projectId: project.projectId,
-          sessionId,
-          content: sessionScope.core,
-          metadata: [
-            `@session/${sessionId}/core.md`,
-            'scope session',
-            `project ${project.name} ${project.projectId}`,
-            `sourceRoots ${project.sourceRoots.join(' ')}`,
-            `session ${sessionId}`,
-            `cycle ${sessionScope.cycle}`,
-          ].join('\n'),
-        })
-      }
-      for (const memory of sessionScope.memories) {
-        if (memory.hasContent) {
-          const pathValue = memoryPathKey(memory.path, project.projectId, sessionId)
-          push(pathValue, renderMemory(memory), firstH1(memory.body))
-          pushSearch(memorySearchDocument(memory, pathValue, 'session', { project, sessionId }))
-        }
-      }
-    }
   }
 
   return { pages, searchDocuments }

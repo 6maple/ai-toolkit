@@ -1,9 +1,6 @@
-export type SessionId = string & { readonly __brand: "SessionId" };
-
 export type ScopeRef =
   | { readonly kind: "global" }
-  | { readonly kind: "project" }
-  | { readonly kind: "session"; readonly sessionId: SessionId };
+  | { readonly kind: "project" };
 
 export const COGNITIVE_ROLES = ["decision", "knowledge", "intention", "skill"] as const;
 export type CognitiveRole = (typeof COGNITIVE_ROLES)[number];
@@ -45,7 +42,6 @@ export type LogicalResourceLocation = {
 export type NamespaceParseErrorCode =
   | "invalid-root"
   | "invalid-separator"
-  | "invalid-session-id"
   | "invalid-role"
   | "traversal-segment"
   | "invalid-segment"
@@ -61,15 +57,6 @@ export class NamespaceParseError extends Error {
     this.code = code;
     this.publicPath = publicPath;
   }
-}
-
-const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-export function parseSessionId(raw: string): SessionId {
-  if (!SESSION_ID_PATTERN.test(raw) || raw === "." || raw === "..") {
-    throw new NamespaceParseError("invalid-session-id", raw);
-  }
-  return raw as SessionId;
 }
 
 function isCognitiveRole(value: string): value is CognitiveRole {
@@ -109,17 +96,6 @@ function parseRoot(
     return {
       scope: { kind: "project" },
       remaining: rawWithoutTrailingSlash.slice("@project/".length).split("/"),
-    };
-  }
-
-  if (rawWithoutTrailingSlash.startsWith("@session/")) {
-    const tail = rawWithoutTrailingSlash.slice("@session/".length);
-    const segments = tail.split("/");
-    const sessionIdRaw = segments.shift();
-    if (!sessionIdRaw) throw new NamespaceParseError("invalid-session-id", raw);
-    return {
-      scope: { kind: "session", sessionId: parseSessionId(sessionIdRaw) },
-      remaining: segments,
     };
   }
 
@@ -202,8 +178,6 @@ export function formatScopePrefix(scope: ScopeRef): string {
       return "@global";
     case "project":
       return "@project";
-    case "session":
-      return `@session/${scope.sessionId}`;
   }
 }
 
@@ -227,9 +201,7 @@ export function formatPublicPath(path: LogicalBrainPath): string {
 }
 
 function isSameScope(a: ScopeRef, b: ScopeRef): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === "session" && b.kind === "session") return a.sessionId === b.sessionId;
-  return true;
+  return a.kind === b.kind;
 }
 
 function equalSegments(a: readonly string[], b: readonly string[]): boolean {

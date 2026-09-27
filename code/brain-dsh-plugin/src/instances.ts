@@ -16,6 +16,8 @@ export interface InstanceConfig {
   command: string
   args: readonly string[]
   timeoutMs: number
+  env?: NodeJS.ProcessEnv
+  expectedSemanticSearchEnabled?: boolean
 }
 
 interface Instance {
@@ -100,7 +102,7 @@ export class InstanceManager {
       command: this.config.command,
       args: [...this.config.args],
       cwd: sourceRoot,
-      env: { ...process.env },
+      env: this.config.env ?? { ...process.env },
       timeoutMs: this.config.timeoutMs,
       onExit: () => {
         const current = this.instances.get(sourceRoot)
@@ -124,6 +126,14 @@ export class InstanceManager {
       try {
         const tools = await client.start()
         for (const tool of tools) instance.tools.set(tool.name, tool)
+        if (this.config.expectedSemanticSearchEnabled !== undefined) {
+          const childSemanticSearchEnabled = instance.tools.has('brain_ask_search')
+          if (childSemanticSearchEnabled !== this.config.expectedSemanticSearchEnabled) {
+            throw new Error(
+              'brain: semanticSearch configuration differs from DSH/plugin startup; restart DSH/plugin',
+            )
+          }
+        }
         return instance
       } catch (error) {
         client.kill()

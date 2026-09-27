@@ -4,6 +4,9 @@
       "command": "node",
       "args": [
         "D:/Workspace/ai-projects/ai-toolkit/code/brain-codex-plugin/dist/mcp-server.mjs"
+      ],
+      "omit_tools_from": [
+        "deferred"
       ]
     }
   }

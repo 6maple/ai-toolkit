@@ -12,11 +12,10 @@ import {
   formatPublicPath,
   parsePublicPath,
   parseResourceLocation,
-  parseSessionId,
-  type SessionId,
 } from "../brain/namespace.ts";
 import { projectAbsoluteLocation, type StorageBinding } from "../persistence/storage.ts";
-import { PUBLIC_BRAIN_TOOLS, type BrainToolName } from "./public-tools.ts";
+import type { BrainRuntimeFeatures } from "../runtime/features.ts";
+import { selectPublicBrainTools, type BrainToolName } from "./public-tools.ts";
 
 export interface BrainApplicationServices {
   readonly binding: StorageBinding;
@@ -26,47 +25,34 @@ export interface BrainApplicationServices {
     CognitionMaintenance,
     "write" | "edit" | "remove" | "move" | "feedback"
   >;
+  readonly semantic?: {
+    search(
+      query: string,
+      context?: { readonly signal?: AbortSignal },
+    ): Promise<{ readonly text: string }>;
+  };
   readonly routed?: RoutedBrainApplication;
 }
 
 export interface BrainToolInvocation {
   readonly services: BrainApplicationServices;
-  readonly currentSessionId?: SessionId;
 }
 
 export type BrainToolInvocationResolver = (
   extra: unknown,
 ) => BrainToolInvocation | Promise<BrainToolInvocation>;
 
-export interface HostInvocationAdapter {
-  currentSessionId(extra: unknown): SessionId | undefined;
-}
-
 /** Structural MCP host boundary that avoids coupling consumers to Brain's SDK instance. */
 export type BrainToolRegistrar = Pick<McpServer, "registerTool">;
-
-/** Compatibility adapter for hosts that forward a trusted thread id in MCP request metadata. */
-export const THREAD_META_HOST_INVOCATION: HostInvocationAdapter = {
-  currentSessionId(extra: unknown): SessionId | undefined {
-    if (typeof extra !== "object" || extra === null || !("_meta" in extra)) return undefined;
-    const meta = (extra as { _meta?: unknown })._meta;
-    if (typeof meta !== "object" || meta === null) return undefined;
-    const raw = (meta as { threadId?: unknown }).threadId;
-    if (typeof raw !== "string") return undefined;
-    try {
-      return parseSessionId(raw);
-    } catch {
-      return undefined;
-    }
-  },
-};
 
 export type BrainToolResult = CallToolResult;
 
 export interface BrainToolRegistrationOptions {
   /** Tools owned by a host lifecycle integration and therefore hidden from the model. */
   readonly exclude?: readonly BrainToolName[];
-  /** Resolve project services and trusted session identity together for each tool invocation. */
+  /** Optional runtime capabilities selected from Brain's global config. */
+  readonly features?: BrainRuntimeFeatures;
+  /** Resolve the project services for each tool invocation when the host owns dynamic routing. */
   readonly resolveInvocation?: BrainToolInvocationResolver;
 }
 
@@ -87,29 +73,28 @@ function typedCode(error: unknown): string | undefined {
 
 const OBJECT_PATH_GUIDANCE: Partial<Record<BrainToolName, string>> = {
   brain_ls:
-    "brain_ls accepts only a memories directory under a built-in root or configured #alias, for example @project/memories/ or #mobile/memories/knowledge/. Do not pass a bare root, core.md, or a concrete .md document.",
+    "brain_ls accepts only a memories directory under a built-in root or configured #alias, for example @project/memories/ or #mobile/memories/knowledge/. Do not pass a bare root, a Scope Core path matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, or a concrete .md document.",
   brain_glob:
-    "When path is provided, brain_glob accepts only a memories directory under a built-in root or configured #alias. Omit path to search global memories, current session memories, and all workspace project memories (current + available related projects). This tool discovers archival memories, not core.md.",
+    "When path is provided, brain_glob accepts only a memories directory under a built-in root or configured #alias. Omit path to search global memories and all workspace project memories (current + available related projects). This tool discovers archival memories, not a Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`.",
   brain_grep:
-    "When path is provided, brain_grep accepts only a memories directory under a built-in root or configured #alias. Omit path to search global memories, current session memories, and all workspace project memories (current + available related projects). This tool searches archival memories, not core.md.",
+    "When path is provided, brain_grep accepts only a memories directory under a built-in root or configured #alias. Omit path to search global memories and all workspace project memories (current + available related projects). This tool searches archival memories, not a Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`.",
   brain_cat:
-    "brain_cat accepts one concrete core.md or archival cognition .md document under a built-in root or configured #alias; bare roots and directories are invalid.",
+    "brain_cat accepts one concrete Scope Core path matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, or one archival cognition .md document; bare roots and directories are invalid.",
   brain_write:
-    "brain_write accepts only a concrete archival .md path under a memories role, including configured #alias paths. It cannot write core.md; maintain an existing core with brain_edit.",
+    "brain_write accepts only a concrete archival .md path under a memories role, including configured #alias paths. It cannot write a Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`; maintain an existing Scope Core with brain_edit.",
   brain_edit:
-    "brain_edit accepts one existing core.md or one concrete archival .md document under a built-in root or configured #alias, not a bare root or memories directory.",
+    "brain_edit accepts one existing Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, or one concrete archival .md document, not a bare root or memories directory.",
   brain_rm:
-    "brain_rm accepts only a concrete archival .md path under a memories role, including configured #alias paths; it cannot remove core.md or a directory.",
+    "brain_rm accepts only a concrete archival .md path under a memories role, including configured #alias paths; it cannot remove a Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, or a directory.",
   brain_mv:
-    "brain_mv requires concrete archival .md paths under memories roles for both src and dst; either endpoint may use a configured #alias. core.md and directories are invalid.",
+    "brain_mv requires concrete archival .md paths under memories roles for both src and dst; either endpoint may use a configured #alias. Scope Core paths matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, and directories are invalid.",
   brain_feedback:
-    "brain_feedback accepts only a concrete archival .md path under a memories role, including configured #alias paths; core.md and directories are invalid.",
+    "brain_feedback accepts only a concrete archival .md path under a memories role, including configured #alias paths; Scope Core paths matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, and directories are invalid.",
 };
 
 const PATH_ERROR_CODES = new Set([
   "invalid-root",
   "invalid-separator",
-  "invalid-session-id",
   "invalid-role",
   "traversal-segment",
   "invalid-segment",
@@ -131,10 +116,10 @@ const ACTION_GUIDANCE: Readonly<Record<string, string>> = {
   "invalid-offset": "offset must be a positive 1-based document line.",
   "invalid-limit": "limit must be a positive integer.",
   "invalid-context": "context must be a non-negative integer.",
-  "session-id-conflict":
-    "Omit session_id to use the trusted host session, or provide that exact same current session identifier.",
+  "semantic-search-unavailable":
+    "Semantic Search is enabled but its runtime is unavailable. Check the semantic runtime installation and restart the host after repairing it.",
   "core-capacity-exceeded":
-    "Curate or compress the complete core document before retrying; archive durable cognition first when it no longer needs to remain resident.",
+    "Move complete cognition into the matching archival memory and keep only the necessary trigger, exact memory path, and usage guidance in the applicable Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md` before retrying.",
   "edit-mode": "Provide exactly one of edits or content.",
   "empty-edits": "Provide at least one exact replacement.",
   "empty-old-text": "Each edits[].oldText must be non-empty.",
@@ -143,6 +128,8 @@ const ACTION_GUIDANCE: Readonly<Record<string, string>> = {
   "old-text-not-unique": "Include more surrounding text so oldText identifies one unique region.",
   "overlapping-edits":
     "Merge overlapping changes into one replacement or make the edited regions disjoint.",
+  "nonempty-core-requires-exact-edit":
+    "The Scope Core already contains content. Read the current Core and update it with exact edits. For a deliberate complete rewrite, use one exact edit whose oldText is the complete current Core.",
   "same-source-destination": "Choose a dst path different from src.",
   "question-challenge-required":
     "feedback=question requires a non-empty complete current unresolved challenge.",
@@ -151,21 +138,23 @@ const ACTION_GUIDANCE: Readonly<Record<string, string>> = {
   "no-current-challenge":
     "feedback=resolve is valid only for a cognition that currently has an unresolved challenge.",
   "missing-frontmatter":
-    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
   "unterminated-frontmatter":
-    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
   "invalid-frontmatter-yaml":
-    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
   "frontmatter-not-map":
-    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
-  "missing-summary":
-    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
-  "invalid-summary":
-    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
+  "missing-description":
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
+  "invalid-description":
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
   "missing-importance":
-    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
   "invalid-importance":
-    "Supply a complete archival Markdown document with valid summary and importance frontmatter.",
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
+  "empty-body":
+    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
 };
 
 function errorResult(toolName: BrainToolName, error: unknown): BrainToolResult {
@@ -199,32 +188,14 @@ function errorResult(toolName: BrainToolName, error: unknown): BrainToolResult {
   };
 }
 
-function optionalSession(explicit: unknown, host: SessionId | undefined): SessionId | undefined {
-  const parsed = typeof explicit === "string" ? parseSessionId(explicit) : undefined;
-  if (host !== undefined && parsed !== undefined && host !== parsed) {
-    const error = new Error("explicit session conflicts with trusted host session") as Error & {
-      code: string;
-    };
-    error.code = "session-id-conflict";
-    throw error;
-  }
-  return host ?? parsed;
-}
-
 function invocationSignal(extra: unknown): AbortSignal | undefined {
   if (typeof extra !== "object" || extra === null || !("signal" in extra)) return undefined;
   const signal = (extra as { signal?: unknown }).signal;
   return signal instanceof AbortSignal ? signal : undefined;
 }
 
-function discoveryContext(
-  host: SessionId | undefined,
-  signal?: AbortSignal,
-): { currentSessionId?: SessionId; signal?: AbortSignal } {
-  return {
-    ...(host === undefined ? {} : { currentSessionId: host }),
-    ...(signal === undefined ? {} : { signal }),
-  };
+function discoveryContext(signal?: AbortSignal): { signal?: AbortSignal } {
+  return signal === undefined ? {} : { signal };
 }
 
 function renderMaintenanceResult(result: MaintenanceResult): string {
@@ -274,7 +245,6 @@ function editPath(raw: string) {
 function handlerFor(
   name: BrainToolName,
   services: BrainApplicationServices | undefined,
-  hostInvocation: HostInvocationAdapter,
   resolveInvocation?: BrainToolInvocationResolver,
 ): (args: unknown, extra?: unknown) => Promise<BrainToolResult> {
   return async (rawArgs: unknown, extra) => {
@@ -284,10 +254,7 @@ function handlerFor(
         resolveInvocation === undefined
           ? services === undefined
             ? undefined
-            : {
-                services,
-                currentSessionId: hostInvocation.currentSessionId(extra),
-              }
+            : { services }
           : await resolveInvocation(extra);
       if (invocation === undefined) {
         const error = new Error("brain invocation context is unavailable") as Error & {
@@ -297,18 +264,14 @@ function handlerFor(
         throw error;
       }
       const invocationServices = invocation.services;
-      const hostSession = invocation.currentSessionId;
       const signal = invocationSignal(extra);
       const routed = invocationServices.routed;
       switch (name) {
         case "brain_think": {
-          const session = optionalSession(args.session_id, hostSession);
           const result =
             routed === undefined
-              ? await invocationServices.anchor.runAnchor(
-                  session === undefined ? {} : { currentSessionId: session },
-                )
-              : await routed.think(session);
+              ? await invocationServices.anchor.runAnchor({})
+              : await routed.think();
           return textResult(
             result.context,
             result.diagnostics.map((diagnostic) => diagnostic.message),
@@ -324,13 +287,13 @@ function handlerFor(
             routed === undefined
               ? await invocationServices.reads.ls(
                   parsePublicPath(String(args.path)),
-                  discoveryContext(hostSession, signal),
+                  discoveryContext(signal),
                 )
-              : await routed.ls(String(args.path), discoveryContext(hostSession, signal));
+              : await routed.ls(String(args.path), discoveryContext(signal));
           return textResult(result.text);
         }
         case "brain_glob": {
-          const context = discoveryContext(hostSession, signal);
+          const context = discoveryContext(signal);
           const result =
             routed === undefined
               ? await invocationServices.reads.glob(
@@ -350,7 +313,7 @@ function handlerFor(
           return textResult(result.text);
         }
         case "brain_grep": {
-          const context = discoveryContext(hostSession, signal);
+          const context = discoveryContext(signal);
           const common = {
             pattern: String(args.pattern),
             ...(typeof args.glob === "string" ? { glob: args.glob } : {}),
@@ -375,6 +338,21 @@ function handlerFor(
                   },
                   context,
                 );
+          return textResult(result.text);
+        }
+        case "brain_ask_search": {
+          const context = discoveryContext(signal);
+          const semantic = invocationServices.semantic;
+          if (routed !== undefined) {
+            const result = await routed.askSearch(String(args.query), context);
+            return textResult(result.text);
+          }
+          if (semantic === undefined) {
+            const error = new Error("semantic search is unavailable") as Error & { code: string };
+            error.code = "semantic-search-unavailable";
+            throw error;
+          }
+          const result = await semantic.search(String(args.query), context);
           return textResult(result.text);
         }
         case "brain_cat": {
@@ -471,11 +449,10 @@ function handlerFor(
 export function registerBrainTools(
   server: BrainToolRegistrar,
   services: BrainApplicationServices | undefined,
-  hostInvocation: HostInvocationAdapter = THREAD_META_HOST_INVOCATION,
   options: BrainToolRegistrationOptions = {},
 ): void {
   const excluded = new Set(options.exclude ?? []);
-  for (const definition of PUBLIC_BRAIN_TOOLS) {
+  for (const definition of selectPublicBrainTools(options.features)) {
     if (excluded.has(definition.name)) continue;
     server.registerTool(
       definition.name,
@@ -486,7 +463,7 @@ export function registerBrainTools(
         outputSchema: definition.outputSchema,
         annotations: definition.annotations,
       },
-      handlerFor(definition.name, services, hostInvocation, options.resolveInvocation),
+      handlerFor(definition.name, services, options.resolveInvocation),
     );
   }
 }

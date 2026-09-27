@@ -68,11 +68,11 @@ memory strength 可以影响有限结果竞争，但不得让存在的 memory �
 
 系统应使适用的 global/project/session core 与 bounded L0 archival cues 在模型进行实质推理前可用。integration mechanism 可随 host 不同，但行为目标相同。
 
-### Scenario ANCHOR3-001-A：没有可靠 hook 的 host 通过 tool description 引导 read-before-think
+### Scenario ANCHOR3-001-A：没有可靠 hook 的 MCP host 引导 read-before-think
 
 **Given** host 无法在模型推理前自动注入 memory  
 **When** MCP 暴露 `brain_think`  
-**Then** tool guidance 明确要求收到新用户消息后立即调用  
+**Then** server instructions 与 `brain_think` tool guidance 共同明确要求收到新用户消息后立即调用
 **And** 这是 best-effort model guidance，不是假装 protocol guarantee  
 
 ### Scenario ANCHOR3-001-B：支持 hook 的 host 自动恢复 cognition

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -19,7 +20,6 @@ import { parseArchivalDocument, validateCoreDocument } from "../../src/brain/doc
 import {
   formatPublicPath,
   parsePublicPath,
-  parseSessionId,
   type LogicalArchivalPath,
   type ScopeRef,
 } from "../../src/brain/namespace.ts";
@@ -28,10 +28,6 @@ import {
   decodeCompanion,
   decodeMarkdown,
   decodeScopeState,
-  encodeCompanion,
-  encodeMarkdown,
-  encodeScopeState,
-  hashMarkdownContent,
   normalizeMarkdownInput,
 } from "../../src/persistence/codecs.ts";
 import type { ResourceMutation } from "../../src/persistence/cognition-state-store.ts";
@@ -43,10 +39,9 @@ import type {
 
 const globalScope: ScopeRef = { kind: "global" };
 const projectScope: ScopeRef = { kind: "project" };
-const session1: ScopeRef = { kind: "session", sessionId: parseSessionId("s1") };
 
 function scopeKey(scope: ScopeRef): string {
-  return scope.kind === "session" ? `session:${scope.sessionId}` : scope.kind;
+  return scope.kind;
 }
 
 function archival(raw: string): LogicalArchivalPath {
@@ -55,9 +50,11 @@ function archival(raw: string): LogicalArchivalPath {
   return parsed;
 }
 
-function memory(summary: string, body = "body", importance = "medium") {
+function memory(description: string, body = "body", importance = "medium") {
   return parseArchivalDocument(
-    normalizeMarkdownInput(`---\nsummary: ${summary}\nimportance: ${importance}\n---\n${body}\n`),
+    normalizeMarkdownInput(
+      `---\ndescription: ${description}\nimportance: ${importance}\n---\n${body}\n`,
+    ),
   );
 }
 
@@ -102,7 +99,7 @@ class FakeAnchorState implements AnchorPersistencePort {
   add(
     path: LogicalArchivalPath,
     options: {
-      summary?: string;
+      description?: string;
       body?: string;
       importance?: "low" | "medium" | "high" | "critical";
       challenge?: string;
@@ -117,7 +114,7 @@ class FakeAnchorState implements AnchorPersistencePort {
     this.items.set(formatPublicPath(path), {
       path,
       document: memory(
-        options.summary ?? path.itemSegments.at(-1)!,
+        options.description ?? path.itemSegments.at(-1)!,
         options.body ?? "body",
         options.importance ?? "medium",
       ),
@@ -255,12 +252,25 @@ function setup() {
   };
 }
 
-describe("T6 anchor renderer", () => {
+describe("anchor renderer", () => {
+  it("renders the approved empty-Core branch exactly", () => {
+    const review = readFileSync(new URL("../../../../doc/brain/v7/16-model-facing-composition-review.md", import.meta.url), "utf8");
+    const blocks = [...review.matchAll(/````text\r?\n([\s\S]*?)\r?\n````/g)];
+    const approved = blocks[1]?.[1].replaceAll("\r\n", "\n");
+    const rendered = renderAnchorContext({
+      cores: [
+        { scope: globalScope, path: { kind: "core", scope: globalScope }, text: normalizeMarkdownInput("") },
+        { scope: projectScope, path: { kind: "core", scope: projectScope }, text: normalizeMarkdownInput("") },
+      ],
+      candidates: [],
+    });
+    expect(rendered).toBe(approved);
+  });
+
   it("escapes dynamic attributes while preserving core Markdown verbatim", () => {
     expect(escapeXmlAttribute('a&<b>"\t\n\r')).toBe("a&amp;&lt;b&gt;&quot;&#9;&#10;&#13;");
     expect(escapeXmlText('a&<b>"\n')).toBe('a&amp;&lt;b&gt;"\n');
     const projection: AnchorProjection = {
-      currentSessionId: parseSessionId("s1"),
       cores: [
         {
           scope: globalScope,
@@ -272,16 +282,11 @@ describe("T6 anchor renderer", () => {
           path: { kind: "core", scope: projectScope },
           text: normalizeMarkdownInput("PROJECT\n"),
         },
-        {
-          scope: session1,
-          path: { kind: "core", scope: session1 },
-          text: normalizeMarkdownInput(""),
-        },
       ],
       candidates: [
         {
           path: archival("@project/memories/knowledge/a.md"),
-          summary: 'a "quote" & <fact>\nnext',
+          description: 'a "quote" & <fact>\nnext',
           status: "questioned",
         },
       ],
@@ -289,80 +294,52 @@ describe("T6 anchor renderer", () => {
     const rendered = renderAnchorContext(projection);
     expect(rendered.endsWith("\n")).toBe(true);
     expect(rendered).toContain("<tag>&value\n</core>");
-    expect(rendered).toContain("## How to Use This Context");
-    expect(rendered).toContain("## Continuity Scopes");
-    expect(rendered).toContain("## Resident Working Cognition");
-    expect(rendered).toContain("## Recalled Archival Cognition Summaries");
-    expect(rendered).toContain('path="@session/s1/core.md"');
-    expect(rendered).toContain('empty="true">\n</core>');
     expect(rendered).toContain(
-      '<recalled_cognition_summary path="@project/memories/knowledge/a.md" status="questioned">\na "quote" &amp; &lt;fact&gt;\nnext\n</recalled_cognition_summary>',
+      '<recalled_cognition_description path="@project/memories/knowledge/a.md" status="questioned">',
     );
-    expect(rendered).toContain("`@session/s1`");
+    expect(rendered).toContain('a "quote" &amp; &lt;fact&gt;\nnext');
+    expect(rendered).not.toContain('a "quote" & <fact>');
     const coreOpeningLines = rendered.split("\n").filter((line) => line.startsWith("<core "));
-    expect(coreOpeningLines).toHaveLength(3);
-    expect(rendered.match(/^<brain_think_context>$/gm) ?? []).toHaveLength(1);
-    expect(rendered.match(/^<recalled_cognition_summary\b/gm) ?? []).toHaveLength(1);
-    expect(rendered).not.toContain("<brain_namespace");
-    expect(rendered).not.toContain("<core_memory");
-    expect(rendered).not.toContain("<archival_memory");
-    expect(rendered).not.toContain("<memory_candidates");
-    expect(rendered).not.toContain("<memory_candidate_item");
-    expect(rendered).not.toContain("<sid>");
+    expect(coreOpeningLines).toHaveLength(2);
+    expect(rendered.match(/^# 本轮 Brain 工作上下文$/gm) ?? []).toHaveLength(1);
+    expect(rendered.match(/^<recalled_cognition_description\b/gm) ?? []).toHaveLength(1);
     expect(rendered).not.toContain("importance=");
     expect(rendered).not.toContain("challenge=");
     expect(rendered).not.toContain("durability=");
   });
 
-  it("renders recalled cognition with path/status attributes and escaped summary text", () => {
+  it("renders recalled cognition with path/status attributes and escaped description text", () => {
     const active = renderAnchorCandidateItem({
       path: archival("@project/memories/knowledge/a.md"),
-      summary: "A & <B>",
+      description: "A & <B>",
     });
     const questioned = renderAnchorCandidateItem({
       path: archival("@project/memories/knowledge/b.md"),
-      summary: "B",
+      description: "B",
       status: "questioned",
     });
-    expect(active).toBe(
-      '<recalled_cognition_summary path="@project/memories/knowledge/a.md">\nA &amp; &lt;B&gt;\n</recalled_cognition_summary>',
+    expect(active).toContain(
+      '<recalled_cognition_description path="@project/memories/knowledge/a.md">',
     );
-    expect(questioned).toBe(
-      '<recalled_cognition_summary path="@project/memories/knowledge/b.md" status="questioned">\nB\n</recalled_cognition_summary>',
+    expect(active).toContain("A &amp; &lt;B&gt;");
+    expect(active).not.toContain('status="questioned"');
+    expect(active).not.toContain("A & <B>");
+    expect(questioned).toContain(
+      '<recalled_cognition_description path="@project/memories/knowledge/b.md" status="questioned">',
     );
+    expect(questioned).toContain("\nB\n");
   });
 });
 
-describe("T6 anchor restore", () => {
-  it("restores global/project only when no reliable session exists", async () => {
+describe("anchor restore", () => {
+  it("always restores only Global and Project cognition", async () => {
     const { app, operations } = setup();
     const result = await app.runAnchor({});
     expect(result.context.indexOf("@global/core.md")).toBeLessThan(
       result.context.indexOf("@project/core.md"),
     );
-    expect(result.context).not.toContain("@session/");
-    expect(result.context).toContain("`@global`");
-    expect(result.context).toContain("`@project`");
     expect(operations.auxiliaryScopes).toEqual(["global", "project"]);
-  });
-
-  it("materializes a fresh session core as required state, then persists final cycle1 only as auxiliary learning", async () => {
-    const { state, operations, app } = setup();
-    expect(await state.loadScope(session1)).toBeUndefined();
-
-    const result = await app.runAnchor({ currentSessionId: parseSessionId("s1") });
-    expect(result.context).toContain('path="@session/s1/core.md"');
-    expect(result.context).toContain("`@session/s1`");
-    expect(operations.semanticMutations).toHaveLength(1);
-    expect(operations.semanticMutations[0]).toHaveLength(1);
-    expect(operations.semanticMutations[0]?.[0]?.ref).toMatchObject({
-      kind: "public",
-      path: { kind: "core", scope: { kind: "session", sessionId: "s1" } },
-    });
-    expect(operations.semanticMutations[0]?.some((m) => m.ref.kind === "scope-state")).toBe(false);
-    expect(state.scopeWrites.find((write) => scopeKey(write.scope) === "session:s1")?.cycle).toBe(
-      1,
-    );
+    expect(operations.semanticMutations).toHaveLength(0);
   });
 
   it("uses the in-memory advanced cycle before D1/D2 ranking", async () => {
@@ -414,9 +391,9 @@ describe("T6 anchor restore", () => {
     const normal = archival("@project/memories/knowledge/b-normal.md");
     state.add(huge, {
       importance: "critical",
-      summary: "x".repeat(L0_CANDIDATE_ITEMS_MAX_RENDERED_UTF8_BYTES + 200),
+      description: "x".repeat(L0_CANDIDATE_ITEMS_MAX_RENDERED_UTF8_BYTES + 200),
     });
-    state.add(normal, { importance: "high", summary: "normal" });
+    state.add(normal, { importance: "high", description: "normal" });
 
     const result = await app.runAnchor({});
     expect(result.context).not.toContain(formatPublicPath(huge));
@@ -430,9 +407,9 @@ describe("T6 anchor restore", () => {
     const first = archival("@project/memories/knowledge/a-first.md");
     const second = archival("@project/memories/knowledge/b-second.md");
     const third = archival("@project/memories/knowledge/c-third.md");
-    state.add(first, { importance: "critical", summary: "a".repeat(5000) });
-    state.add(second, { importance: "critical", summary: "b".repeat(5000) });
-    state.add(third, { importance: "critical", summary: "short" });
+    state.add(first, { importance: "critical", description: "a".repeat(5000) });
+    state.add(second, { importance: "critical", description: "b".repeat(5000) });
+    state.add(third, { importance: "critical", description: "short" });
     const result = await app.runAnchor({});
     expect(result.context).toContain(formatPublicPath(first));
     expect(result.context).not.toContain(formatPublicPath(second));
@@ -491,7 +468,7 @@ describe("T6 anchor restore", () => {
     const { state, app } = setup();
     const bad = archival("@project/memories/knowledge/bad.md");
     const good = archival("@project/memories/knowledge/good.md");
-    state.add(good, { importance: "critical", summary: "good" });
+    state.add(good, { importance: "critical", description: "good" });
     state.listingDiagnostics.set("project", [
       { kind: "archival-item-skipped", path: bad, message: "malformed archival item" },
     ]);

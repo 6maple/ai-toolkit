@@ -1,7 +1,7 @@
 {
   "name": "brain",
   "version": "0.1.0",
-  "description": "Generic MCP server implementing the brain_think memory system: three-layer persistent memory (global/project/session) with progressive disclosure and a use-it-or-lose-it memory model.",
+  "description": "Generic MCP server implementing persistent Global/Project cognition with progressive disclosure and a use-it-or-lose-it memory model.",
   "license": "MIT",
   "bin": {
     "brain": "./dist/index.mjs"

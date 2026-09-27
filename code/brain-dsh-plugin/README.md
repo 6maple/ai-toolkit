@@ -5,12 +5,11 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 
 ## 行为边界
 
-- 工具定义直接来自 `brain/public-tools` 导出的 `PUBLIC_BRAIN_TOOLS`。hook 默认开启时，模型可见
-  10 个操作工具；关闭 hook 后，`exposeThink` 决定是否额外公开 `brain_think`。
-- 每个真实用户消息边界只调用一次 `brain_think`。返回的首个 cognition context text block
-  原样作为 plugin message 注入下一次模型输入；任何 warning 或失败只进入日志。
-- 工具与 AutoThink 都把 DSH `agent.id` 作为可信 MCP invocation metadata 传递。手动
-  `brain_think` 保留模型显式的 `session_id`，否则才注入该 id；缺少 session 时不创建默认值。
+- 工具定义直接来自 `brain/public-tools`。Semantic Search 默认关闭，此时 hook 默认开启时模型可见
+  10 个操作工具；关闭 hook 后，`exposeThink` 决定是否额外公开 `brain_think`。当 Brain 全局配置启用
+  Semantic Search 时，再额外公开 `brain_ask_search`。
+- 每个真实用户消息边界只调用一次 `brain_think`。成功时把返回的工作上下文作为 plugin message 注入下一次模型输入；自动建立失败时把明确诊断注入同一通道，并记录日志。其他可完成的工作继续进行。
+- 工具与 AutoThink 先用当前 DSH agent/session 的 cwd 选择正确的 source root / Brain instance。DSH session identity 只属于宿主，不注入 Brain tool args；`brain_think` 的模型可见输入为空对象。
 - 对 `opencode` / `opencode-go` 的 `opencode.ai` 推理请求，插件把当前 DSH 会话 ID 写入
   `x-opencode-session`。并发会话相互隔离；其他 provider、其他域名和已有显式请求头不变。
 - `InstanceManager`负责按source root的lazy process、timeout、abort、崩溃冷却和plugin
@@ -31,8 +30,23 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 | `opencodeSession.hosts` | `[opencode.ai]` | 允许写入请求头的目标域名及其子域名。 |
 
 旧 v1 的 vendored tools、approval、`project_root` tool 参数、`default` session 与历史文件语义
-不受支持。v2 public behavior 以 `doc/brain/v2/brain-tools-contract.md` 和
-`doc/brain/v2/design-brain-integration.md` 为准。
+不受支持。当前 Brain cognition scope 与 host/session 分工以 `doc/brain/v6/` 为准；未被 v6 重开的行为继续继承当前实现 baseline。
+
+## Semantic Search
+
+插件不拥有独立的 semantic 配置。它与 Brain MCP process 共同读取：
+
+```text
+~/.brain-data/config.json
+```
+
+安装 runtime 使用仓库统一入口：
+
+```bash
+node ../brain-cli/index.mjs semantic-search install
+```
+
+然后设置 `semanticSearch.enabled=true` 并重启 DSH/plugin。这个开关只在宿主启动时读取，不支持热切换；修改后继续使用旧 DSH 可能让宿主已注册的工具 surface 与后来 lazy spawn/respawn 的 Brain child 不一致，此时插件会提示重启 DSH/plugin。配置关闭时插件保持原工具 surface。
 
 ## 依赖与本地开发
 
@@ -49,11 +63,11 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 ```bash
 cd D:/Workspace/ai-projects/ai-toolkit/code/brain
 pnpm install
-pnpm run build
+pnpm run stub
 
 cd ../brain-dsh-plugin
 pnpm install
-pnpm run build
+pnpm run stub
 pnpm run typecheck
 pnpm run test
 
@@ -68,5 +82,4 @@ dsh --profile web --dump-config
 `brain/public-tools` export 是唯一 host/tool contract source，并交付 JavaScript 与 declarations。
 
 `test` 覆盖 instance lifecycle、timeout/abort/crash guard、AutoThink 的单边界逐字注入与失败去重、
-OpenCode 并发会话请求头隔离与域名边界，并对真实 v2 MCP server 验证 11-tool surface、trusted
-session、无路径 glob/grep、write、feedback 和 absolute-path 转发。
+OpenCode 并发会话请求头隔离与域名边界，并对真实 MCP server 验证默认工具 surface、Semantic Search 可选工具 surface、host session 不进入 Brain cognition、Project 范围无路径 glob/grep、write、feedback 和 absolute-path 转发。

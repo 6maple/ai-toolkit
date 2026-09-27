@@ -23,13 +23,12 @@ import {
 } from "../../src/application/read-discovery.ts";
 import {
   buildScopeDiscoveryNamespace,
-  CAT_MAX_RENDERED_UTF8_BYTES,
   compilePublicGlob,
   directChildren,
   DiscoveryObjectError,
   splitLogicalLines,
 } from "../../src/brain/discovery.ts";
-import { parseArchivalDocument } from "../../src/brain/documents.ts";
+import { parseArchivalDocument, validateCoreDocument } from "../../src/brain/documents.ts";
 import {
   formatPublicPath,
   parsePublicPath,
@@ -47,6 +46,7 @@ import {
   encodeMarkdown,
   encodeScopeState,
   normalizeMarkdownInput,
+  type LogicalMarkdownText,
 } from "../../src/persistence/codecs.ts";
 import type {
   AuxiliaryUpdateOutcome,
@@ -66,14 +66,14 @@ function directory(raw: string): LogicalDirectory {
   return parsed;
 }
 
-function memoryText(summary: string, body: string, importance = "medium"): string {
+function memoryText(description: string, body: string, importance = "medium"): LogicalMarkdownText {
   return normalizeMarkdownInput(
-    `---\nsummary: ${summary}\nimportance: ${importance}\n---\n${body}`,
+    `---\ndescription: ${description}\nimportance: ${importance}\n---\n${body}`,
   );
 }
 
 function scopeKey(scope: ScopeRef): string {
-  return scope.kind === "session" ? `session:${scope.sessionId}` : scope.kind;
+  return scope.kind;
 }
 
 class FakeState implements ReadDiscoveryStatePort {
@@ -92,7 +92,7 @@ class FakeState implements ReadDiscoveryStatePort {
   add(
     pathValue: LogicalArchivalPath,
     options: {
-      summary?: string;
+      description?: string;
       body?: string;
       questioned?: boolean;
       challenge?: string;
@@ -111,7 +111,7 @@ class FakeState implements ReadDiscoveryStatePort {
     this.snapshots.set(formatPublicPath(pathValue), {
       path: pathValue,
       document: parseArchivalDocument(
-        memoryText(options.summary ?? pathValue.itemSegments.at(-1)!, options.body ?? "body\n"),
+        memoryText(options.description ?? pathValue.itemSegments.at(-1)!, options.body ?? "body\n"),
       ),
       epistemic:
         options.questioned || options.challenge !== undefined
@@ -136,6 +136,17 @@ class FakeState implements ReadDiscoveryStatePort {
     this.materialized.add(key);
     this.cycles.set(key, { cycle: 3 });
     this.paths.set(key, []);
+  }
+
+  async loadScope(scope: ScopeRef) {
+    const key = scopeKey(scope);
+    if (!this.materialized.has(key)) return undefined;
+    return {
+      scope,
+      core: validateCoreDocument(normalizeMarkdownInput("")),
+      cycle: this.cycles.get(key) ?? { cycle: 0 },
+      cycleWasFresh: false,
+    };
   }
 
   async isScopeMaterialized(scope: ScopeRef): Promise<boolean> {
@@ -292,7 +303,7 @@ class FakeOperations implements ReadDiscoveryOperationPort {
   }
 }
 
-describe("T5 pure discovery semantics", () => {
+describe("pure discovery semantics", () => {
   it("uses one stable logical line coordinate", () => {
     expect(splitLogicalLines("" as never)).toEqual([]);
     expect(splitLogicalLines("a" as never)).toEqual(["a"]);
@@ -331,7 +342,7 @@ describe("T5 pure discovery semantics", () => {
   });
 });
 
-describe("T5 read/discovery application", () => {
+describe("read/discovery application", () => {
   function setup(): { state: FakeState; pi: FakePiTools; ops: FakeOperations; app: ReadDiscovery } {
     const state = new FakeState();
     state.materializeEmpty({ kind: "global" });
@@ -343,9 +354,9 @@ describe("T5 read/discovery application", () => {
 
   it("ls returns direct cognition children and glob returns questioned memory matches without auxiliary mutation", async () => {
     const { state, ops, app } = setup();
-    state.add(archival("@project/memories/skill/report/workflow.md"), { summary: "workflow" });
+    state.add(archival("@project/memories/skill/report/workflow.md"), { description: "workflow" });
     state.add(archival("@project/memories/skill/direct.md"), {
-      summary: "direct",
+      description: "direct",
       questioned: true,
     });
 
@@ -393,7 +404,7 @@ describe("T5 read/discovery application", () => {
 
   it("canonicalizes explicit discovery root aliases before namespace narrowing", async () => {
     const { state, app } = setup();
-    state.add(archival("@project/memories/decision/real/a.md"), { summary: "canonical" });
+    state.add(archival("@project/memories/decision/real/a.md"), { description: "canonical" });
     const requested = directory("@project/memories/knowledge/alias/");
     const canonical = directory("@project/memories/decision/real/");
     state.alias(requested, canonical);
@@ -412,7 +423,7 @@ describe("T5 read/discovery application", () => {
     const { state, pi, ops, app } = setup();
     const item = archival("@project/memories/knowledge/lines.md");
     const body = Array.from({ length: 70 }, (_, index) => `line-${index + 1}`).join("\n") + "\n";
-    state.add(item, { summary: "many lines", body });
+    state.add(item, { description: "many lines", body });
     pi.grepHits = Array.from({ length: 70 }, (_, index) => ({
       relativePath: "memories/knowledge/lines.md",
       lineNumber: index + 5,
@@ -430,7 +441,6 @@ describe("T5 read/discovery application", () => {
     expect(result.records).toHaveLength(64);
     expect(result.truncated).toBe(true);
     expect(result.text).toContain("truncated=true");
-    expect(result.text).toContain("narrow pattern/path/glob and search again");
     expect(result.records[0]?.lineNumber).toBe(5);
     expect(result.records[0]?.contextBefore.at(-1)?.lineNumber).toBe(4);
     expect(ops.calls).toBe(0);
@@ -443,12 +453,25 @@ describe("T5 read/discovery application", () => {
     await expect(app.grep({ pattern: "(" })).rejects.toMatchObject({ code: "invalid-regex" });
   });
 
+  it("cat reads a normal long cognition in one default page when it fits the transport budget", async () => {
+    const { state, app } = setup();
+    const item = archival("@project/memories/knowledge/long.md");
+    const body = Array.from({ length: 1500 }, (_, index) => `line-${index + 1}`).join("\n") + "\n";
+    state.add(item, { body });
+
+    const result = await app.cat({ path: item });
+
+    expect(result.page.nextOffset).toBeUndefined();
+    expect(result.page.lines).toContain("line-1500");
+    expect(result.text).not.toContain("next_offset:");
+  });
+
   it("cat returns canonical exact content first, then best-effort reloads and records exact retrieval", async () => {
     const { state, ops, app } = setup();
     const target = archival("@project/memories/decision/a.md");
     const alias = archival("@project/memories/knowledge/alias.md");
     state.add(target, {
-      summary: "a",
+      description: "a",
       body: "one\ntwo\n",
       companionState: "fresh",
       durability: 2,
@@ -546,7 +569,7 @@ describe("T5 read/discovery application", () => {
   });
 });
 
-describe("T5 real filesystem enumeration and direct Pi Tool adapter", () => {
+describe("real filesystem enumeration and direct Pi Tool adapter", () => {
   it("uses Pi ls/find/read/grep while brain keeps cognition membership outside", async () => {
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-t5-pi-"));
     const brainRoot = path.join(temp, "brain");

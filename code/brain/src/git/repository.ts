@@ -53,6 +53,8 @@ export class SystemGitCommandRunner implements GitCommandRunner {
 
 export interface RepositoryFs {
   exists(target: string): Promise<boolean>;
+  readFile(target: string): Promise<Uint8Array | undefined>;
+  writeFile(target: string, bytes: Uint8Array): Promise<void>;
 }
 
 export const nodeRepositoryFs: RepositoryFs = {
@@ -64,6 +66,17 @@ export const nodeRepositoryFs: RepositoryFs = {
       if (isErrno(error, "ENOENT")) return false;
       throw error;
     }
+  },
+  readFile: async (target) => {
+    try {
+      return Uint8Array.from(await fsPromises.readFile(target));
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return undefined;
+      throw error;
+    }
+  },
+  writeFile: async (target, bytes) => {
+    await fsPromises.writeFile(target, bytes);
   },
 };
 

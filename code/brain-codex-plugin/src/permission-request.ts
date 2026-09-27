@@ -5,6 +5,7 @@ const READ_TOOLS = new Set([
   "mcp__brain__brain_ls",
   "mcp__brain__brain_glob",
   "mcp__brain__brain_grep",
+  "mcp__brain__brain_ask_search",
   "mcp__brain__brain_cat",
 ]);
 

@@ -67,7 +67,7 @@
 
 **Given** host 没有可靠 pre-reasoning hook  
 **When** 暴露 `brain_think`  
-**Then** tool guidance 清楚表达“收到新 user message 后立即恢复 persistent cognition，再 substantive reasoning”  
+**Then** MCP server instructions 与 tool guidance 清楚表达“收到新 user message 后立即恢复 persistent cognition，再 substantive reasoning”
 **And** contract 不声称 MCP 能机械保证模型一定调用。
 
 ## AC3-ANCHOR-002：Hook-backed integration 自动恢复 cognition
@@ -79,7 +79,7 @@
 **Given** host 支持 pre-reasoning hook  
 **When** 一个新 user turn 到达  
 **Then** hook 自动完成与 explicit `brain_think` 等价的 restore/injection  
-**And** model-visible tool surface 不暴露 `brain_think`，模型不需要再显式调用  
+**And** model-visible tool surface 不暴露 `brain_think`，也不提供要求调用 `brain_think` 的 server instruction，模型不需要再显式调用
 **And** hook 与 explicit mode 中 restored memory 的 context role / authority 相同  
 
 ## AC3-ANCHOR-003：Restored cognition 与 latest user event 正确合并

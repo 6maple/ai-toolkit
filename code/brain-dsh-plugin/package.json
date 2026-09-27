@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/brain-dsh-plugin",
   "version": "0.0.1",
-  "description": "brain v2 的 DSH A2 host adapter：转发 core public tools 并注入当前会话 cognition context",
+  "description": "DSH host adapter for Brain: route by source root, forward public tools, and inject restored project cognition context",
   "private": true,
   "type": "module",
   "main": "./dist/index.mjs",

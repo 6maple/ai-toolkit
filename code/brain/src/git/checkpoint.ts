@@ -8,6 +8,7 @@ export interface GitHistoryDiagnostic {
     | "cli-unavailable"
     | "repo-init-failed"
     | "repository-root-mismatch"
+    | "gitignore-update-failed"
     | "stage-failed"
     | "commit-failed"
     | "git-operation-failed";
@@ -30,6 +31,28 @@ export const CHECKPOINT_IDENTITY = {
   email: "brain@local",
   message: "brain: cognition checkpoint",
 } as const;
+
+export const BRAIN_GITIGNORE_ENTRIES = [
+  "/config.json",
+  "/.runtime/",
+  "/recovery/",
+  "/.brain-*.lock",
+] as const;
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+function updatedGitignore(current: string): string {
+  const newline = current.includes("\r\n") ? "\r\n" : "\n";
+  const lines = current.replaceAll("\r\n", "\n").split("\n");
+  const missing = BRAIN_GITIGNORE_ENTRIES.filter((entry) => !lines.includes(entry));
+  if (missing.length === 0) return current;
+  const header = "# Brain machine-local config and derived runtime state";
+  const additions = [...(lines.includes(header) ? [] : [header]), ...missing];
+  const prefix =
+    current.length === 0 ? "" : current.endsWith("\n") ? current : current + newline;
+  return prefix + additions.join(newline) + newline;
+}
 
 function normalizeComparisonPath(value: string, platform: StorageBinding["platform"]): string {
   const pathApi = platform === "win32" ? path.win32 : path.posix;
@@ -107,6 +130,25 @@ export class GitCheckpoint {
         },
       };
     }
+
+    try {
+      const ignorePath = pathApi.join(this.binding.brainRoot, ".gitignore");
+      const currentBytes = (await this.fs.exists(ignorePath))
+        ? await this.fs.readFile(ignorePath)
+        : undefined;
+      const current = currentBytes === undefined ? "" : textDecoder.decode(currentBytes);
+      const next = updatedGitignore(current);
+      if (next !== current) await this.fs.writeFile(ignorePath, textEncoder.encode(next));
+    } catch {
+      return {
+        kind: "failed",
+        diagnostic: {
+          code: "gitignore-update-failed",
+          message: "Git history ignore rules could not be updated",
+        },
+      };
+    }
+
     return { kind: "available" };
   }
 
@@ -116,7 +158,7 @@ export class GitCheckpoint {
 
     let staged;
     try {
-      staged = await this.runner.run(["add", "-A", "--", "global", "projects"]);
+      staged = await this.runner.run(["add", "-A", "--", ".gitignore", "global", "projects"]);
     } catch {
       return {
         kind: "unavailable",

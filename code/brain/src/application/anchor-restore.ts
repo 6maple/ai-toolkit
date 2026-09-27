@@ -12,7 +12,6 @@ import {
   type LogicalArchivalPath,
   type LogicalCorePath,
   type ScopeRef,
-  type SessionId,
 } from "../brain/namespace.ts";
 import {
   ScarcitySelectionError,
@@ -22,17 +21,17 @@ import {
 import type { CheckpointOutcome } from "../git/checkpoint.ts";
 import {
   encodeCompanion,
-  encodeMarkdown,
   encodeScopeState,
   hashMarkdownContent,
-  normalizeMarkdownInput,
   type LogicalMarkdownText,
 } from "../persistence/codecs.ts";
-import { persistentCoreRef, type ResourceMutation } from "../persistence/cognition-state-store.ts";
+import {
+  DEFAULT_BRAIN_RUNTIME_FEATURES,
+  type BrainRuntimeFeatures,
+} from "../runtime/features.ts";
 import type {
   AuxiliaryUpdateOutcome,
   AuxiliaryUpdateRequest,
-  SemanticOperationRequest,
 } from "../persistence/operation-coordination.ts";
 import {
   renderAnchorCandidateItem,
@@ -49,7 +48,6 @@ export const L0_MAX_CANDIDATES = 10;
 export const L0_CANDIDATE_ITEMS_MAX_RENDERED_UTF8_BYTES = 8192;
 
 export interface AnchorRequest {
-  readonly currentSessionId?: SessionId;
   readonly relatedProjects?: readonly RelatedProjectProjection[];
   readonly relatedProjectWarnings?: readonly RelatedProjectWarningProjection[];
   readonly relatedProjectErrors?: readonly RelatedProjectErrorProjection[];
@@ -98,7 +96,6 @@ export interface AnchorPersistencePort {
 }
 
 export interface AnchorOperationPort {
-  runSemanticOperation<T>(request: SemanticOperationRequest<T>): Promise<T>;
   tryApplyAuxiliaryUpdate(request: AuxiliaryUpdateRequest): Promise<AuxiliaryUpdateOutcome>;
 }
 
@@ -119,19 +116,15 @@ export class AnchorStateInvariantError extends Error {
 }
 
 function scopeKey(scope: ScopeRef): string {
-  return scope.kind === "session" ? `session:${scope.sessionId}` : scope.kind;
+  return scope.kind;
 }
 
 function sameScope(a: ScopeRef, b: ScopeRef): boolean {
-  return scopeKey(a) === scopeKey(b);
+  return a.kind === b.kind;
 }
 
-export function applicableScopes(request: AnchorRequest): readonly ScopeRef[] {
-  const scopes: ScopeRef[] = [{ kind: "global" }, { kind: "project" }];
-  if (request.currentSessionId !== undefined) {
-    scopes.push({ kind: "session", sessionId: request.currentSessionId });
-  }
-  return scopes;
+export function applicableScopes(): readonly ScopeRef[] {
+  return [{ kind: "global" }, { kind: "project" }];
 }
 
 function corePath(scope: ScopeRef): LogicalCorePath {
@@ -150,13 +143,11 @@ export class AnchorRestore {
     private readonly state: AnchorPersistencePort,
     private readonly operations: AnchorOperationPort,
     private readonly checkpoint: AnchorCheckpointPort,
+    private readonly features: BrainRuntimeFeatures = DEFAULT_BRAIN_RUNTIME_FEATURES,
   ) {}
 
   async runAnchor(request: AnchorRequest): Promise<AnchorResult> {
-    const scopes = applicableScopes(request);
-    if (request.currentSessionId !== undefined) {
-      await this.ensureSessionCore({ kind: "session", sessionId: request.currentSessionId });
-    }
+    const scopes = applicableScopes();
 
     const scopeSnapshots = new Map<string, AnchorScopeSnapshot>();
     const advancedCycles = new Map<string, ScopeCycleState>();
@@ -184,7 +175,7 @@ export class AnchorRestore {
         const status = deriveEpistemicStatus(item.epistemic);
         const projection: AnchorCandidateProjection = {
           path: item.path,
-          summary: item.document.summary,
+          description: item.document.description,
           ...(status === "questioned" ? { status: "questioned" as const } : {}),
         };
         pool.push({
@@ -221,11 +212,9 @@ export class AnchorRestore {
     }
 
     const projection: AnchorProjection = {
-      ...(request.currentSessionId === undefined
-        ? {}
-        : { currentSessionId: request.currentSessionId }),
       cores,
       candidates: shown.map((item) => item.projection),
+      ...(this.features.semanticSearch ? { semanticSearchEnabled: true } : {}),
       ...(request.relatedProjects === undefined
         ? {}
         : { relatedProjects: request.relatedProjects }),
@@ -282,29 +271,5 @@ export class AnchorRestore {
     }
 
     return { context, diagnostics };
-  }
-
-  private async ensureSessionCore(scope: Extract<ScopeRef, { kind: "session" }>): Promise<void> {
-    if ((await this.state.loadScope(scope)) !== undefined) return;
-    await this.operations.runSemanticOperation({
-      name: "anchor-fresh-session-core",
-      scopes: [scope],
-      derive: async () => {
-        if ((await this.state.loadScope(scope)) !== undefined) {
-          return { kind: "no-change", result: undefined };
-        }
-        const mutations: ResourceMutation[] = [
-          {
-            kind: "put",
-            ref: persistentCoreRef(scope),
-            bytes: encodeMarkdown(normalizeMarkdownInput("")),
-          },
-        ];
-        return { kind: "change", mutations, result: undefined };
-      },
-    });
-    if ((await this.state.loadScope(scope)) === undefined) {
-      throw new AnchorStateInvariantError("required-core-unavailable");
-    }
   }
 }

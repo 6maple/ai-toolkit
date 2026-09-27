@@ -16,8 +16,6 @@ import {
 import {
   CognitionStateStore,
   persistentArchivalRef,
-  persistentCompanionRef,
-  persistentCoreRef,
   type CognitionStoreFs,
   type ManagedDirectoryEntry,
   type PersistentFileRef,
@@ -76,6 +74,7 @@ class FakeResourcePort implements PersistentResourcePort {
       ref: mutation.ref,
       operation: mutation.kind,
       absolutePath: `/${key}`,
+      platform: "posix",
     };
   }
 
@@ -134,7 +133,7 @@ function mutation(raw: string, text: string): ResourceMutation {
   return { kind: "put", ref: persistentArchivalRef(archival(raw)), bytes: encoder.encode(text) };
 }
 
-describe("T3 E2 semantic vs auxiliary coordination", () => {
+describe("semantic vs auxiliary coordination", () => {
   it("preflight failure makes zero semantic write without any Git collaborator", async () => {
     const resources = new FakeResourcePort();
     const coordinator = new PersistentOperationCoordinator(resources, new FakeLease());
@@ -406,6 +405,10 @@ class FakeCognitionFs implements CognitionStoreFs, RepositoryFs {
     return Uint8Array.from(entry.bytes!);
   }
 
+  async writeFile(target: string, bytes: Uint8Array): Promise<void> {
+    this.file(target, bytes);
+  }
+
   async writeFileExclusive(target: string, bytes: Uint8Array): Promise<void> {
     const normalized = path.posix.normalize(target);
     if (this.entries.has(normalized)) {
@@ -494,7 +497,7 @@ const companionPath = `${projectScopePath}/.state/memories/knowledge/a.json`;
 const scopeStatePath = `${projectScopePath}/.state/scope.json`;
 const item = archival("@project/memories/knowledge/a.md");
 const documentText = normalizeMarkdownInput(
-  "---\nsummary: current truth\nimportance: medium\n---\nbody\n",
+  "---\ndescription: current truth\nimportance: medium\n---\nbody\n",
 );
 
 function seededStore(options: { scopeState?: Uint8Array } = {}): {
@@ -509,7 +512,7 @@ function seededStore(options: { scopeState?: Uint8Array } = {}): {
   return { fs, store: new CognitionStateStore(repositoryBinding, fs) };
 }
 
-describe("T3 cognition store truth/fallback boundary", () => {
+describe("cognition store truth/fallback boundary", () => {
   it("uses core as scope existence truth and fresh cycle when scope state is missing/malformed", async () => {
     for (const scopeState of [undefined, encoder.encode("{bad")]) {
       const { store } = seededStore({ scopeState });
@@ -626,7 +629,7 @@ class ScriptedGitRunner implements GitCommandRunner {
   }
 }
 
-describe("T3 E3 optional workspace history", () => {
+describe("optional workspace history", () => {
   it("initializes a non-empty app-owned brainRoot and checkpoints current global/projects workspace", async () => {
     const fs = new FakeCognitionFs();
     fs.dir("/brain");
@@ -637,7 +640,12 @@ describe("T3 E3 optional workspace history", () => {
 
     await expect(checkpoint.checkpointWorkspace()).resolves.toEqual({ kind: "committed" });
     expect(runner.calls.some((c) => c.args[0] === "init")).toBe(true);
-    expect(runner.calls.some((c) => c.args.join(" ") === "add -A -- global projects")).toBe(true);
+    expect(
+      runner.calls.some((c) => c.args.join(" ") === "add -A -- .gitignore global projects"),
+    ).toBe(true);
+    expect(decoder.decode(await fs.readFile("/brain/.gitignore"))).toContain("/config.json");
+    expect(decoder.decode(await fs.readFile("/brain/.gitignore"))).toContain("/.runtime/");
+    expect(decoder.decode(await fs.readFile("/brain/.gitignore"))).toContain("/recovery/");
     expect(runner.calls.some((c) => c.args.includes("symbolic-ref"))).toBe(false);
   });
 
@@ -698,7 +706,7 @@ describe("T3 E3 optional workspace history", () => {
   });
 });
 
-describe("T3 runtime bootstrap composition", () => {
+describe("runtime bootstrap composition", () => {
   it("requires real global/project cores while scope cycle stays fresh/auxiliary", async () => {
     const fs = new FakeCognitionFs();
     const runner = new ScriptedGitRunner(fs);

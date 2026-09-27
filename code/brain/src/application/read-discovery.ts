@@ -7,6 +7,7 @@ import { PiExecutionError, type PiDiscoveryToolPort } from "../adapters/pi-tools
 import {
   buildCatPageFromPiRead,
   buildScopeDiscoveryNamespace,
+  CAT_DEFAULT_LIMIT,
   canonicalGrepOrder,
   compilePublicGlob,
   contextForLine,
@@ -38,7 +39,6 @@ import {
   type LogicalBrainPath,
   type LogicalDirectory,
   type ScopeRef,
-  type SessionId,
 } from "../brain/namespace.ts";
 import { rankActiveDiscoveryCandidates, type ScarcityCandidate } from "../brain/scarcity.ts";
 import type {
@@ -52,7 +52,6 @@ import type {
 } from "../persistence/operation-coordination.ts";
 
 export interface ReadDiscoveryContext {
-  readonly currentSessionId?: SessionId;
   readonly signal?: AbortSignal;
 }
 
@@ -162,14 +161,8 @@ interface EnrichedArchival {
   readonly scarcity: ScarcityCandidate<Extract<DiscoveryNodeRecord, { kind: "archival" }>>;
 }
 
-function defaultSearchScopes(context: ReadDiscoveryContext): readonly ScopeRef[] {
-  return [
-    { kind: "global" },
-    { kind: "project" },
-    ...(context.currentSessionId === undefined
-      ? []
-      : [{ kind: "session", sessionId: context.currentSessionId } as const]),
-  ];
+function defaultSearchScopes(): readonly ScopeRef[] {
+  return [{ kind: "global" }, { kind: "project" }];
 }
 
 function requireDirectory(path: LogicalBrainPath): LogicalDirectory {
@@ -431,7 +424,7 @@ export class ReadDiscovery {
         const record: GrepMatchRecord = {
           path: canonicalPath,
           publicPath: current.enriched.record.publicPath,
-          summary: current.enriched.snapshot.document.summary,
+          description: current.enriched.snapshot.document.description,
           ...(current.enriched.record.status === "questioned"
             ? { status: "questioned" as const }
             : {}),
@@ -500,7 +493,10 @@ export class ReadDiscovery {
 
   async cat(request: CatRequest): Promise<CatResult> {
     request.signal?.throwIfAborted();
-    const args = normalizeCatArguments(request.offset ?? 1, request.limit ?? 100);
+    const args = normalizeCatArguments(
+      request.offset ?? 1,
+      request.limit ?? CAT_DEFAULT_LIMIT,
+    );
 
     if (request.path.kind === "core") {
       const scope = await this.state.loadScope(request.path.scope);
@@ -583,13 +579,10 @@ export class ReadDiscovery {
     }
 
     const roots: LogicalDirectory[] = [];
-    for (const scope of defaultSearchScopes(context)) {
+    for (const scope of defaultSearchScopes()) {
       context.signal?.throwIfAborted();
       const materialized = await this.state.isScopeMaterialized(scope);
-      if (!materialized) {
-        if (scope.kind === "session") continue;
-        throw new DiscoveryObjectError("not-found");
-      }
+      if (!materialized) throw new DiscoveryObjectError("not-found");
       roots.push(memoriesRoot(scope));
     }
     return roots;
@@ -621,13 +614,10 @@ export class ReadDiscovery {
     }
 
     const dedup = new Map<string, LogicalArchivalPath>();
-    for (const scope of defaultSearchScopes(context)) {
+    for (const scope of defaultSearchScopes()) {
       context.signal?.throwIfAborted();
       const materialized = await this.state.isScopeMaterialized(scope);
-      if (!materialized) {
-        if (scope.kind === "session") continue;
-        throw new DiscoveryObjectError("not-found");
-      }
+      if (!materialized) throw new DiscoveryObjectError("not-found");
       const listing = await this.state.listActiveArchivalPaths(scope);
       context.signal?.throwIfAborted();
       for (const item of listing.paths) dedup.set(formatPublicPath(item), item);
@@ -645,7 +635,7 @@ export class ReadDiscovery {
       kind: "archival",
       path: canonicalPath,
       publicPath: this.formatPath(canonicalPath),
-      summary: snapshot.document.summary,
+      description: snapshot.document.description,
       ...(status === "questioned" ? { status: "questioned" as const } : {}),
     };
     return {

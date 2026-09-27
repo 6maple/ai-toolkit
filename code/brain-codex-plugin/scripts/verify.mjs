@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,6 +129,10 @@ async function main() {
   assert.equal(manifest.hooks, "./hooks/hooks.json");
   console.log("PASS manifest explicitly declares bundled hooks");
 
+  const mcpConfig = JSON.parse(await readFile(join(pluginRoot, ".mcp.json"), "utf8"));
+  assert.deepEqual(mcpConfig.mcpServers.brain.omit_tools_from, ["deferred"]);
+  console.log("PASS Brain MCP tools stay directly visible instead of entering deferred tool search");
+
   const hookConfig = JSON.parse(await readFile(join(pluginRoot, "hooks", "hooks.json"), "utf8"));
   const hook = hookConfig.hooks.UserPromptSubmit[0].hooks[0];
   assert.equal(hook.type, "command");
@@ -142,7 +146,7 @@ async function main() {
   const permissionHook = hookConfig.hooks.PermissionRequest[0];
   assert.equal(
     permissionHook.matcher,
-    "^mcp__brain__brain_(absolute_path|ls|glob|grep|cat|write|edit|rm|mv|feedback)$",
+    "^mcp__brain__brain_(absolute_path|ls|glob|grep|ask_search|cat|write|edit|rm|mv|feedback)$",
   );
   assert.match(permissionHook.hooks[0].command, /dist\/permission-request\.mjs/);
   assert.match(permissionHook.hooks[0].commandWindows, /dist\\permission-request\.mjs/);
@@ -175,10 +179,10 @@ async function main() {
     assert.equal(firstHookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     const firstContext = firstHookOutput.hookSpecificOutput.additionalContext;
     assert.equal(typeof firstContext, "string");
-    assert.match(firstContext, /<brain_think_context\b/);
-    assert.match(firstContext, /@session\/codex-verify-session-one/);
+    assert.match(firstContext, /# 本轮 Brain 工作上下文/);
+    assert.match(firstContext, /@project\/core\.md/);
     assert.doesNotMatch(firstContext, /<brain_context\b/);
-    console.log("PASS hook restores Brain directly for the documented cwd/session input");
+    console.log("PASS hook restores Project cognition and records the host binding");
 
     const permissionInput = {
       session_id: firstHookInput.session_id,
@@ -322,7 +326,7 @@ async function main() {
           name: "brain_write",
           arguments: {
             path: "@project/memories/knowledge/routed.md",
-            content: "---\nsummary: first route\nimportance: high\n---\nfirst project\n",
+            content: "---\ndescription: first route\nimportance: high\n---\nfirst project\n",
           },
         },
       },
@@ -335,7 +339,7 @@ async function main() {
           name: "brain_write",
           arguments: {
             path: "@project/memories/knowledge/routed.md",
-            content: "---\nsummary: second route\nimportance: high\n---\nsecond project\n",
+            content: "---\ndescription: second route\nimportance: high\n---\nsecond project\n",
           },
         },
       },
@@ -366,6 +370,11 @@ async function main() {
       requests,
     });
     const messages = mcp.messages;
+    const initialized = messages.find((message) => message.id === 1);
+    assert.ok(initialized, `initialize missing; stderr=${mcp.stderr}`);
+    assert.equal(initialized.result.instructions, undefined);
+    console.log("PASS host-restored MCP does not instruct the model to call brain_think");
+
     const listed = messages.find((message) => message.id === 2);
     assert.ok(listed, `tools/list missing; stderr=${mcp.stderr}`);
     const names = listed.result.tools.map((tool) => tool.name);
@@ -381,6 +390,72 @@ async function main() {
     assert.match(secondCat.result.content[0].text, /second project/);
     assert.doesNotMatch(secondCat.result.content[0].text, /first project/);
     console.log("PASS one long-lived MCP server routes two sessions to distinct projects");
+
+    const brainConfigDir = join(temp, ".brain-data");
+    await mkdir(brainConfigDir, { recursive: true });
+    await writeFile(
+      join(brainConfigDir, "config.json"),
+      JSON.stringify({ semanticSearch: { enabled: true } }),
+      "utf8",
+    );
+
+    const semanticPrompted = await runProcess(hookEntry, {
+      cwd: firstSourceRoot,
+      env,
+      input: `${JSON.stringify({
+        ...firstHookInput,
+        turn_id: "turn-semantic",
+        prompt: "verify semantic guidance",
+      })}\n`,
+    });
+    assert.equal(semanticPrompted.code, 0, semanticPrompted.stderr);
+    const semanticContext = JSON.parse(
+      semanticPrompted.stdout,
+    ).hookSpecificOutput.additionalContext;
+    assert.match(semanticContext, /## 候选与发现/);
+    assert.match(semanticContext, /brain_ask_search/);
+
+    const semanticPermission = await runProcess(permissionHookEntry, {
+      cwd: firstSourceRoot,
+      env,
+      input: `${JSON.stringify({
+        ...permissionInput,
+        turn_id: "turn-semantic",
+        tool_name: "mcp__brain__brain_ask_search",
+        tool_input: { query: "relevant past cognition" },
+      })}\n`,
+    });
+    assert.equal(semanticPermission.code, 0, semanticPermission.stderr);
+    assert.equal(
+      JSON.parse(semanticPermission.stdout).hookSpecificOutput.decision.behavior,
+      "allow",
+    );
+
+    const semanticMcp = await runMcpSession(mcpEntry, {
+      cwd: pluginRoot,
+      env,
+      requests: [
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: {},
+            clientInfo: { name: "brain-codex-semantic-verify", version: "0.1.0" },
+          },
+        },
+        { jsonrpc: "2.0", method: "notifications/initialized" },
+        { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+      ],
+    });
+    const semanticListed = semanticMcp.messages.find((message) => message.id === 2);
+    assert.ok(semanticListed, `semantic tools/list missing; stderr=${semanticMcp.stderr}`);
+    const semanticNames = semanticListed.result.tools.map((tool) => tool.name);
+    assert.equal(semanticNames.includes("brain_think"), false);
+    assert.equal(semanticNames.includes("brain_ask_search"), true);
+    assert.equal(semanticNames.length, 11);
+    console.log("PASS global Brain semantic config aligns Codex hook, permissions, and MCP surface");
   } finally {
     await rm(temp, { recursive: true, force: true });
   }

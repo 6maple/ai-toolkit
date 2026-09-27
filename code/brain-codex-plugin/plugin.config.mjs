@@ -4,7 +4,7 @@ export const pluginConfig = {
       displayName: "Brain",
       shortDescription: "Restore persistent cognition before every Codex turn.",
       longDescription:
-        "Brain requires Codex to restore global, project, and session cognition at the start of every user turn and exposes the complete memory toolset.",
+        "Brain restores Global and Project cognition at the start of every user turn and exposes the complete cognition toolset.",
       developerName: "Maple",
       category: "Productivity",
       capabilities: ["Read", "Write"],
@@ -32,8 +32,11 @@ export const pluginConfig = {
     statusMessage: "Preparing Brain context",
     additionalContextLimit: 0,
   },
+  mcp: {
+    omitToolsFrom: ["deferred"],
+  },
   permissionHook: {
-    matcher: "^mcp__brain__brain_(absolute_path|ls|glob|grep|cat|write|edit|rm|mv|feedback)$",
+    matcher: "^mcp__brain__brain_(absolute_path|ls|glob|grep|ask_search|cat|write|edit|rm|mv|feedback)$",
     timeout: 10,
     statusMessage: "Checking Brain permission",
   },

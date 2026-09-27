@@ -11,7 +11,14 @@ import {
   type BrainToolInvocationResolver,
   type BrainToolRegistrationOptions,
 } from "./integration/mcp-adapter.ts";
+import {
+  BRAIN_MCP_RESTORE_MODE_ENV,
+  brainMcpServerInstructions,
+  resolveBrainMcpRestoreMode,
+  type BrainMcpRestoreMode,
+} from "./integration/server-instructions.ts";
 import { createProductionBrainServices } from "./runtime/production.ts";
+import { loadBrainGlobalConfig } from "./runtime/global-config.ts";
 
 export { registerBrainTools };
 export {
@@ -25,12 +32,38 @@ export type {
   BrainToolInvocationResolver,
   BrainToolRegistrationOptions,
 };
+export {
+  BRAIN_EXPLICIT_RESTORE_INSTRUCTIONS,
+  BRAIN_MCP_RESTORE_MODE_ENV,
+  brainMcpServerInstructions,
+  resolveBrainMcpRestoreMode,
+  type BrainMcpRestoreMode,
+} from "./integration/server-instructions.ts";
 
-export async function runBrainMcpServer(options: BrainToolRegistrationOptions = {}): Promise<void> {
+export interface BrainMcpServerOptions extends BrainToolRegistrationOptions {
+  readonly restoreMode?: BrainMcpRestoreMode;
+}
+
+export async function runBrainMcpServer(options: BrainMcpServerOptions = {}): Promise<void> {
+  const config = loadBrainGlobalConfig();
+  for (const diagnostic of config.diagnostics) {
+    console.error("brain config diagnostic:", diagnostic.message);
+  }
+  const features = options.features ?? config.features;
+  const restoreMode =
+    options.restoreMode ?? resolveBrainMcpRestoreMode(process.env[BRAIN_MCP_RESTORE_MODE_ENV]);
+  const { restoreMode: _restoreMode, ...toolOptions } = options;
+  const registrationOptions = { ...toolOptions, features };
   const services =
-    options.resolveInvocation === undefined ? await createProductionBrainServices() : undefined;
-  const server = new McpServer({ name: "brain", version: "0.2.0" });
-  registerBrainTools(server, services, undefined, options);
+    options.resolveInvocation === undefined
+      ? await createProductionBrainServices(process.cwd(), { features })
+      : undefined;
+  const instructions = brainMcpServerInstructions(restoreMode);
+  const server = new McpServer(
+    { name: "brain", version: "0.2.0" },
+    instructions === undefined ? {} : { instructions },
+  );
+  registerBrainTools(server, services, registrationOptions);
   await server.connect(new StdioServerTransport());
   console.error(
     services === undefined

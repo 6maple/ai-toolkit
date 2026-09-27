@@ -2,7 +2,6 @@ import {
   applyDirectEngagement,
   applyValidatedUse,
   createFreshAccessibilityState,
-  initialScopeCycleState,
   rebaseAcrossScope,
   type AccessibilityPersistenceState,
   type ScopeCycleState,
@@ -50,7 +49,8 @@ export type MaintenanceInputErrorCode =
   | "old-text-not-unique"
   | "overlapping-edits"
   | "same-source-destination"
-  | "question-challenge-required";
+  | "question-challenge-required"
+  | "nonempty-core-requires-exact-edit";
 
 export class MaintenanceInputError extends Error {
   readonly code: MaintenanceInputErrorCode;
@@ -150,9 +150,7 @@ export interface DerivedMovePlan {
 }
 
 function sameScopeRef(a: ScopeRef, b: ScopeRef): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === "session" && b.kind === "session") return a.sessionId === b.sessionId;
-  return true;
+  return a.kind === b.kind;
 }
 
 function accessibilityEqual(
@@ -177,8 +175,6 @@ function scopeOrderKey(scope: ScopeRef): string {
       return "0";
     case "project":
       return "1";
-    case "session":
-      return `2:${scope.sessionId}`;
   }
 }
 
@@ -255,25 +251,11 @@ async function prepareTargetScopeFrom(
   scope: ScopeRef,
 ): Promise<TargetScopePreparation> {
   const snapshot = await persistence.loadScope(scope);
-  if (snapshot !== undefined) {
-    return {
-      scopeState: snapshot.cycle,
-      requiredInitMutations: [],
-      wasInitialized: false,
-    };
-  }
-  if (scope.kind !== "session") throw new MaintenanceStateInvariantError();
-
+  if (snapshot === undefined) throw new MaintenanceStateInvariantError();
   return {
-    scopeState: initialScopeCycleState(),
-    requiredInitMutations: [
-      {
-        kind: "put",
-        ref: persistentCoreRef(scope),
-        bytes: encodeMarkdown(normalizeMarkdownInput("")),
-      },
-    ],
-    wasInitialized: true,
+    scopeState: snapshot.cycle,
+    requiredInitMutations: [],
+    wasInitialized: false,
   };
 }
 
@@ -441,6 +423,9 @@ export class CognitionMaintenance {
         const scope = await this.requireScope(path.scope);
 
         if (path.kind === "core") {
+          if (request.content !== undefined && scope.core.text.length > 0) {
+            throw new MaintenanceInputError("nonempty-core-requires-exact-edit");
+          }
           const raw = deriveEditedText(scope.core.text, request.edits, request.content);
           const next = validateCoreDocument(normalizeMarkdownInput(raw));
           const changed = next.text !== scope.core.text;

@@ -3,7 +3,9 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { parseSessionId, type SessionId } from "../../brain/src/brain/namespace.ts";
+export type CodexSessionId = string & { readonly __brand: "CodexSessionId" };
+
+const CODEX_SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 interface StoredCodexInvocationBinding {
   readonly schemaVersion: 1;
@@ -15,7 +17,7 @@ interface StoredCodexInvocationBinding {
 }
 
 export interface CodexInvocationBinding {
-  readonly sessionId: SessionId;
+  readonly sessionId: CodexSessionId;
   readonly sourceRoot: string;
   readonly turnId?: string;
   readonly historyCheckpointReady: boolean;
@@ -34,7 +36,7 @@ function bindingRoot(): string {
   return path.join(homedir(), ".brain-codex-plugin", "invocations");
 }
 
-function bindingPath(sessionId: SessionId): string {
+function bindingPath(sessionId: CodexSessionId): string {
   const key = createHash("sha256").update(sessionId).digest("hex");
   return path.join(bindingRoot(), `${key}.json`);
 }
@@ -51,14 +53,15 @@ async function canonicalExistingDirectory(value: string): Promise<string> {
   }
 }
 
-function validatedSessionId(value: string): SessionId {
-  try {
-    return parseSessionId(value);
-  } catch (error) {
-    throw new CodexInvocationBindingError("Codex invocation session id is invalid", {
-      cause: error,
-    });
+export function parseCodexSessionId(value: string): CodexSessionId {
+  if (
+    !CODEX_SESSION_ID_PATTERN.test(value) ||
+    value === "." ||
+    value === ".."
+  ) {
+    throw new CodexInvocationBindingError("Codex invocation session id is invalid");
   }
+  return value as CodexSessionId;
 }
 
 export async function writeCodexInvocationBinding(input: {
@@ -67,7 +70,7 @@ export async function writeCodexInvocationBinding(input: {
   readonly turnId?: string;
   readonly historyCheckpointReady: boolean;
 }): Promise<CodexInvocationBinding> {
-  const sessionId = validatedSessionId(input.sessionId);
+  const sessionId = parseCodexSessionId(input.sessionId);
   const sourceRoot = await canonicalExistingDirectory(input.sourceRoot);
   const root = bindingRoot();
   const target = bindingPath(sessionId);
@@ -107,7 +110,7 @@ export async function writeCodexInvocationBinding(input: {
 export async function readCodexInvocationBinding(
   requestedSessionId: string,
 ): Promise<CodexInvocationBinding> {
-  const sessionId = validatedSessionId(requestedSessionId);
+  const sessionId = parseCodexSessionId(requestedSessionId);
   let value: unknown;
   try {
     value = JSON.parse(await fs.readFile(bindingPath(sessionId), "utf8")) as unknown;

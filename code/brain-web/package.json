@@ -8,6 +8,7 @@
     "dev": "vitepress dev",
     "build": "vp run build:site",
     "preview": "vitepress preview",
+    "test": "node --test lib/brain-pages.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

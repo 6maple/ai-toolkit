@@ -14,13 +14,30 @@ export {
   type BrainToolInvocationResolver,
   type BrainToolRegistrar,
   type BrainToolRegistrationOptions,
-  type HostInvocationAdapter,
 } from "./integration/mcp-adapter.ts";
 export {
   createProductionBrainServices,
   restoreProductionBrainContext,
   type ProductionBrainRestoreRequest,
 } from "./runtime/production.ts";
+export {
+  DEFAULT_BRAIN_HOME,
+  loadBrainGlobalConfig,
+  type BrainGlobalConfigDiagnostic,
+  type BrainGlobalConfigLoadResult,
+} from "./runtime/global-config.ts";
+export {
+  DEFAULT_BRAIN_RUNTIME_FEATURES,
+  type BrainRuntimeFeatures,
+} from "./runtime/features.ts";
+export {
+  BRAIN_EXPLICIT_RESTORE_INSTRUCTIONS,
+  BRAIN_MCP_RESTORE_MODE_ENV,
+  brainMcpServerInstructions,
+  brainRestoreFailureDiagnostic,
+  resolveBrainMcpRestoreMode,
+  type BrainMcpRestoreMode,
+} from "./integration/server-instructions.ts";
 
 // --- brain logical namespace ---
 export {
@@ -30,7 +47,6 @@ export {
   isSameLogicalPath,
   parsePublicPath,
   parseResourceLocation,
-  parseSessionId,
   type CognitiveRole,
   type LogicalArchivalPath,
   type LogicalBrainPath,
@@ -38,7 +54,6 @@ export {
   type LogicalDirectory,
   type LogicalResourceLocation,
   type ScopeRef,
-  type SessionId,
 } from "./brain/namespace.ts";
 
 // --- document schema ---
@@ -134,3 +149,6 @@ export {
   type StorageFs,
   type StorageStat,
 } from "./persistence/storage.ts";
+
+// CLI Global writes share the same cross-process lease as Brain mutations.
+export { FileGlobalSemanticLease } from "./persistence/operation-coordination.ts";

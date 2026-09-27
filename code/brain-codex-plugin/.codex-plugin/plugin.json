@@ -1,6 +1,6 @@
 {
   "name": "brain-codex-plugin",
-  "version": "0.1.0+codex.local-20260917T055550Z",
+  "version": "0.1.0+codex.local-20260922T091139Z",
   "description": "Persistent Brain cognition for Codex with required turn-start restoration.",
   "author": {
     "name": "Maple"
@@ -15,7 +15,7 @@
   "interface": {
     "displayName": "Brain",
     "shortDescription": "Restore persistent cognition before every Codex turn.",
-    "longDescription": "Brain requires Codex to restore global, project, and session cognition at the start of every user turn and exposes the complete memory toolset.",
+    "longDescription": "Brain restores Global and Project cognition at the start of every user turn and exposes the complete cognition toolset.",
     "developerName": "Maple",
     "category": "Productivity",
     "capabilities": [

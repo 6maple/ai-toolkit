@@ -6,10 +6,9 @@ Codex host adapter for `../brain`.
   its unchanged result as developer context before Codex handles the user prompt.
 - The same synchronous hook records Codex's documented `session_id` and `cwd` as
   one host-owned invocation binding before the restored context reaches the model.
-- The bundled MCP server exposes the remaining ten Brain tools and omits
-  `brain_think`, preventing duplicate model-triggered restoration.
-- Each MCP call resolves project services and trusted session identity from that
-  binding, so one long-lived server can safely serve tasks from different projects.
+- The bundled MCP server omits `brain_think`, preventing duplicate model-triggered restoration. With Semantic Search disabled it exposes the remaining ten Brain tools; when the Brain global config enables Semantic Search it additionally exposes `brain_ask_search`.
+- Each MCP call uses the host-owned thread/session binding to resolve the correct
+  project services/source root. The host session identity stops at that adapter boundary and does not become Brain cognition state, so one long-lived server can safely serve tasks from different projects.
 - Brain remains the owner of cognition, persistence, ranking, and tool semantics.
 - Brain MCP reads are auto-approved. Mutations are auto-approved only when the current `UserPromptSubmit` restore finished with a Git history checkpoint (or no pending change), so the model can work without per-operation prompts while retaining a turn-start recovery point. If that checkpoint is unavailable or fails, reads remain automatic and mutations fall back to Codex approval. Explicit no-edit modes are not bypassed.
 
@@ -32,6 +31,22 @@ The plugin-level `.agents/plugins/marketplace.json` remains static because it
 owns marketplace identity and install policy. Its source path is `.`, so the
 marketplace and plugin can move together without configuration changes. The
 stub script validates that entry before generating the plugin.
+
+## Semantic Search
+
+The Codex plugin does not own a separate semantic setting. Both its `UserPromptSubmit` hook and MCP server read the Brain global config:
+
+```text
+~/.brain-data/config.json
+```
+
+Prepare the local embedding runtime once:
+
+```powershell
+node ..\brain-cli\index.mjs semantic-search install
+```
+
+Then set `semanticSearch.enabled` to `true` in the Brain global config and restart Codex. This is a startup-time setting, not a hot-reload setting; after changing it, restart every running Brain host that should use the new value, including DSH/plugin if it is running. The installer does not enable the feature or prebuild the cognition index.
 
 ## Manual installation
 

@@ -2,6 +2,8 @@
 
 > 状态：Implemented in source / user manual acceptance pending，2026-09-10。
 >
+> 2026-09-21 更新：知识保存与复用指导已实现，四份现有记忆已修订；178 项 Brain 测试、类型检查及两个宿主验证通过。独立模型回放因请求超时待验收。最新范围和证据见第 14 节；前文带日期的执行状态保留为当时记录。
+>
 > 本文件是本轮 v4 model-facing cognition interface 文案调整的唯一设计记录。未在本文明确重开的行为继续以 v3 当前基线为准。
 >
 > 实现状态：当前源码已实现本文的 shared presentation、Codex overlay、Tool description/schema prose 与 oversized-line behavior；尚未执行 stub、重新安装或 representative model replay。
@@ -831,3 +833,74 @@ Shared renderer、Codex attention overlay、Tool description/schema prose 与 ov
 范围：shared renderer、Codex overlay 的标签引用、`brain_cat` 选择时机、`brain_write.content` 与 `brain_edit` 两种模式的摘要维护指导、现有标签结构测试及本稿。保留 `summary` 存储字段、现有读取工具、排序和预算；不新增 `has_body`，不自动改写已有记忆。程序一致性使用现有检查；模型实际效果由用户人工验收，不新增行为评估套件。
 
 程序检查：Brain 现有 155 项测试、源码类型检查、三个修改的 Brain TypeScript 文件格式检查、Codex 插件现有 8 项检查通过。全量 `vp check` 在未改动的 `storage.ts` 和 `production-v2-foundation.test.ts` 上报告格式问题；`vp lint` 另报告现有测试文件的类型错误和未使用导入，未计为全量检查通过。插件的 `pnpm test` 因包管理器解析所需的 registry 请求失败，随后直接运行其同一 `node scripts/verify.mjs` 脚本通过。模型行为仍待用户人工验收。
+
+## 14. 2026-09-21 知识保存与复用
+
+### 14.1 目的与设计依据
+
+用户确认：记住当前已经得到的认识，并保留足以判断其适用范围、发现其失效、继续修正它的依据。具体结论、阶段性经验和方法均有保存价值；长期保存不表示无条件使用。
+
+本轮审查发现，Knowledge 已表达条件和不确定性，但保存正文的指导仍比较笼统；部分现有记忆把局部观察写成了广泛结论。现有 `adopt` 只增强召回持久度，不改变 `importance` 或清除存疑；因此本轮使用已有正文和反馈能力，无需新状态、评分、自动过期或迁移。
+
+人类研究提供设计参考：[Kahneman 与 Klein，2009](https://bear.warrington.ufl.edu/brenner/mar7588/Papers/kahneman-klein-2009.pdf)强调专家直觉依赖环境规律与学习反馈；[Schwartz 等，2012](https://aaalab.stanford.edu/assets/papers/2012/Resisting_Overzealous_Transfer.pdf)讨论旧方法的过度迁移。这些依据支持关注条件和反馈，但不能直接证明本次提示词对 AI 有效，实际效果仍需模型回放。
+
+### 14.2 最终行为与修改位置
+
+- **明确读取**：保持现有立即读取、先读再用、宿主恢复时机和 Scope Core 引导。通用提示词不把已确定动作弱化为可选建议。
+- **使用知识**：在记录范围内直接使用。关键条件不同，或当前选择依赖尚未确认的当前能力、版本行为时，先确认会影响选择的部分；已有信息充分时继续。新证据只更新对应认识，仍有效的决定、目标和约束继续执行。
+- **使用方法**：前提不成立时重新判断受影响的步骤，保留仍适用的要求。
+- **保存认识**：写清结论及避免误用所需的已知条件和依据。涉及时间、版本或环境时保留已知信息；原因未知时如实说明。简单事实保持简短，必要时提供来源入口和对比案例，不强制模板。
+- **修改认识**：同一认识通过 `brain_edit` 更新；结论变化时一起维护相关条件和依据，适用范围变化时同步维护 `description`。
+- **反馈**：实际使用且有结果支持才 `adopt`，支持范围不自动扩大。仅当前条件未知时先调查；具体证据挑战原认识且尚未解决时 `question`。问题解决且涉及正文变化时先编辑，再 `resolve`。
+
+`src/application/anchor-renderer.ts` 拥有共享使用与保存指导；`src/integration/public-tools.ts` 的 write/edit/feedback 参数说明表达对应动作要求。现有工具名称、参数类型、返回结构、算法和存储语义不变。固定指导已整合到既有段落，没有新增研究流程或模型。
+
+四份记忆通过 `brain_edit` 更新原身份：
+
+| Brain 地址 | 已实施的修订 |
+|---|---|
+| `@global/memories/skill/ai-think/reasoning-and-action.md` | 整合调查、保存与反馈说明；明确结论和方法都可继承、只补会影响选择的缺口；替换容易降级具体结论的末句 |
+| `@global/memories/skill/ai-think/software/ui.md` | 依据表达需要选择交互形式；保留组合意图和精确选择的对比案例；当前能力需支持所选形式，授权、状态与恢复仍有保障 |
+| `@global/memories/knowledge/web-fetch-search-channel-availability.md` | 限定当时测试范围，DNS 失败不推断主机不存在；按当前需要确认查询保真和原文访问能力 |
+| `@global/memories/knowledge/dsh-approval-interception-surface.md` | 明确历史检查范围和未记录版本；耗时只是线索，结合审批事件、调用标识和裁决记录归因 |
+
+文字审查重点是：执行者是否能直接知道何时做、做什么、怎样继续；是否依赖隐藏前提；是否把普通任务变成强制研究。必要条件和例子优先于压缩字数，完整方法留在现有记忆中，`expression.md` 继续沿用。
+
+### 14.3 确定性验证结果
+
+| 检查 | 结果 |
+|---|---|
+| `vp run typecheck` | 通过 |
+| `vp test` | 14 个测试文件、178 项测试全部通过 |
+| `vp check` | 未通过格式阶段：20 个文件报告格式问题；其中 19 个不在本次修改范围，目标 `public-tools.ts` 的修改前快照也报告格式问题；未全库自动格式化 |
+| `vp check --no-fmt` | 0 errors、6 warnings；警告位于本次未修改的行 |
+| `vp run stub`（Brain） | 通过，包含公开类型生成 |
+| Codex 插件 unbuild stub + `node scripts/verify.mjs` | 通过；使用其现有 unbuild 入口生成 dist，避免改写已有暂存的插件 manifest/config |
+| DSH 插件 `vp run stub` + `node scripts/verify.mjs` | 通过 |
+| 修改前后工具 schema 比较 | 移除自然语言 description 后结构完全一致 |
+| `git diff --check` / 暂存区对比 | 通过；原暂存区 patch 内容未改变 |
+
+最小相同 projection 下，实际 renderer 输出由 5,648 字符增至 6,691 字符，增加 1,043 字符。这是字符数观察，不是 token 数或模型性能结论。没有新增逐字自然语言测试。
+
+### 14.4 模型回放材料与待验收项
+
+修改前后提示词、四份记忆副本、实际 renderer 输出、公开工具 schema、10 个场景、准备脚本和探测日志保存于本机 `D:/Cache/brain-knowledge-reuse-20260921-01a0c29a/`。该目录为隔离验证材料，不属于正式 Brain，也未加入仓库。
+
+已尝试主用配置中的 `gpt-6-astra` 和 `gpt-5.6-luna`，使用 `codex exec --ignore-user-config --ephemeral --skip-git-repo-check -s read-only` 的独立会话；60 秒探测使用 low reasoning。探测只要求返回 READY，不读取真实记忆或使用工具。两者均出现 sampling request timeout，超时后终止，未取得模型回答。Luna 的较早默认 reasoning 探测也在 30 秒内未返回答案。
+
+因此下面的行为回放全部为 **待验收**。这不证明模型不可用，也不证明提示词失败；当前只确认本次独立执行通道未在时限内取得回答。已完成文字审查的记忆修订仍按用户授权应用，并保留修改前副本。
+
+| 场景 | 需要观察的结果 |
+|---|---|
+| 明确要求立即读取 | 先读取，再开展依赖该记忆的工作 |
+| 条件相同 | 直接复用，避免重复调查 |
+| 表面相似、关键条件不同 | 识别差异并调整选择 |
+| 旧能力限制变化 | 确认当前关键能力再更新认识 |
+| 新事实与用户决定并存 | 更新事实并保留有效决定、约束、承诺 |
+| 一次成功、原因未知 | 保留观察与条件，不编造因果、不扩大结论 |
+| 方法前提不成立 | 调整受影响步骤，保留仍适用的要求 |
+| 局部网络失败 | 不推出全局不可用 |
+| 只读取、计划采用或任务整体成功 | 不直接反馈 `adopt` |
+| 当前适用条件未知 | 调查对应条件，不直接对原认识 `question` |
+
+后续每个模型使用新会话及独立记忆副本，对比相同场景的 before/after 版本。预期结果只交给评审者，不进入被测模型输入；记录真实工具顺序、答案、写入内容、配置与成本。接口模拟或文字审查不计作真实工具行为通过。误读发生时修订对应指导并复测，无法运行的场景继续标为待验收。

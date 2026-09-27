@@ -166,13 +166,13 @@ proposal、hypothesis、user-confirmed decision、verified fact、uncertain clai
 brain_think(session_id?)
 ```
 
-其 tool description 明确引导：收到每条新 user message 后立即调用一次，拿到 restored cognition 再进行 substantive reasoning。这是 best-effort model guidance，不是假装 MCP protocol 能机械强制。
+MCP server instructions 在 server 级说明“每条新 user message 后先调用一次 `brain_think`”，`brain_think` tool description 在工具级重复必要的局部 guidance。两者共同提供 best-effort model guidance，不是假装 MCP protocol 能机械强制。
 
 ### PC3-THINK-002 Hook-backed host
 
 支持 pre-reasoning hook 的 integration 必须选择一条且仅一条 restore path：
 
-- mechanical restore：hook 直接自动调用等价的 `brain_think` / restore，并把返回结果注入当前上下文；此时 model-visible tool surface 不暴露 `brain_think`；
+- mechanical restore：hook 直接自动调用等价的 `brain_think` / restore，并把返回结果注入当前上下文；此时 model-visible tool surface 不暴露 `brain_think`，也不提供要求调用 `brain_think` 的 server instruction；
 - explicit restore instruction：若 host 对 hook result 的投递只形成容易被弱化为背景的 context，而 explicit ToolResult 对模型注意更可靠，则 hook 只注入短指令，要求模型在 reasoning / response / other tool 前立即且仅调用一次 model-visible `brain_think`。工具必须按 exact name 选择，不能按 description 模糊匹配、取第一个 fuzzy result 或用其他 Brain tool 代替。如何理解和使用返回内容由 `brain_think` output-local preface 说明。
 
 同一 turn 不同时执行两条路径，也不允许重复 restore。

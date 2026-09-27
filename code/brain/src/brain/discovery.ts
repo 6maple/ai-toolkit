@@ -14,6 +14,7 @@ import {
 
 export const DISCOVERY_MAX_RECORDS = 64 as const;
 export const DISCOVERY_MAX_RENDERED_UTF8_BYTES = 8192 as const;
+export const CAT_DEFAULT_LIMIT = 2000 as const;
 export const CAT_OVERSIZED_LINE_EXCERPT_MAX_UTF8_BYTES = DEFAULT_MAX_BYTES;
 
 export type DiscoveryQueryErrorCode =
@@ -60,7 +61,8 @@ export type DiscoveryNodeRecord =
       readonly kind: "archival";
       readonly path: LogicalArchivalPath;
       readonly publicPath: string;
-      readonly summary: string;
+      readonly description: string;
+      readonly summary?: string;
       readonly status?: "questioned";
     };
 
@@ -72,7 +74,7 @@ export interface LogicalLineExcerpt {
 export interface GrepMatchRecord {
   readonly path: LogicalArchivalPath;
   readonly publicPath: string;
-  readonly summary: string;
+  readonly description: string;
   readonly status?: "questioned";
   readonly lineNumber: number;
   readonly lineText: string;
@@ -107,8 +109,7 @@ function compareText(a: string, b: string): number {
 }
 
 function sameScope(a: ScopeRef, b: ScopeRef): boolean {
-  if (a.kind !== b.kind) return false;
-  return a.kind !== "session" || (b.kind === "session" && a.sessionId === b.sessionId);
+  return a.kind === b.kind;
 }
 
 function nodeKey(node: PublicDiscoveryNode): string {
@@ -197,7 +198,10 @@ function isSafeInteger(value: number): boolean {
   return Number.isSafeInteger(value);
 }
 
-export function normalizeCatArguments(offset = 1, limit = 100): { offset: number; limit: number } {
+export function normalizeCatArguments(
+  offset: number = 1,
+  limit: number = CAT_DEFAULT_LIMIT,
+): { offset: number; limit: number } {
   if (!isSafeInteger(offset) || offset <= 0) throw new DiscoveryQueryError("invalid-offset");
   if (!isSafeInteger(limit) || limit <= 0) throw new DiscoveryQueryError("invalid-limit");
   return { offset, limit };
@@ -245,10 +249,13 @@ function clipUtf8(value: string, maxBytes: number): { text: string; clipped: boo
 
 export function renderDiscoveryRecord(record: DiscoveryNodeRecord): string {
   if (record.kind === "directory") return `${record.publicPath}\tkind=directory`;
-  const summary = clipUtf8(record.summary, 2048);
+  const description = clipUtf8(record.description, 2048);
+  const summary = record.summary === undefined ? undefined : clipUtf8(record.summary, 2048);
   const status = record.status === "questioned" ? "\tstatus=questioned" : "";
-  const clipped = summary.clipped ? "\tsummary_clipped=true" : "";
-  return `${record.publicPath}\tsummary=${summary.text}${status}${clipped}`;
+  const clipped = description.clipped ? "\tdescription_clipped=true" : "";
+  const summaryText = summary === undefined ? "" : `\tsummary=${summary.text}`;
+  const summaryClipped = summary?.clipped === true ? "\tsummary_clipped=true" : "";
+  return `${record.publicPath}\tdescription=${description.text}${summaryText}${status}${clipped}${summaryClipped}`;
 }
 
 export function utf8ByteLength(value: string): number {
@@ -377,11 +384,11 @@ export function renderGrepRecords(records: readonly GrepMatchRecord[]): string {
 
   const renderedGroups: string[] = [];
   for (const group of groups.values()) {
-    const summary = clipUtf8(group.header.summary, 1536);
+    const description = clipUtf8(group.header.description, 1536);
     const header = [
       group.header.publicPath,
-      `summary: ${summary.text}`,
-      ...(summary.clipped ? ["summary_clipped=true"] : []),
+      `description: ${description.text}`,
+      ...(description.clipped ? ["description_clipped=true"] : []),
       ...(group.header.status === "questioned" ? ["status: questioned"] : []),
     ];
     const lines = [...group.lines.entries()]

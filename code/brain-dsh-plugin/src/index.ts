@@ -16,7 +16,12 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { PUBLIC_BRAIN_TOOLS, type BrainToolDefinition } from 'brain/public-tools'
+import {
+  PUBLIC_BRAIN_TOOLS,
+  selectPublicBrainTools,
+  type BrainToolDefinition,
+} from 'brain/public-tools'
+import { BRAIN_MCP_RESTORE_MODE_ENV, loadBrainGlobalConfig } from 'brain/shared'
 import { setupAutoThink } from './autothink.js'
 import { InstanceManager } from './instances.js'
 import { extractText } from './mcp.js'
@@ -108,8 +113,9 @@ export function toHostSchema(definition: BrainToolDefinition): Record<string, un
 export function visibleToolDefinitions(
   autoThinkEnabled: boolean,
   exposeThink: boolean,
+  semanticSearchEnabled = false,
 ): readonly BrainToolDefinition[] {
-  return PUBLIC_BRAIN_TOOLS.filter(
+  return selectPublicBrainTools({ semanticSearch: semanticSearchEnabled }).filter(
     (definition) => definition.name !== 'brain_think' || (exposeThink && !autoThinkEnabled),
   )
 }
@@ -121,24 +127,19 @@ export function resolveSourceRoot(agent: Agent | undefined): string {
   throw new Error('brain: cannot determine source root — no session cwd available')
 }
 
-/**
- * Model args → wire args. brain_think receives the trusted DSH session only
- * when the model did not explicitly choose a session.
- */
-export function buildCallArgs(
-  args: unknown,
-  agent: Agent | undefined,
-  injectable: boolean,
-): Record<string, unknown> {
+/** Model args pass through unchanged; host session identity does not enter Brain cognition. */
+export function buildCallArgs(args: unknown): Record<string, unknown> {
   const raw = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
-  const out: Record<string, unknown> = { ...raw }
-  if (injectable && agent && typeof out.session_id !== 'string') {
-    out.session_id = agent.id
-  }
-  return out
+  return { ...raw }
 }
 
 export function apply(ctx: Context, config: Config): void {
+  const brainConfig = loadBrainGlobalConfig()
+  for (const diagnostic of brainConfig.diagnostics) {
+    ctx.logger.warn(`brain: ${diagnostic.message}`)
+  }
+  const semanticSearchEnabled = brainConfig.features.semanticSearch
+
   ctx.effect(
     () => setupOpenCodeSessionHeader(ctx, config.opencodeSession),
     'brain: OpenCode session header',
@@ -159,6 +160,8 @@ export function apply(ctx: Context, config: Config): void {
     command,
     args: serverArgs,
     timeoutMs: config.server.timeoutMs,
+    env: { ...process.env, [BRAIN_MCP_RESTORE_MODE_ENV]: 'host' },
+    expectedSemanticSearchEnabled: semanticSearchEnabled,
   })
   ctx.effect(() => () => manager.dispose(), 'brain: instances')
 
@@ -167,8 +170,11 @@ export function apply(ctx: Context, config: Config): void {
   // 自动注入开启时它对模型隐藏（宿主接管），关闭时才开放给模型手动调。
   const exposeThink = config.exposeThink && !config.autoThink.enabled
   const registered: string[] = []
-  for (const definition of visibleToolDefinitions(config.autoThink.enabled, config.exposeThink)) {
-    const injectable = definition.name === 'brain_think'
+  for (const definition of visibleToolDefinitions(
+    config.autoThink.enabled,
+    config.exposeThink,
+    semanticSearchEnabled,
+  )) {
     registered.push(definition.name)
     ctx.effect(
       () =>
@@ -184,10 +190,8 @@ export function apply(ctx: Context, config: Config): void {
           },
           async execute(args: unknown, exec: ToolRunContext) {
             const sourceRoot = resolveSourceRoot(exec.agent)
-            const callArgs = buildCallArgs(args, exec.agent, injectable)
-            const result = await manager.call(sourceRoot, definition.name, callArgs, exec.signal, {
-              ...(exec.agent?.id === undefined ? {} : { threadId: exec.agent.id }),
-            })
+            const callArgs = buildCallArgs(args)
+            const result = await manager.call(sourceRoot, definition.name, callArgs, exec.signal)
             if (result.isError === true) throw new Error(extractText(result.content, definition.name))
             return { content: result.content }
           },
@@ -211,6 +215,6 @@ export function apply(ctx: Context, config: Config): void {
   ctx.logger.info(
     `brain-dsh-plugin: ${registered.length} tools registered (${registered.join(', ')}); ` +
       `server ${command} ${serverArgs.join(' ')}, ` +
-      `exposeThink=${exposeThink}, autoThink=${config.autoThink.enabled}`,
+      `exposeThink=${exposeThink}, autoThink=${config.autoThink.enabled}, semanticSearch=${semanticSearchEnabled}`,
   )
 }

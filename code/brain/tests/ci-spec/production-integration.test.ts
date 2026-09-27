@@ -7,13 +7,18 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { describe, expect, it } from "vite-plus/test";
 
+import { parsePublicPath } from "../../src/brain/namespace.ts";
 import { registerBrainTools } from "../../src/integration/mcp-adapter.ts";
 import { createBrainApplicationServices } from "../../src/runtime/application.ts";
 import { bootstrapBrainRuntimeInfrastructure } from "../../src/runtime/bootstrap.ts";
 
-function textOf(result: { content?: unknown }): string {
-  if (!Array.isArray(result.content)) return "";
-  return result.content
+function textOf(result: unknown): string {
+  const content =
+    typeof result === "object" && result !== null
+      ? (result as { content?: unknown }).content
+      : undefined;
+  if (!Array.isArray(content)) return "";
+  return content
     .filter(
       (item): item is { type: "text"; text: string } =>
         typeof item === "object" &&
@@ -25,9 +30,9 @@ function textOf(result: { content?: unknown }): string {
     .join("\n");
 }
 
-describe("v2 real runtime + MCP integration", () => {
+describe("real runtime + MCP integration", () => {
   it("serves write/cat/think on real storage even when Git history is unavailable", async () => {
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-v2-integration-"));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-integration-"));
     const brainRoot = path.join(temp, "brain");
 
     const infrastructure = await bootstrapBrainRuntimeInfrastructure(
@@ -55,11 +60,10 @@ describe("v2 real runtime + MCP integration", () => {
         name: "brain_write",
         arguments: {
           path: "@project/memories/knowledge/real.md",
-          content: "---\nsummary: real integration memory\nimportance: high\n---\nreal body\n",
+          content: "---\ndescription: real integration memory\nimportance: high\n---\nreal body\n",
         },
       });
       expect(write.isError).not.toBe(true);
-      expect(textOf(write)).toContain("created @project/memories/knowledge/real.md");
 
       const cat = await client.callTool({
         name: "brain_cat",
@@ -77,11 +81,53 @@ describe("v2 real runtime + MCP integration", () => {
 
       const think = await client.callTool({ name: "brain_think", arguments: {} });
       expect(think.isError).not.toBe(true);
-      expect(textOf(think)).toContain("<brain_think_context");
+      expect(textOf(think)).toContain("# 本轮 Brain 工作上下文");
       expect(textOf(think)).toContain("@project/memories/knowledge/real.md");
     } finally {
       await client.close();
       await server.close();
+      await fs.rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a stale shared-Core exact edit from another runtime instance", async () => {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "brain-stale-core-"));
+    const brainRoot = path.join(temp, "brain");
+    const gitRunner = {
+      async run() {
+        throw new Error("git intentionally unavailable in integration test");
+      },
+    };
+
+    try {
+      const firstInfrastructure = await bootstrapBrainRuntimeInfrastructure(
+        { projectId: "project-1", brainRoot },
+        { gitRunner },
+      );
+      const secondInfrastructure = await bootstrapBrainRuntimeInfrastructure(
+        { projectId: "project-1", brainRoot },
+        { gitRunner },
+      );
+      const first = createBrainApplicationServices(firstInfrastructure);
+      const second = createBrainApplicationServices(secondInfrastructure);
+      const core = parsePublicPath("@project/core.md");
+      if (core.kind !== "core") throw new Error("expected Project Core");
+
+      await first.maintenance.edit({ path: core, content: "route-a" });
+      await second.maintenance.edit({
+        path: core,
+        edits: [{ oldText: "route-a", newText: "route-b" }],
+      });
+
+      await expect(
+        first.maintenance.edit({
+          path: core,
+          edits: [{ oldText: "route-a", newText: "route-c" }],
+        }),
+      ).rejects.toMatchObject({ code: "old-text-not-found" });
+
+      expect((await first.store.loadScope({ kind: "project" }))?.core.text).toBe("route-b");
+    } finally {
       await fs.rm(temp, { recursive: true, force: true });
     }
   });

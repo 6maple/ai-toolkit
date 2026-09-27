@@ -13,7 +13,8 @@ export interface CoreDocument {
 export interface ArchivalDocument {
   readonly kind: "archival";
   readonly text: LogicalMarkdownText;
-  readonly summary: string;
+  readonly description: string;
+  readonly summary?: string;
   readonly importance: Importance;
   readonly body: string;
 }
@@ -28,10 +29,11 @@ export type DocumentSchemaErrorCode =
   | "unterminated-frontmatter"
   | "invalid-frontmatter-yaml"
   | "frontmatter-not-map"
-  | "missing-summary"
-  | "invalid-summary"
+  | "missing-description"
+  | "invalid-description"
   | "missing-importance"
-  | "invalid-importance";
+  | "invalid-importance"
+  | "empty-body";
 
 export class DocumentSchemaError extends Error {
   readonly code: DocumentSchemaErrorCode;
@@ -90,13 +92,19 @@ export function parseArchivalDocument(text: LogicalMarkdownText): ArchivalDocume
   if (yaml.errors.length > 0) throw new DocumentSchemaError("invalid-frontmatter-yaml");
   if (!isMap(yaml.contents)) throw new DocumentSchemaError("frontmatter-not-map");
 
-  const summaryNode = yaml.get("summary", true);
-  if (summaryNode === undefined) throw new DocumentSchemaError("missing-summary");
-  if (!isScalar(summaryNode) || typeof summaryNode.value !== "string") {
-    throw new DocumentSchemaError("invalid-summary");
+  const descriptionNode = yaml.get("description", true);
+  if (descriptionNode === undefined) throw new DocumentSchemaError("missing-description");
+  if (!isScalar(descriptionNode) || typeof descriptionNode.value !== "string") {
+    throw new DocumentSchemaError("invalid-description");
   }
-  const summary = summaryNode.value.trim();
-  if (summary.length === 0) throw new DocumentSchemaError("invalid-summary");
+  const description = descriptionNode.value.trim();
+  if (description.length === 0) throw new DocumentSchemaError("invalid-description");
+
+  const summaryNode = yaml.get("summary", true);
+  const summary =
+    summaryNode !== undefined && isScalar(summaryNode) && typeof summaryNode.value === "string"
+      ? summaryNode.value.trim()
+      : undefined;
 
   const importanceNode = yaml.get("importance", true);
   if (importanceNode === undefined) throw new DocumentSchemaError("missing-importance");
@@ -104,11 +112,13 @@ export function parseArchivalDocument(text: LogicalMarkdownText): ArchivalDocume
     throw new DocumentSchemaError("invalid-importance");
   }
   if (!isImportance(importanceNode.value)) throw new DocumentSchemaError("invalid-importance");
+  if (body.trim().length === 0) throw new DocumentSchemaError("empty-body");
 
   return {
     kind: "archival",
     text,
-    summary,
+    description,
+    ...(summary === undefined || summary.length === 0 ? {} : { summary }),
     importance: importanceNode.value,
     body,
   };
