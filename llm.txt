@@ -1,0 +1,44 @@
+# Brain 使用入口
+
+Brain 让支持 MCP 的 Agent 在后续工作中取回和维护长期记忆。本仓库的 Brain 主体位于 `code/brain/`，安装与日常辅助命令位于 `code/brain-cli/`。本文件面向准备使用 Brain 的人及其 AI 助手；具体命令见 `code/brain-cli/llm.txt`，当前 Brain 行为见 `code/brain/README.md`。
+
+## 开始使用
+
+1. 在仓库根目录准备 CLI。CLI 当前随本仓库源码提供，需先构建 Brain，再安装 CLI 依赖：
+
+   ```text
+   cd code/brain
+   pnpm install
+   pnpm run build
+   cd ../brain-cli
+   pnpm install
+   cd ../..
+   ```
+
+   所需环境和更多说明见 `code/brain-cli/README.md`。
+2. 从仓库根目录为实际使用的 Agent 安装 Brain。下面以 Codex 和本地源码为例；Claude Code 用 `--agent claude`，DSH 用 `--agent dsh --profile <名称>`。
+
+   ```text
+   node code/brain-cli/index.mjs install --agent codex --source local --path .
+   ```
+
+   也可按 `code/brain-cli/llm.txt` 使用 GitHub 来源或更新已有接入。
+3. 按命令结果重启 Agent，完成插件信任或启用步骤，再开始新的对话。默认接入会在用户消息边界提供 Brain 工作上下文，并开放记忆工具；如未看到工具或上下文，先检查插件状态和安装结果。
+
+## 在对话中使用
+
+可以直接告诉 Agent 要记住什么、以后在哪些工作中使用。例如“把这个偏好记为跨项目的长期偏好”或“这是当前项目已经确定的决定，以后继续这个项目时使用”。继续旧工作时，也可以请 Agent 查找相关记忆；发现旧记忆有误或条件改变时，请它核对并修正。Agent 通过 Brain 工具读写这些内容，具体保存范围和正文应依据本次请求与现有资料判断。
+
+## Brain 如何组织记忆
+
+- `@global` 保存跨项目仍需要的记忆；`@project` 保存当前项目以后仍需要的记忆。项目由当前工作目录对应的源码根目录确定。
+- 两个范围各有一个 `core.md`，只放少量常驻指导和准确的记忆读取入口；详细内容放在 `memories/decision`、`knowledge`、`intention`、`skill` 中。
+- Agent 应按 Core 的入口和搜索结果读取完整记忆，再依据正文的条件使用。搜索命中或摘要本身不等于已经读到正文。
+- Brain 数据默认位于 `~/.brain-data`。Global 记忆可用 CLI 导出和导入；Project 记忆不在该导出范围内。
+
+## 按需添加能力
+
+- `node code/brain-cli/index.mjs pack install brain-ai`：安装可选的 Global 方法记忆及 Core 入口，让 Agent 在适用任务中读取这些方法。
+- `node code/brain-cli/index.mjs semantic-search install`：准备语义搜索依赖。另需在 `~/.brain-data/config.json` 中启用 `semanticSearch.enabled` 并重启 Agent；没有启用时仍可用 Brain 的其他发现工具。
+
+若要确认实际参数、安装结果或冲突处理，先看 `node code/brain-cli/index.mjs --help` 和 `code/brain-cli/llm.txt`。

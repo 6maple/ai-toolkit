@@ -1,1 +1,47 @@
-Brain CLI 提供辅助操作。命令或参数不清楚时，用 brain-cli --help 核对当前安装的用法。安装或更新 Brain MCP 时显式给出 --agent codex|claude|dsh，并指定 --source local --path <ai-toolkit目录>，或 --source github --repository <GitHub仓库URL> [--ref <版本>]；选择 dsh 时还要给出 --profile <名称>。这两个顶层命令只处理指定 Agent 的 Brain 接入。brain-cli semantic-search install/update 管理语义搜索运行依赖；完成后按结果提示检查 Brain 全局开关并重启需要的宿主。brain-cli memory export --output <目录> 导出 Global 路径并列出文件与警告；brain-cli memory import <目录> 在写入前列出路径冲突，有冲突时不开始写入，并报告具体冲突路径与可行处理。brain-cli pack install brain-ai 复制经审核的三份 Global 记忆并在 Global Core 加一行入口；重复的相同内容不重复写入，冲突时停止本次安装并报告冲突。记忆包没有 update 命令。每次操作依据命令结果核对已完成、无变化、警告或中断步骤；模型仍可继续其他工作。不要把依赖安装等同于语义工具已经启用，也不要把预检说成所有文件已原子写入。
+# Brain CLI 使用说明
+
+在此仓库中运行 CLI：先按 `code/brain-cli/README.md` 准备相邻的 `brain` 包和 CLI 依赖。以下命令均从仓库根目录运行；如果已经把 CLI 链接为全局命令，可把 `node code/brain-cli/index.mjs` 换成 `brain-cli`。参数以当前安装的 `--help` 输出为准。
+
+## 安装或更新 Brain 接入
+
+选择正在使用的 Agent，只对这个 Agent 执行安装或更新：
+
+```text
+node code/brain-cli/index.mjs install --agent codex --source local --path .
+node code/brain-cli/index.mjs install --agent claude --source local --path .
+node code/brain-cli/index.mjs install --agent dsh --profile <名称> --source local --path .
+```
+
+已有接入需要升级时，把 `install` 换成 `update`。需要从 GitHub 取源码时，把示例中的 `--source local --path .` 换成 `--source github --repository https://github.com/6maple/ai-toolkit`；可加 `--ref <分支、标签或提交>`。`--profile` 只用于 DSH，且必须提供。
+
+运行前确认本机有 Node.js、pnpm 和目标 Agent 的命令行工具；GitHub 来源还需要 Git。安装结果会给出来源版本、准备好的安装目录及下一步。完成后重启目标 Agent，并按宿主提示信任或启用插件；Codex 的 hook 可能需要在 `/hooks` 中确认。
+
+若中途失败，依据错误中的已完成步骤处理。准备了文件不代表接入成功。
+
+## 可选的语义搜索
+
+```text
+node code/brain-cli/index.mjs semantic-search install
+node code/brain-cli/index.mjs semantic-search update
+```
+
+这两个命令只准备本机的语义搜索依赖，需要支持 `node:sqlite` 的 Node.js 和 Python 3.10 或更新版本。要启用它，还需在 `~/.brain-data/config.json` 中设置 `{"semanticSearch":{"enabled":true}}`，然后重启使用 Brain 的 Agent。启用后才会出现 `brain_ask_search`。语义搜索关闭时，仍可使用路径、目录、文件名和正文搜索来查找记忆。
+
+## 迁移 Global 记忆
+
+```text
+node code/brain-cli/index.mjs memory export --output <目录>
+node code/brain-cli/index.mjs memory import <导出目录>
+```
+
+导出、导入只覆盖 Global Core、Global 记忆及其可迁移的配套文件，不包含任何 Project 记忆。导出结果列出写出的文件与警告。
+
+导入会先检查目标路径：已有相同内容会跳过，发现不同内容会列出冲突并停止写入。遇到冲突先核对两边内容，再决定如何处理。写入过程中断时，以结果中的已完成和未完成路径为准。
+
+## 可选的 brain-ai 记忆包
+
+```text
+node code/brain-cli/index.mjs pack install brain-ai
+```
+
+此命令安装三份 Global 方法记忆，并在 Global Core 加入读取入口。相同内容会跳过；目标内容不同或入口冲突时会停止并列出路径。记忆包没有 `update` 命令。安装后，Agent 应从 Global Core 的入口读取相应正文；包本身不是 Brain MCP 接入，也不会启用语义搜索。
