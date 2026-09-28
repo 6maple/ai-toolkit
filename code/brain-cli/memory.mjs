@@ -18,7 +18,7 @@ import {
 const ROLES = new Set(["decision", "knowledge", "intention", "skill"]);
 export const BRAIN_ROOT = process.env.BRAIN_CLI_ROOT ?? DEFAULT_BRAIN_HOME;
 const PACK_ROOT = fileURLToPath(new URL("./default-memories/skill/brain-ai/", import.meta.url));
-export const PACK_ROUTE = "- 每轮开始处理用户任务时，立即读取 `@global/memories/skill/brain-ai/core.md` 原文，并使用其中适用的方法。";
+export const PACK_ROUTE = "- 立即读取 `@global/memories/skill/brain-ai/core.md` 的完整原文，并使用其中适用的方法。";
 
 function isMissing(error) { return error?.code === "ENOENT"; }
 async function readMaybe(target) {
