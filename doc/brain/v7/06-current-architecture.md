@@ -54,7 +54,7 @@ Root 只拥有那些如果缺失，模型可能连正确的下一步 cognition /
 - 第一层合理解释不能自动升级成现实；
 - material 外部事实需要从真正能够说明它的 source 取得；
 - 模型自己的 confidence / “没发现问题”不能替代当前任务真正要求的 coverage；
-- AI 能自行调查的事实和专业问题先自行取得，只有真正 user-owned 的 material gap 才回到用户。
+- AI 自行调查事实并承担专业判断；查阅与分析后仍不清楚用户意思时直接澄清，用户尚未明确的重要取舍或授权由用户决定。
 
 最终 model-facing wording 尚未批准。
 

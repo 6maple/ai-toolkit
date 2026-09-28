@@ -45,20 +45,6 @@ export class DocumentSchemaError extends Error {
   }
 }
 
-export const CORE_DOC_MAX_CODE_POINTS = 4000 as const;
-
-export class CoreCapacityError extends Error {
-  readonly code = "core-capacity-exceeded" as const;
-  readonly actualCodePoints: number;
-  readonly maxCodePoints = CORE_DOC_MAX_CODE_POINTS;
-
-  constructor(actualCodePoints: number) {
-    super(`brain core capacity exceeded: ${actualCodePoints} > ${CORE_DOC_MAX_CODE_POINTS}`);
-    this.name = "CoreCapacityError";
-    this.actualCodePoints = actualCodePoints;
-  }
-}
-
 function isImportance(value: string): value is Importance {
   return (IMPORTANCE_LEVELS as readonly string[]).includes(value);
 }
@@ -125,7 +111,5 @@ export function parseArchivalDocument(text: LogicalMarkdownText): ArchivalDocume
 }
 
 export function validateCoreDocument(text: LogicalMarkdownText): CoreDocument {
-  const actualCodePoints = Array.from(text).length;
-  if (actualCodePoints > CORE_DOC_MAX_CODE_POINTS) throw new CoreCapacityError(actualCodePoints);
   return { kind: "core", text };
 }

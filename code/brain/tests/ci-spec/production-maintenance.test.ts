@@ -4,11 +4,7 @@ import {
   projectAccessibility,
   type AccessibilityPersistenceState,
 } from "../../src/brain/accessibility.ts";
-import {
-  CoreCapacityError,
-  parseArchivalDocument,
-  validateCoreDocument,
-} from "../../src/brain/documents.ts";
+import { parseArchivalDocument, validateCoreDocument } from "../../src/brain/documents.ts";
 import {
   formatPublicPath,
   parsePublicPath,
@@ -428,12 +424,14 @@ describe("cognition maintenance", () => {
     });
     expect((await harness.loadScope(projectScope))?.core.text).toBe("route");
 
-    await expect(
-      app.edit({
+    const longRoute = "x".repeat(4001);
+    expect(
+      await app.edit({
         path: core,
-        edits: [{ oldText: "route", newText: "x".repeat(4001) }],
+        edits: [{ oldText: "route", newText: longRoute }],
       }),
-    ).rejects.toBeInstanceOf(CoreCapacityError);
+    ).toMatchObject({ action: "edited", changed: true });
+    expect((await harness.loadScope(projectScope))?.core.text).toBe(longRoute);
   });
 
   it("edit mode requires exactly one of edits/content", async () => {

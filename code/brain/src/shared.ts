@@ -58,7 +58,6 @@ export {
 
 // --- document schema ---
 export {
-  CORE_DOC_MAX_CODE_POINTS,
   IMPORTANCE_LEVELS,
   extractFrontmatterEnvelope,
   parseArchivalDocument,

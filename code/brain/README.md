@@ -103,7 +103,7 @@ importance: high
 
 完整 cognition 应放在 archival memories；Core 只保留让它能够稳定被找到和使用的最小路由。
 
-Core 不使用 archival frontmatter，最大长度为 4000 Unicode code points。
+Core 不使用 archival frontmatter。其内容按常驻用途保持简短；运行时不再设置文档长度上限。
 
 Core mutation：
 

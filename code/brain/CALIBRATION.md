@@ -1,7 +1,7 @@
 # brain 参数标定（Calibration）
 
-> **状态：Current engineering aid / 2026-08-20**  
-> 本文件不是行为契约，也不复制源码为第二份参数真相。行为边界以 `../../doc/brain/v1/bdd-brain-behavior-requirements.md` / Acceptance 为准；参数意义与机制设计以 `../../doc/brain/v1/design-brain-runtime.md` 为准；**当前数值以 `src/**` 常量为唯一实现真值\*\*。
+> **状态：历史 v1 标定记录 / 2026-08-20**
+> 下方参数表记录当时的设计，不作为当前运行时参数索引。现行 Scope Core 没有文档长度上限；当前行为以 `src/` 和现行运行说明为准。
 
 ## 1. 标定原则
 
@@ -17,13 +17,12 @@
 
 Acceptance tests 不锁 calibration 数字；Invariant/Mechanism tests 可以读取当前 Design 值验证“配置确实被执行”。
 
-## 2. 当前参数索引
+## 2. 历史参数索引
 
 ### `src/memory/store.ts`
 
-| 参数                     |  当前值 | 作用                                             |
+| 参数                     |  当时值 | 作用                                             |
 | ------------------------ | ------: | ------------------------------------------------ |
-| `CORE_DOC_MAX_CHARS`     |  `4000` | 单层 core 文档容量保护；越界 mutation 原子拒绝。 |
 | `STABILITY_GOOD`         |   `2.2` | successful-use review 的 stability 增益。        |
 | `STABILITY_AGAIN`        |   `0.4` | failed/corrected-use 的 stability 调整。         |
 | `STABILITY_HARD`         |   `1.2` | read/exposure review 的较弱 stability 调整。     |
@@ -32,7 +31,7 @@ Acceptance tests 不锁 calibration 数字；Invariant/Mechanism tests 可以读
 
 ### `src/memory/core.ts`
 
-| 参数                   | 当前值 | 作用                                                                            |
+| 参数                   | 当时值 | 作用                                                                            |
 | ---------------------- | -----: | ------------------------------------------------------------------------------- |
 | `CANDIDATE_LIMIT`      |   `10` | 单次 L0 candidate 上限；具体数字属于 Design/Calibration，不是 public contract。 |
 | `EXPOSURE_ALPHA`       | `0.05` | exposure 对 candidate ranking 的机械降权。                                      |
@@ -44,7 +43,7 @@ Acceptance tests 不锁 calibration 数字；Invariant/Mechanism tests 可以读
 
 ### `src/tools/sync.ts`
 
-| 参数                              |         当前值 | 作用                                        |
+| 参数                              |         当时值 | 作用                                        |
 | --------------------------------- | -------------: | ------------------------------------------- |
 | `ADOPT_MAX`                       |          `0.2` | adopt importance delta 上界。               |
 | `CORRECT_MIN` / `CORRECT_MAX`     | `-0.3 / -0.05` | correct 合法 delta 区间。                   |
@@ -72,7 +71,7 @@ Acceptance tests 不锁 calibration 数字；Invariant/Mechanism tests 可以读
 
 ### Context economics
 
-观察 Global / Project 两个 Core 的总长度和 L0 candidate 数量对上下文质量的影响。`CORE_DOC_MAX_CHARS` / `CANDIDATE_LIMIT` 应在“足够信息”和“避免无效上下文”之间找 benefit knee。
+观察 Global / Project 两个 Core 的总长度和 L0 candidate 数量对上下文质量的影响。现行 Core 长度由内容维护方法控制，没有机械上限。
 
 ## 4. 数据与验证边界
 

@@ -130,7 +130,7 @@ Global 认知跨项目继续使用；Project 认知用于当前项目未来的�
 目标 Global Core 只增加一行；目标已有同一行时报告无变化，保留 Core 的其他内容：
 
 ```text
-- 立即读取 `@global/memories/skill/brain-ai/core.md` 的完整原文，并使用其中适用的方法。
+- 立即读取 `@global/memories/skill/brain-ai/core.md` 的完整原文。继续按正文完成本轮相关读取，再使用适用的方法形成并说明工作方向。
 ```
 
 这条路线在每轮进入模型；`brain-ai/core.md` 直接提供跨任务判断和协作方法，再按软件或可执行文本任务读取对应正文。研究文档中的 Universal／Collaboration Root 是设计参考，不额外插入 Global Core。

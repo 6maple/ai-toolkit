@@ -165,14 +165,15 @@ export const writeInputSchema = z.strictObject({
       [
         "Complete archival Markdown document.",
         "",
-        "Required YAML frontmatter:",
+        "Write complete YAML frontmatter:",
         "",
         "---",
         "description: <when this cognition should be read>",
+        "summary: <current cognition and necessary boundaries>",
         "importance: low | medium | high | critical",
         "---",
         "",
-        "`description` supports bounded recall and active discovery by stating when this cognition should be read. Describe the situations, tasks, questions, or conditions that make the cognition relevant, with enough topic or responsibility cues to recognize applicability. Keep it current when that applicability changes. The Markdown body contains the cognition itself and must be non-empty. Include the known conditions and evidence needed to use it correctly; keep unknown causes unconfirmed.",
+        "`description` supports bounded recall and active discovery by stating when this cognition should be read; `summary` describes the current cognition and its necessary boundaries for semantic discovery. Provide both when writing. The parser still accepts older documents without a summary, but they cannot participate in semantic discovery. Describe the situations, tasks, questions, or conditions that make the cognition relevant, with enough topic or responsibility cues to recognize applicability. Keep the fields current when their meanings change. The Markdown body contains the cognition itself and must be non-empty. Include the known conditions and evidence needed to use it correctly; keep unknown causes unconfirmed.",
         "",
         "`importance` is the reasonably expected consequence if this cognition applies but is not recalled, considering how recoverable the omission would be:",
         "",
@@ -210,13 +211,13 @@ export const editInputSchema = z
       .min(1)
       .optional()
       .describe(
-        "Non-empty list of exact targeted replacements. Form each `oldText` from the current exact document content. Every `edits[].oldText` is matched against the same original document before any replacement is applied; no edit sees another edit's `newText`. Each `oldText` must identify one unique region, and the matched regions must not overlap. If any replacement is invalid, none are applied. Use exact edits for every non-empty Scope Core; for a deliberate whole-Core rewrite, use one exact edit whose `oldText` is the complete current Core. When changing archival applicability, update `description` in the same edit so it continues to state when the cognition should be read.",
+        "Non-empty list of exact targeted replacements. Form each `oldText` from the current exact document content. Every `edits[].oldText` is matched against the same original document before any replacement is applied; no edit sees another edit's `newText`. Each `oldText` must identify one unique region, and the matched regions must not overlap. If any replacement is invalid, none are applied. Use exact edits for every non-empty Scope Core; for a deliberate whole-Core rewrite, use one exact edit whose `oldText` is the complete current Core. When changing archival applicability, update `description` in the same edit so it continues to state when the cognition should be read. Update `summary` when the current cognition or its necessary boundaries change.",
       ),
     content: z
       .string()
       .optional()
       .describe(
-        "Complete resulting Markdown for the same existing cognition document. For a Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, `content` is allowed only when the Core is currently empty; initialize it with only the minimal trigger, exact memory path, and usage guidance. A non-empty Core must be changed with `edits`. Scope Core does not use archival `description`/`importance` frontmatter.\n\nFor an archival cognition, use `content` when revising or reorganizing the document as a whole. Provide the complete resulting archival document with YAML frontmatter containing a non-empty `description` that states when the cognition should be read, `importance` set to `low`, `medium`, `high`, or `critical`, and a non-empty Markdown body containing the cognition itself. Update changed conclusions together with their conditions and evidence. Keep `description` current when applicability changes. `importance` remains the reasonably expected consequence if this cognition applies but is not recalled; change it only when that omission consequence changes.",
+        "Complete resulting Markdown for the same existing cognition document. For a Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, `content` is allowed only when the Core is currently empty; initialize it with only the minimal trigger, exact memory path, and usage guidance. A non-empty Core must be changed with `edits`. Scope Core does not use archival `description`/`summary`/`importance` frontmatter.\n\nFor an archival cognition, use `content` when revising or reorganizing the document as a whole. Provide the complete resulting archival document with YAML frontmatter containing a non-empty `description` that states when the cognition should be read, a `summary` of the current cognition and its necessary boundaries, `importance` set to `low`, `medium`, `high`, or `critical`, and a non-empty Markdown body containing the cognition itself. Update changed conclusions together with their conditions and evidence. Keep `description` current when applicability changes and `summary` current when the cognition changes. `importance` remains the reasonably expected consequence if this cognition applies but is not recalled; change it only when that omission consequence changes.",
       ),
   })
   .refine((value) => (value.edits === undefined) !== (value.content === undefined), {
@@ -309,28 +310,28 @@ const rawPublicBrainTools: readonly BrainToolDefinition[] = [
   {
     name: "brain_ls",
     description:
-      "List the direct children of one archival cognition directory. Use this tool when the directory is known and its immediate structure is needed. The bounded, non-pageable result contains subdirectories and cognition entries with public `path`, current `description`, and `status` when present. Use each description to recognize when that cognition should be read, then use `brain_cat` for the selected path. If truncated, narrow `path`, or use `brain_glob` for path/name clues and `brain_grep` for content clues.",
+      "List the direct children of one archival cognition directory. Use this tool when the directory is known and its immediate structure is needed. The bounded, non-pageable result contains subdirectories and cognition entries with public `path`, current `description`, and `status` when present. Use each description to identify candidates; read full cognition with `brain_cat` by default, skipping only clearly unrelated entries and reading when unsure. If truncated, narrow `path`, or use `brain_glob` for path/name clues and `brain_grep` for content clues.",
     inputSchema: lsInputSchema,
     outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_glob",
     description:
-      "Find active archival cognition documents by matching a glob against their complete public paths. Use this tool when a scope, cognitive role, directory, or filename clue is known but the exact path is not. The bounded, non-pageable result contains public `path`, current `description`, and `status` when present. Use each description to recognize when that cognition should be read, then use `brain_cat` for the selected path. If truncated, narrow `pattern` or `path` and search again.",
+      "Find active archival cognition documents by matching a glob against their complete public paths. Use this tool when a scope, cognitive role, directory, or filename clue is known but the exact path is not. The bounded, non-pageable result contains public `path`, current `description`, and `status` when present. Use each description to identify candidates; read full cognition with `brain_cat` by default, skipping only clearly unrelated entries and reading when unsure. If truncated, narrow `pattern` or `path` and search again.",
     inputSchema: globInputSchema,
     outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_grep",
     description:
-      "Search active archival cognition Markdown content for matching lines. Use this tool when words or text patterns are known but the exact document path is not. The bounded, non-pageable result groups matches by document and includes public `path`, current `description`, `status` when present, and 1-based matching/context line excerpts. Use the description and matched content to identify relevant cognition, then use `brain_cat` when that cognition should guide the current task. If truncated, narrow `pattern`, `path`, or `glob` and search again.",
+      "Search active archival cognition Markdown content for matching lines. Use this tool when words or text patterns are known but the exact document path is not. The bounded, non-pageable result groups matches by document and includes public `path`, current `description`, `status` when present, and 1-based matching/context line excerpts. Use the description and matched content to identify candidates; read full cognition with `brain_cat` by default, skipping only clearly unrelated entries and reading when unsure. If truncated, narrow `pattern`, `path`, or `glob` and search again.",
     inputSchema: grepInputSchema,
     outputSchema: brainTextOutputSchema,
   },
   {
     name: "brain_ask_search",
     description:
-      "Search active archival cognition by semantic meaning after you understand the current task. Describe the relevant past cognition you want to recall in natural language based on that understanding rather than mechanically copying the user's message. Use brain_grep when you have known words or text patterns, brain_glob when you have path, directory, role, or filename clues, and brain_cat when exact cognition content is needed. Results are bounded cognition descriptions. When a result applies to the current task, read its path with `brain_cat` before applying that cognition. Search again when later understanding reveals another need for past cognition.",
+      "Search active archival cognition by semantic meaning after you understand the current task. Describe the relevant past cognition you want to recall in natural language based on that understanding rather than mechanically copying the user's message. Use brain_grep when you have known words or text patterns, brain_glob when you have path, directory, role, or filename clues, and brain_cat when exact cognition content is needed. Results are bounded cognition descriptions. Read candidate paths with `brain_cat` by default, skipping only clearly unrelated results and reading when unsure. Search again when later understanding reveals another need for past cognition.",
     inputSchema: askSearchInputSchema,
     outputSchema: brainTextOutputSchema,
     annotations: {

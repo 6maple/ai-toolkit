@@ -109,6 +109,9 @@ const PATH_ERROR_CODES = new Set([
   "mv-requires-archival-destination",
 ]);
 
+const ARCHIVAL_FORMAT_GUIDANCE =
+  "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body. Include a current summary for semantic discovery; older documents without one remain readable.";
+
 const ACTION_GUIDANCE: Readonly<Record<string, string>> = {
   "invalid-glob": "Fix the glob pattern and try again.",
   "invalid-regex":
@@ -118,8 +121,6 @@ const ACTION_GUIDANCE: Readonly<Record<string, string>> = {
   "invalid-context": "context must be a non-negative integer.",
   "semantic-search-unavailable":
     "Semantic Search is enabled but its runtime is unavailable. Check the semantic runtime installation and restart the host after repairing it.",
-  "core-capacity-exceeded":
-    "Move complete cognition into the matching archival memory and keep only the necessary trigger, exact memory path, and usage guidance in the applicable Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md` before retrying.",
   "edit-mode": "Provide exactly one of edits or content.",
   "empty-edits": "Provide at least one exact replacement.",
   "empty-old-text": "Each edits[].oldText must be non-empty.",
@@ -137,24 +138,15 @@ const ACTION_GUIDANCE: Readonly<Record<string, string>> = {
     "feedback=question requires a non-empty complete current unresolved challenge.",
   "no-current-challenge":
     "feedback=resolve is valid only for a cognition that currently has an unresolved challenge.",
-  "missing-frontmatter":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
-  "unterminated-frontmatter":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
-  "invalid-frontmatter-yaml":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
-  "frontmatter-not-map":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
-  "missing-description":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
-  "invalid-description":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
-  "missing-importance":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
-  "invalid-importance":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
-  "empty-body":
-    "Supply a complete archival Markdown document with valid description and importance frontmatter and a non-empty cognition body.",
+  "missing-frontmatter": ARCHIVAL_FORMAT_GUIDANCE,
+  "unterminated-frontmatter": ARCHIVAL_FORMAT_GUIDANCE,
+  "invalid-frontmatter-yaml": ARCHIVAL_FORMAT_GUIDANCE,
+  "frontmatter-not-map": ARCHIVAL_FORMAT_GUIDANCE,
+  "missing-description": ARCHIVAL_FORMAT_GUIDANCE,
+  "invalid-description": ARCHIVAL_FORMAT_GUIDANCE,
+  "missing-importance": ARCHIVAL_FORMAT_GUIDANCE,
+  "invalid-importance": ARCHIVAL_FORMAT_GUIDANCE,
+  "empty-body": ARCHIVAL_FORMAT_GUIDANCE,
 };
 
 function errorResult(toolName: BrainToolName, error: unknown): BrainToolResult {

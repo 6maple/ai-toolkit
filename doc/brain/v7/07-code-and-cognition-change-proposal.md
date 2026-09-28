@@ -65,7 +65,7 @@ memories/skill/brain-ai/instructions.md
 安装器只给目标 `@global/core.md` 加这一行；目标 Core 的其他内容保持原样：
 
 ```text
-- 立即读取 `@global/memories/skill/brain-ai/core.md` 的完整原文，并使用其中适用的方法。
+- 立即读取 `@global/memories/skill/brain-ai/core.md` 的完整原文。继续按正文完成本轮相关读取，再使用适用的方法形成并说明工作方向。
 ```
 
 安装前核对包内所有引用可读；`brain-data/global/.state/` 是当前用户的运行状态，不复制到包。安装后，正文在用户自己的 Brain 中正常维护。记忆包只提供安装命令，不提供更新命令。顶层 `install/update --agent ...` 仅管理 Agent 的 Brain MCP 接入；语义搜索的安装与更新另用 `semantic-search` 子命令。

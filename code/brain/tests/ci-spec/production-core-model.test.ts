@@ -3,7 +3,6 @@ import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  CoreCapacityError,
   DocumentSchemaError,
   parseArchivalDocument,
   validateCoreDocument,
@@ -158,11 +157,9 @@ describe("markdown and cognition codecs", () => {
     }
   });
 
-  it("counts core capacity in Unicode code points", () => {
-    expect(validateCoreDocument(normalizeMarkdownInput("😀".repeat(4000))).kind).toBe("core");
-    expect(() => validateCoreDocument(normalizeMarkdownInput("😀".repeat(4001)))).toThrow(
-      CoreCapacityError,
-    );
+  it("accepts Core documents beyond the former length limit", () => {
+    const text = normalizeMarkdownInput("😀".repeat(4001));
+    expect(validateCoreDocument(text)).toEqual({ kind: "core", text });
   });
 
   it("keeps C2 as challenge-only state", () => {
