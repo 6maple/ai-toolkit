@@ -141,6 +141,26 @@ reason
 → 把更多内部 reasoning 当作 verification
 ~~~
 
+### 6. 复杂问题用有停止条件的逐层展开
+
+当前模型另一个相关 failure 是：即使已经知道整体目标，也可能迅速钻入某个局部解释、机制或实现，并在上层关系还不稳定时继续补齐下层细节。复杂任务也很难一次同时把所有层级想清楚。
+
+结合 Base 的高水平通用思考目标、coverage 取向、对主观 confidence 的限制，以及已有 mechanistic / black-box 研究，当前更稳的解释是：
+
+~~~text
+先明确当前整体目标、边界和决定结果的关系
+→ 当前层足够时直接行动
+→ 不足时覆盖会 materially 改变当前层的直接子问题
+→ 需要时取得对应 cognition / reality evidence
+→ 子问题形成判断后重新组合回上层检查
+→ 仍有会改变结果的下层差异时继续展开
+→ 否则停止
+~~~
+
+这不是要求固定层数或把所有内容拆到底。已有事实、有效约束或成熟能力能够承担，而且内部差异不会改变当前决定时，可以继续作为黑盒。相反，如果新增机制、职责、状态或分类没有上层真实需要与 evidence 支撑，就不应只因“可能以后需要”而提前固化。
+
+因此“逐层”同时承担两种控制：在当前 material 范围内避免漏掉会改变上层结果的相邻关系；在剩余差异不会改变行动时停止，避免无限下钻。停止依据应尽量落到 material consequence 和 coverage，而不是模型主观觉得“已经想够了”。
+
 ## Current design derivation
 
 后续设计应从 Model 的真实 failure 出发，优先帮助模型：
@@ -152,6 +172,7 @@ reason
 5. 用 coverage、真实结果和 workflow gate 替代纯 subjective confidence；
 6. 在新 evidence 到来后更新受影响的 current frame；
 7. 让历史 assistant 分析、retrieved memory、search candidate 和旧方案保持正确 role，不因进入 context 就升级 authority。
+8. 让复杂问题从当前整体关系向直接下一层逐步展开；每层由 cognition / reality evidence 支撑，处理后回到上层组合检查，并在继续下钻不再 materially 改变下一动作时停止。
 
 ## Open / to validate
 
@@ -159,4 +180,5 @@ reason
 - 是否需要显式要求模型在重要判断时区分 observation / inference，还是由 Skill 内 coverage 即可产生同样行为；
 - counter-hypothesis / alternative check 在弱模型上的收益和 context 成本；
 - frame checkpoint 是否只需要 active-work continuity，还是复杂长任务需要更显式结构；
-- 哪些 verification signal 可以由 Harness 自动判断，哪些仍需模型语义解释。
+- 哪些 verification signal 可以由 Harness 自动判断，哪些仍需模型语义解释；
+- 当前逐层思考 guidance 对弱模型是否能减少“整体目标已知但仍过早钻入局部”和“为了完整无限细化”两类 failure，仍需用户实际使用验证。

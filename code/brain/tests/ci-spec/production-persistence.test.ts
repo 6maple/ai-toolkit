@@ -33,8 +33,8 @@ import {
 } from "../../src/persistence/codecs.ts";
 import {
   CoordinationError,
+  MutationApplyError,
   PersistentOperationCoordinator,
-  StoreInvariantError,
   type GlobalSemanticLeasePort,
 } from "../../src/persistence/operation-coordination.ts";
 import type { StorageStat } from "../../src/persistence/storage.ts";
@@ -157,69 +157,112 @@ describe("semantic vs auxiliary coordination", () => {
     expect(resources.events.some((event) => event.startsWith("put:"))).toBe(false);
   });
 
-  it("restores required resources when a later required file apply fails", async () => {
+  it("does not compensate a single-resource apply failure", async () => {
     const resources = new FakeResourcePort();
     const coordinator = new PersistentOperationCoordinator(resources, new FakeLease());
     resources.files.set("project/a.md", encoder.encode("old-a"));
-    resources.failPutFor = "project/b.md";
+    resources.failPutFor = "project/a.md";
 
     await expect(
       coordinator.runSemanticOperation({
-        name: "required-rollback",
+        name: "single-resource-failure",
+        scopes: [projectScope],
+        derive: async () => ({
+          kind: "change",
+          mutations: [mutation("@project/memories/knowledge/a.md", "new-a")],
+          result: undefined,
+        }),
+      }),
+    ).rejects.toMatchObject({ code: "mutation-failed" });
+
+    expect(decoder.decode(resources.files.get("project/a.md")!)).toBe("old-a");
+    expect(resources.events.some((event) => event.startsWith("restore:"))).toBe(false);
+    expect(resources.events.some((event) => event.startsWith("before:"))).toBe(false);
+  });
+
+  it("compensates only successfully applied resources in reverse order", async () => {
+    const resources = new FakeResourcePort();
+    const coordinator = new PersistentOperationCoordinator(resources, new FakeLease());
+    resources.files.set("project/a.md", encoder.encode("old-a"));
+    resources.files.set("project/b.md", encoder.encode("old-b"));
+    resources.failPutFor = "project/c.md";
+
+    await expect(
+      coordinator.runSemanticOperation({
+        name: "required-compensation",
         scopes: [projectScope],
         derive: async () => ({
           kind: "change",
           mutations: [
             mutation("@project/memories/knowledge/a.md", "new-a"),
             mutation("@project/memories/knowledge/b.md", "new-b"),
+            mutation("@project/memories/knowledge/c.md", "new-c"),
           ],
           result: undefined,
         }),
       }),
-    ).rejects.toThrow("put failed");
+    ).rejects.toMatchObject({ code: "mutation-failed" });
 
     expect(decoder.decode(resources.files.get("project/a.md")!)).toBe("old-a");
-    expect(resources.files.has("project/b.md")).toBe(false);
-    expect(resources.events.some((event) => event.startsWith("restore:"))).toBe(true);
+    expect(decoder.decode(resources.files.get("project/b.md")!)).toBe("old-b");
+    expect(resources.files.has("project/c.md")).toBe(false);
+
+    const restores = resources.events.filter((event) => event.startsWith("restore:"));
+    expect(restores).toEqual(["restore:project/b.md", "restore:project/a.md"]);
   });
 
-  it("restore failure becomes an invariant failure and blocks later state-changing work", async () => {
+  it("reports partial mutation when compensation fails without poisoning later operations", async () => {
     const resources = new FakeResourcePort();
     resources.files.set("project/a.md", encoder.encode("old-a"));
-    resources.failPutFor = "project/b.md";
+    resources.files.set("project/b.md", encoder.encode("old-b"));
+    resources.failPutFor = "project/c.md";
     resources.failRestore = true;
     const coordinator = new PersistentOperationCoordinator(resources, new FakeLease());
 
-    await expect(
-      coordinator.runSemanticOperation({
-        name: "restore-failure",
+    let failure: unknown;
+    try {
+      await coordinator.runSemanticOperation({
+        name: "compensation-failure",
         scopes: [projectScope],
         derive: async () => ({
           kind: "change",
           mutations: [
             mutation("@project/memories/knowledge/a.md", "new-a"),
             mutation("@project/memories/knowledge/b.md", "new-b"),
+            mutation("@project/memories/knowledge/c.md", "new-c"),
           ],
           result: undefined,
         }),
-      }),
-    ).rejects.toMatchObject({ code: "restore-failed" });
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(MutationApplyError);
+    expect(failure).toMatchObject({
+      code: "mutation-partially-applied",
+      originalError: expect.objectContaining({ message: "put failed" }),
+    });
+    expect((failure as MutationApplyError).compensationErrors).toHaveLength(2);
+    expect(resources.events.filter((event) => event.startsWith("restore:"))).toEqual([
+      "restore:project/b.md",
+      "restore:project/a.md",
+    ]);
 
     resources.failPutFor = undefined;
     resources.failRestore = false;
     await expect(
       coordinator.runSemanticOperation({
-        name: "after-invariant",
+        name: "after-partial-failure",
         scopes: [projectScope],
-        derive: async () => ({ kind: "no-change", result: undefined }),
+        derive: async () => ({
+          kind: "change",
+          mutations: [mutation("@project/memories/knowledge/d.md", "D")],
+          result: undefined,
+        }),
       }),
-    ).rejects.toBeInstanceOf(StoreInvariantError);
-    await expect(
-      coordinator.tryApplyAuxiliaryUpdate({
-        scopes: [projectScope],
-        deriveAndApply: async () => undefined,
-      }),
-    ).resolves.toMatchObject({ kind: "degraded" });
+    ).resolves.toBeUndefined();
+    expect(decoder.decode(resources.files.get("project/d.md")!)).toBe("D");
   });
 
   it("applies puts before deletes in canonical physical-path order", async () => {

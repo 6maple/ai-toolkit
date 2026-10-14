@@ -1,5 +1,18 @@
-import { formatPublicPath, type LogicalArchivalPath, type LogicalCorePath, type ScopeRef } from "../brain/namespace.ts";
-import { BRAIN_CONTEXT_PREFIX, BRAIN_DISCOVERY_COMMON, BRAIN_NO_SEMANTIC_BRANCH, BRAIN_ROLES, BRAIN_SCOPE, BRAIN_SEMANTIC_BRANCH } from "../integration/model-facing-text.ts";
+import {
+  formatPublicPath,
+  type LogicalArchivalPath,
+  type LogicalCorePath,
+  type ScopeRef,
+} from "../brain/namespace.ts";
+import {
+  BRAIN_CONTEXT_PREFIX,
+  BRAIN_DISCOVERY_COMMON,
+  BRAIN_MAINTENANCE,
+  BRAIN_NO_SEMANTIC_BRANCH,
+  BRAIN_ROLES,
+  BRAIN_SCOPE,
+  BRAIN_SEMANTIC_BRANCH,
+} from "../integration/model-facing-text.ts";
 import type { LogicalMarkdownText } from "../persistence/codecs.ts";
 
 export interface AnchorCoreProjection {
@@ -28,6 +41,7 @@ export interface RelatedProjectWarningProjection {
   readonly message: string;
 }
 export interface AnchorProjection {
+  readonly thinkWorkflow?: ThinkWorkflowProjection;
   readonly cores: readonly AnchorCoreProjection[];
   readonly candidates: readonly AnchorCandidateProjection[];
   readonly semanticSearchEnabled?: boolean;
@@ -36,9 +50,24 @@ export interface AnchorProjection {
   readonly relatedProjectErrors?: readonly RelatedProjectErrorProjection[];
 }
 
+export interface ThinkWorkflowProjection {
+  readonly source: string;
+  readonly text: string;
+}
+
+export function renderThinkWorkflow(workflow: ThinkWorkflowProjection): string {
+  return `## 本轮 think-workflow\n来源：${workflow.source}\n\n${workflow.text}`;
+}
+
 export function escapeXmlAttribute(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;").replaceAll("\t", "&#9;").replaceAll("\n", "&#10;").replaceAll("\r", "&#13;");
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("\t", "&#9;")
+    .replaceAll("\n", "&#10;")
+    .replaceAll("\r", "&#13;");
 }
 export function escapeXmlText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -62,35 +91,75 @@ function renderRelatedProjects(projection: AnchorProjection): string {
   const errors = projection.relatedProjectErrors ?? [];
   if (projects.length === 0 && warnings.length === 0 && errors.length === 0) return "";
   const sections: string[] = [];
-  if (projects.length > 0) sections.push([
-    "### 相关项目",
-    "相关项目 Core 不自动加载。准备读取、修改或分析匹配文件，或依据该项目当前状态作决定时，先按准确路径读取其 Core。",
-    "",
-    ...projects.flatMap((item) => [`#${item.alias} [${item.access}]`, `- 文件范围：${item.files}`, `- Core：\`${item.corePath}\``, ""]),
-  ].join("\n").trimEnd());
-  if (warnings.length > 0) sections.push([
-    "### 相关项目警告",
-    ...warnings.map((item) => `${item.code}：${item.message}`),
-  ].join("\n"));
-  if (errors.length > 0) sections.push([
-    "### 相关项目错误",
-    ...errors.map((item) => `${item.alias === undefined ? "相关项目配置" : item.alias}：${item.code}：${item.message}`),
-  ].join("\n"));
+  if (projects.length > 0)
+    sections.push(
+      [
+        "### 相关项目",
+        "相关项目 Core 不自动加载；以下为实际配置的路径、文件范围与权限。",
+        "",
+        ...projects.flatMap((item) => [
+          `#${item.alias} [${item.access}]`,
+          `- 文件范围：${item.files}`,
+          `- Core：\`${item.corePath}\``,
+          "",
+        ]),
+      ]
+        .join("\n")
+        .trimEnd(),
+    );
+  if (warnings.length > 0)
+    sections.push(
+      ["### 相关项目警告", ...warnings.map((item) => `${item.code}：${item.message}`)].join("\n"),
+    );
+  if (errors.length > 0)
+    sections.push(
+      [
+        "### 相关项目错误",
+        ...errors.map(
+          (item) =>
+            `${item.alias === undefined ? "相关项目配置" : item.alias}：${item.code}：${item.message}`,
+        ),
+      ].join("\n"),
+    );
   return sections.join("\n\n");
 }
 export function renderAnchorContext(projection: AnchorProjection): string {
   const global = projection.cores.find((core) => core.scope.kind === "global");
   const project = projection.cores.find((core) => core.scope.kind === "project");
-  if (global === undefined || project === undefined) throw new Error("Brain context requires Global and Project Core");
+  if (global === undefined || project === undefined)
+    throw new Error("Brain context requires Global and Project Core");
   const related = renderRelatedProjects(projection);
-  const candidates = projection.candidates.length === 0
-    ? "本轮有限候选集合为空。"
-    : projection.candidates.map(renderAnchorCandidateItem).join("\n\n");
+  const candidates =
+    projection.candidates.length === 0
+      ? "本轮有限候选集合为空。"
+      : projection.candidates.map(renderAnchorCandidateItem).join("\n\n");
   return [
-    BRAIN_CONTEXT_PREFIX, "", "### Global Core", renderCore(global), "", "### Project Core", renderCore(project),
+    BRAIN_CONTEXT_PREFIX,
+    ...(projection.thinkWorkflow === undefined
+      ? []
+      : ["", renderThinkWorkflow(projection.thinkWorkflow)]),
+    "",
+    "## 本轮记忆上下文",
+    "",
+    "### Global Core",
+    renderCore(global),
+    "",
+    "### Project Core",
+    renderCore(project),
     ...(related.length === 0 ? [] : ["", related]),
-    "", "### 本轮候选记忆", candidates, "", BRAIN_ROLES, "", BRAIN_DISCOVERY_COMMON, "",
+    "",
+    "### 本轮候选记忆",
+    candidates,
+    "",
+    BRAIN_ROLES,
+    "",
+    BRAIN_MAINTENANCE,
+    "",
+    BRAIN_DISCOVERY_COMMON,
+    "",
     projection.semanticSearchEnabled ? BRAIN_SEMANTIC_BRANCH : BRAIN_NO_SEMANTIC_BRANCH,
-    "", BRAIN_SCOPE, "",
+    "",
+    BRAIN_SCOPE,
+    "",
   ].join("\n");
 }

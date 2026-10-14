@@ -8,11 +8,8 @@ import type {
 } from "../application/cognition-maintenance.ts";
 import type { ReadDiscovery } from "../application/read-discovery.ts";
 import type { RoutedBrainApplication } from "../application/routed-brain.ts";
-import {
-  formatPublicPath,
-  parsePublicPath,
-  parseResourceLocation,
-} from "../brain/namespace.ts";
+import { formatPublicPath, parsePublicPath, parseResourceLocation } from "../brain/namespace.ts";
+import { MutationApplyError } from "../persistence/operation-coordination.ts";
 import { projectAbsoluteLocation, type StorageBinding } from "../persistence/storage.ts";
 import type { BrainRuntimeFeatures } from "../runtime/features.ts";
 import { selectPublicBrainTools, type BrainToolName } from "./public-tools.ts";
@@ -62,13 +59,40 @@ function textResult(text: string, warnings: readonly string[] = []): BrainToolRe
       { type: "text", text },
       ...warnings.map((warning) => ({ type: "text" as const, text: `warning: ${warning}` })),
     ],
-    structuredContent: { text },
   };
 }
 
 function typedCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
   return typeof error.code === "string" ? error.code : undefined;
+}
+
+function storageFailureCategory(error: unknown): string {
+  switch (typedCode(error)) {
+    case "EACCES":
+    case "EPERM":
+      return "permission-denied";
+    case "EBUSY":
+    case "ETXTBSY":
+      return "file-busy";
+    case "ENOSPC":
+      return "no-space";
+    case "EROFS":
+      return "read-only-filesystem";
+    case "ENOENT":
+      return "path-unavailable";
+    case "EMFILE":
+    case "ENFILE":
+      return "file-handle-limit";
+    default:
+      return "io-error";
+  }
+}
+
+function partialMutationAction(toolName: BrainToolName): string {
+  return toolName === "brain_mv"
+    ? "Re-read both src and dst and use their current persisted state as the source of truth before deciding whether to retry or repair the move."
+    : "Re-read the target cognition and use its current persisted state as the source of truth before deciding whether to retry or repair the operation.";
 }
 
 const OBJECT_PATH_GUIDANCE: Partial<Record<BrainToolName, string>> = {
@@ -152,6 +176,49 @@ const ACTION_GUIDANCE: Readonly<Record<string, string>> = {
 function errorResult(toolName: BrainToolName, error: unknown): BrainToolResult {
   if (error instanceof DOMException && error.name === "AbortError") {
     return { content: [{ type: "text", text: "error: aborted" }], isError: true };
+  }
+  if (error instanceof MutationApplyError) {
+    console.error("brain persistence mutation failure", {
+      code: error.code,
+      operationName: error.operationName,
+      originalError: error.originalError,
+      compensationErrors: error.compensationErrors,
+    });
+    const reason = storageFailureCategory(error.originalError);
+    if (error.code === "mutation-partially-applied") {
+      const compensationReason = [
+        ...new Set(error.compensationErrors.map(storageFailureCategory)),
+      ].join(",");
+      return {
+        content: [
+          {
+            type: "text",
+            text: [
+              "error: mutation-partially-applied",
+              `reason: ${reason}`,
+              `compensation_reason: ${compensationReason}`,
+              "state: this operation may have left partial persistent changes.",
+              `action: ${partialMutationAction(toolName)}`,
+            ].join("\n"),
+          },
+        ],
+        isError: true,
+      };
+    }
+    return {
+      content: [
+        {
+          type: "text",
+          text: [
+            "error: mutation-failed",
+            `reason: ${reason}`,
+            "state: the requested mutation did not complete; any earlier changes from this operation were restored.",
+            "action: Resolve the storage problem and retry the operation.",
+          ].join("\n"),
+        },
+      ],
+      isError: true,
+    };
   }
   const code = typedCode(error);
   if (code !== undefined) {
@@ -452,7 +519,6 @@ export function registerBrainTools(
         title: definition.name,
         description: definition.description,
         inputSchema: definition.inputSchema,
-        outputSchema: definition.outputSchema,
         annotations: definition.annotations,
       },
       handlerFor(definition.name, services, options.resolveInvocation),

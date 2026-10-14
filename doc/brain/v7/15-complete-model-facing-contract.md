@@ -97,7 +97,7 @@
 CLI 的 `SKILL.md` 或 `llm.txt` 仅在 CLI 已实现后随 CLI 安装。候选正文：
 
 ```text
-Brain CLI 提供辅助操作。命令或参数不清楚时，用 brain-cli --help 核对当前安装的用法。安装或更新 Brain MCP 时显式给出 --agent codex|claude|dsh，并指定 --source local --path <ai-toolkit目录>，或 --source github --repository <GitHub仓库URL> [--ref <版本>]；选择 dsh 时还要给出 --profile <名称>。这两个顶层命令只处理指定 Agent 的 Brain 接入。brain-cli semantic-search install/update 管理语义搜索运行依赖；完成后按结果提示检查 Brain 全局开关并重启需要的宿主。brain-cli memory export --output <目录> 导出 Global 路径并列出文件与警告；brain-cli memory import <目录> 在写入前列出路径冲突，有冲突时不开始写入，并报告具体冲突路径与可行处理。brain-cli pack install brain-ai 复制经审核的三份 Global 记忆并在 Global Core 加一行入口；重复的相同内容不重复写入，冲突时停止本次安装并报告冲突。记忆包没有 update 命令。每次操作依据命令结果核对已完成、无变化、警告或中断步骤；模型仍可继续其他工作。不要把依赖安装等同于语义工具已经启用，也不要把预检说成所有文件已原子写入。
+Brain CLI 提供辅助操作。命令或参数不清楚时，用 brain-cli --help 核对当前安装的用法。安装或更新 Brain MCP 时显式给出 --agent codex|claude|dsh，并指定 --source local --path <ai-toolkit目录>，或 --source github --repository <GitHub仓库URL> [--ref <版本>]；选择 dsh 时还要给出 --profile <名称>。这两个顶层命令只处理指定 Agent 的 Brain 接入。brain-cli semantic-search install/update 管理语义搜索运行依赖；完成后按结果提示检查 Brain 全局开关并重启需要的宿主。brain-cli memory export --output <目录> 导出 Global 路径并列出文件与警告；brain-cli memory import <目录> 在写入前列出路径冲突，有冲突时不开始写入，并报告具体冲突路径与可行处理。brain-cli pack install brain-ai 复制经审核的六份 Global 记忆并在 Global Core 加一行入口；重复的相同内容不重复写入，冲突时停止本次安装并报告冲突。记忆包没有 update 命令。每次操作依据命令结果核对已完成、无变化、警告或中断步骤；模型仍可继续其他工作。不要把依赖安装等同于语义工具已经启用，也不要把预检说成所有文件已原子写入。
 ```
 
 这份 CLI 说明不要求模型每轮调用 CLI；Brain 的日常认知读取与维护仍使用实际暴露的 MCP 工具。CLI 命令名和可选 `--ref` 属于待审核实现提案，正式发布时必须与 `--help`、真实错误及宿主实际接入一致。

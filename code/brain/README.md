@@ -42,6 +42,18 @@
 
 ## brain_think
 
+工具和Host自动restore都返回当前选定的think-workflow全文。流程在记忆外，专业技能及记忆读取方法仍由Brain记忆保存。
+
+在Brain数据根的`config.json`选择流程：
+
+```json
+{
+  "thinkWorkflowFile": "@internal/think-workflow/brain-ai/index.md"
+}
+```
+
+未配置使用`@internal/think-workflow/default/index.md`的轻流程。开发stub中的`@internal/`相对于Brain源码包根；普通相对路径相对于配置目录，绝对路径直接使用。配置和正文每次建立上下文重新读取，无需为此重启服务。读取异常转读内置default，日志记warning，返回实际生效的来源及正文。
+
 收到每条新的用户消息后，显式 restore 模式应立即调用一次 `brain_think({})`，再继续解释、规划、回答或调用其他工具。
 
 Host hook 已自动 restore 时，由宿主注入返回的 cognition context，并隐藏或避免再次要求模型调用 `brain_think`。
@@ -68,6 +80,8 @@ Host hook 已自动 restore 时，由宿主注入返回的 cognition context，�
 - `brain_ask_search` — Semantic Search 启用时提供的语义检索工具。
 
 具体 model-visible schema / guidance 以 `src/integration/public-tools.ts` 为准。
+
+Brain 工具通过 MCP `content` 返回渲染后的文本，正文只传输一份，不提供 `structuredContent` 或 `outputSchema`。警告保留为独立文本块，分页信息保留在正文中，失败继续使用 `isError: true`。宿主应读取全部 `content` 文本块；工具分页和宿主自身的输出截断需要分别处理。
 
 ## Archival cognition
 
@@ -225,6 +239,6 @@ pnpm run build
 pnpm run stub
 ```
 
-`stub` 与 production 都使用 `dist/index.mjs` 入口。源码或 build 更新后，已经运行的 MCP / host process 需要重启，才会加载新的 runtime。
+`stub` 与 production 都使用 `dist/index.mjs` 入口。源码更新后，已经运行的 MCP / host process需要重启以加载新runtime；think-workflow配置与正文更新下一次建立上下文即生效。当前workflow资源交付只验证开发stub，发布构建另行处理。
 
 不同 host 的接线见 [MCP_HOSTS.md](MCP_HOSTS.md)。DSH AutoThink 由独立 `brain-dsh-plugin` 提供；Codex 的 thread/session binding 由 `brain-codex-plugin` 持有；Claude Code 的 turn-start restore 与 MCP 接线由 `brain-claude-plugin` 提供。这些 host adapter 不改变 Brain cognition scope。

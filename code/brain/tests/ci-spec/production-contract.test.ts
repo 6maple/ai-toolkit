@@ -14,6 +14,7 @@ import {
 } from "../../src/index.ts";
 import { PUBLIC_BRAIN_TOOLS, type BrainToolName } from "../../src/public-tools.ts";
 import { parsePublicPath } from "../../src/brain/namespace.ts";
+import { MutationApplyError } from "../../src/persistence/operation-coordination.ts";
 
 const EXPECTED_TOOLS = [
   "brain_absolute_path",
@@ -105,10 +106,6 @@ function captureRegistration(
           safeParse(value: unknown): { success: boolean };
           shape?: Record<string, unknown>;
         };
-        outputSchema: {
-          safeParse(value: unknown): { success: boolean };
-          shape?: Record<string, unknown>;
-        };
         description: string;
         annotations?: {
           readOnlyHint?: boolean;
@@ -150,7 +147,8 @@ describe("generic MCP public contract", () => {
       expect(tool.description.length).toBeGreaterThan(0);
       if (tool.name === "brain_ask_search") continue;
       expect(registered.get(tool.name)?.config.inputSchema).toBe(tool.inputSchema);
-      expect(registered.get(tool.name)?.config.outputSchema).toBe(tool.outputSchema);
+      expect(tool).not.toHaveProperty("outputSchema");
+      expect(registered.get(tool.name)?.config).not.toHaveProperty("outputSchema");
       expect(registered.get(tool.name)?.config.annotations).toBe(tool.annotations);
     }
   });
@@ -184,6 +182,13 @@ describe("generic MCP public contract", () => {
 
   test("the real MCP SDK can list and call the registered Brain tools", async () => {
     const { services, calls } = fakeServices();
+    const context = `<brain_think_context>\n${"完整认知正文\n".repeat(2_000)}</brain_think_context>\n`;
+    services.anchor.runAnchor = vi.fn(async () => ({
+      context,
+      diagnostics: [{ code: "test-warning", message: "restore warning" }],
+    })) as never;
+    const pageText = "1: first line\nnext_offset: 2\n";
+    services.reads.cat = vi.fn(async () => ({ page: {}, text: pageText })) as never;
     const server = new McpServer({ name: "brain-test", version: "0.0.0" });
     registerBrainTools(server, services);
     const client = new Client({ name: "brain-test-client", version: "0.0.0" });
@@ -204,9 +209,7 @@ describe("generic MCP public contract", () => {
       expect(listedCat.inputSchema).toMatchObject({
         properties: { path: { type: "string", pattern: expect.any(String) } },
       });
-      expect(listedCat.outputSchema).toMatchObject({
-        properties: { text: { type: "string" } },
-      });
+      for (const tool of listed.tools) expect(tool.outputSchema).toBeUndefined();
       const called = await client.callTool({
         name: "brain_write",
         arguments: {
@@ -215,8 +218,34 @@ describe("generic MCP public contract", () => {
         },
       });
       expect(called.isError).not.toBe(true);
-      expect(called.structuredContent).toEqual({ text: expect.any(String) });
+      expect(called.structuredContent).toBeUndefined();
+      expect(called.content).toEqual([{ type: "text", text: expect.any(String) }]);
       expect(calls.at(-1)).toMatchObject({ name: "write" });
+      const restored = await client.callTool({ name: "brain_think", arguments: {} });
+      expect(restored.isError).not.toBe(true);
+      expect(restored.structuredContent).toBeUndefined();
+      expect(restored.content).toEqual([
+        { type: "text", text: context },
+        { type: "text", text: "warning: restore warning" },
+      ]);
+      const page = await client.callTool({
+        name: "brain_cat",
+        arguments: { path: "@project/core.md", limit: 1 },
+      });
+      expect(page.content).toEqual([{ type: "text", text: pageText }]);
+      expect(page.structuredContent).toBeUndefined();
+      services.reads.cat = vi.fn(async () => {
+        throw Object.assign(new Error("not found"), { code: "not-found" });
+      }) as never;
+      const failed = await client.callTool({
+        name: "brain_cat",
+        arguments: { path: "@project/core.md" },
+      });
+      expect(failed.isError).toBe(true);
+      expect(failed.structuredContent).toBeUndefined();
+      expect(failed.content).toMatchObject([
+        { type: "text", text: expect.stringContaining("not-found") },
+      ]);
     } finally {
       await client.close();
       await server.close();
@@ -435,6 +464,51 @@ describe("generic MCP public contract", () => {
     expect(write.content[0].text).toMatch(/^error: missing-importance\n/);
   });
 
+  test("persistence mutation failures expose cause category, state and next action", async () => {
+    const { services } = fakeServices();
+    const registered = captureRegistration(services);
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const busy = Object.assign(new Error("locked by another process"), { code: "EBUSY" });
+      services.maintenance.edit = vi.fn(async () => {
+        throw new MutationApplyError("mutation-failed", {
+          operationName: "brain-edit",
+          originalError: busy,
+        });
+      }) as never;
+
+      const failed = await registered.get("brain_edit")!.handler({
+        path: "@project/core.md",
+        edits: [{ oldText: "a", newText: "b" }],
+      });
+      expect(failed.content[0].text).toContain("error: mutation-failed");
+      expect(failed.content[0].text).toContain("reason: file-busy");
+      expect(failed.content[0].text).toContain("state:");
+      expect(failed.content[0].text).toContain("action:");
+
+      const denied = Object.assign(new Error("access denied"), { code: "EACCES" });
+      const restoreBusy = Object.assign(new Error("restore locked"), { code: "EBUSY" });
+      services.maintenance.move = vi.fn(async () => {
+        throw new MutationApplyError("mutation-partially-applied", {
+          operationName: "brain-mv",
+          originalError: denied,
+          compensationErrors: [restoreBusy],
+        });
+      }) as never;
+
+      const partial = await registered.get("brain_mv")!.handler({
+        src: "@project/memories/knowledge/a.md",
+        dst: "@project/memories/knowledge/b.md",
+      });
+      expect(partial.content[0].text).toContain("error: mutation-partially-applied");
+      expect(partial.content[0].text).toContain("reason: permission-denied");
+      expect(partial.content[0].text).toContain("compensation_reason: file-busy");
+      expect(partial.content[0].text).toContain("Re-read both src and dst");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   test("an invocation resolver selects project services for each call", async () => {
     const first = fakeServices("project-1");
     const second = fakeServices("project-2");
@@ -449,8 +523,12 @@ describe("generic MCP public contract", () => {
     await registered.get("brain_think")!.handler({}, { route: "second" });
     await registered.get("brain_glob")!.handler({ pattern: "**/*.md" }, { route: "second" });
 
-    expect(first.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([{}]);
-    expect(second.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([{}]);
+    expect(first.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([
+      {},
+    ]);
+    expect(second.calls.filter((call) => call.name === "think").map((call) => call.args)).toEqual([
+      {},
+    ]);
     expect(second.calls.find((call) => call.name === "glob")?.args).toMatchObject({
       context: {},
     });

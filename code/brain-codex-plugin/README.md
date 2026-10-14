@@ -7,6 +7,8 @@ Codex host adapter for `../brain`.
 - The same synchronous hook records Codex's documented `session_id` and `cwd` as
   one host-owned invocation binding before the restored context reaches the model.
 - The bundled MCP server omits `brain_think`, preventing duplicate model-triggered restoration. With Semantic Search disabled it exposes the remaining ten Brain tools; when the Brain global config enables Semantic Search it additionally exposes `brain_ask_search`.
+
+The shared restore path automatically includes the selected think-workflow in full. `thinkWorkflowFile` in the Brain data root's `config.json` selects the source; config-relative paths use that directory and development `@internal/` addresses use the Brain source package root. Workflow changes are read on the next turn. Workflow read failures use the built-in default and log a warning. Memory reading guidance remains in Brain memories.
 - Each MCP call uses the host-owned thread/session binding to resolve the correct
   project services/source root. The host session identity stops at that adapter boundary and does not become Brain cognition state, so one long-lived server can safely serve tasks from different projects.
 - Brain remains the owner of cognition, persistence, ranking, and tool semantics.

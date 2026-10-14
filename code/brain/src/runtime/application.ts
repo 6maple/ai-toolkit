@@ -6,12 +6,10 @@ import { RoutedBrainApplication } from "../application/routed-brain.ts";
 import { SemanticDiscovery } from "../application/semantic-discovery.ts";
 import { SemanticAwareMaintenance } from "../application/semantic-maintenance.ts";
 import type { BrainRuntimeInfrastructure } from "./bootstrap.ts";
-import {
-  DEFAULT_BRAIN_RUNTIME_FEATURES,
-  type BrainRuntimeFeatures,
-} from "./features.ts";
+import { DEFAULT_BRAIN_RUNTIME_FEATURES, type BrainRuntimeFeatures } from "./features.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 import type { EmbeddingPort } from "./semantic-runtime.ts";
+import { loadThinkWorkflow } from "./think-workflow.ts";
 
 export interface BrainSemanticRuntime {
   readonly index: SemanticIndex;
@@ -32,16 +30,14 @@ export function createBrainApplicationServices(
     infrastructure.operations,
     infrastructure.checkpoint,
     features,
+    () => loadThinkWorkflow(infrastructure.binding.brainRoot),
   );
   const reads = new ReadDiscovery(
     infrastructure.store,
     new PiDiscoveryTools(infrastructure.binding),
     infrastructure.operations,
   );
-  const baseMaintenance = new CognitionMaintenance(
-    infrastructure.store,
-    infrastructure.operations,
-  );
+  const baseMaintenance = new CognitionMaintenance(infrastructure.store, infrastructure.operations);
   const maintenance =
     options.semanticRuntime === undefined
       ? baseMaintenance

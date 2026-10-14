@@ -77,4 +77,14 @@ Open / to validate
 
 ## 当前阶段
 
-Base / v7 职责重构及完整模型可见文字审核已完成，用户已批准按 [16-model-facing-composition-review.md](16-model-facing-composition-review.md) 实施。production Brain、CLI 与可选记忆包已在工作区实现，核心测试、CLI 记忆操作测试、类型检查和 Brain 构建通过。随后依照 [通用协作记忆审查](research/11-brain-ai-collaboration-review.md)，已更新记忆包正文与实际 Global 记忆；Codex、Claude、DSH 的宿主接入和模型行为由用户人工验证。
+Base / v7 职责重构及 production Brain、CLI、可选记忆包已实现。2026-10-02 用户进一步把“先理解事情为什么会是现在这样”提升为通用认知主干，前置 checkpoint 保持四项但第二项由 `初步判断` 升级为 `本质认知`，当前为 `认知更新 / 本质认知 / 关联记忆 / 本轮计划`。外部资料触发仍按此前真实 failure 的修正工作：完成主动 semantic recall 后、进入现实调查和重要判断前，重新判断当前外部资料是否可能改变理解、判断或行动，需要时主动取得；决定不查时先说明具体理由，不能只凭模型知识、本地材料或自身 confidence 跳过，拿不准时先查再判断。2026-10-03 结合 Base 复核后又补回三项语义：边界清楚且遗漏代价高、取得成本低时在 bounded 范围内偏向 coverage；能够自行查明的先自行查明，只有用户拥有的信息或决定才能区分关键分歧时再主动询问；retrieval、历史 assistant 输出和已保存的模型 interpretation 不因被检索或重复出现就升级成 truth。结束本轮前实际核对 `当前判断 / 后续预判 / 关键存疑 / 记录维护 / 后续推进`，发现本轮可纠正的问题先处理，再简洁写下供后续工作使用的判断与必要依据。Brain bootstrap 的固定文字负责确定性读取 / discovery / scope 等通用协议，并新增“维护已有 cognition”的语义连续性 invariant：结构级修订不能静默删除或弱化未受当前变化影响、仍会改变判断或行动的明确语义；修改后重新读取核对。主动 recall、现实取证、澄清、行动与记录等任务方法仍由 `brain-ai/core.md` 拥有。
+
+该变更已同步 [06-current-architecture.md](06-current-architecture.md)、[08-model-facing-and-memory-text-draft.md](08-model-facing-and-memory-text-draft.md)、[10-default-memory-pack-design.md](10-default-memory-pack-design.md) 与 [16-model-facing-composition-review.md](16-model-facing-composition-review.md)，实施记录见 [research/15-cognition-checkpoint-update.md](research/15-cognition-checkpoint-update.md)。2026-09-30 用户又批准并实施弱模型优先的 Prompt 写法、普通用户表达与正式报告写作三份 guidance，并由 `brain-ai/core.md` 明确路由；实施记录见 [research/16-expression-and-prompt-guidance-update.md](research/16-expression-and-prompt-guidance-update.md)。真实宿主与模型行为仍由用户实际使用验证。
+
+2026-10-03，用户审阅并批准六篇本质法与联合示例正文，已同步实际 Global、六篇默认包及完整正文镜像。方法继续承担直接指导与示例讲解两种作用，强读取与九项 checkpoint 保留；实际模型效果由用户人工观察。详见[实施记录](research/17-brain-ai-essence-examples-update.md)。
+
+2026-10-03，checkpoint 的关键论证、追溯边界与通用直白表达修订已获批准并正式同步。前四后五保留，详情见[实施记录](research/18-checkpoint-reasoning-boundary-update.md)。
+
+2026-10-03，checkpoint 自检与纠正修订已获用户批准并正式同步。前四项与结束前五项承担实际判断、核对和纠正；过程中在重要判断用于行动前、新信息取得后、下层返回整体时检查受影响部分。写下简明判断、关键依据和必要变化供后续工作使用，发现偏差后同步修正方案、产物及必要记录，再继续推进。普通答复按用户需要组织。详见[实施记录](research/19-checkpoint-self-correction-update.md)。
+
+2026-10-04，用户批准本质法直白引导与通用表达修订，已同步三篇正式方法。本质认知每轮按“目的 / 关系 / 边界”逐项写出、核对并纠正；过程中只更新受影响部分。表达由用户已有背景、当前需要与缺口推出回答作用、内容、深度与形式，独立审核区是需要判断候选时的具体应用。原前四后五、强读取、现实依据、追溯停止边界、黑盒、即时记录与恢复继续保留。详见[实施记录](research/20-direct-guidance-and-expression-update.md)。

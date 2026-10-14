@@ -44,4 +44,6 @@ node code/brain-cli/index.mjs memory import <导出目录>
 node code/brain-cli/index.mjs pack install brain-ai
 ```
 
-此命令安装三份 Global 方法记忆，并在 Global Core 加入读取入口。相同内容会跳过；目标内容不同或入口冲突时会停止并列出路径。记忆包没有 `update` 命令。安装后，Agent 应从 Global Core 的入口读取相应正文；包本身不是 Brain MCP 接入，也不会启用语义搜索。
+此命令安装六份 Global 方法记忆（含 Agent 软件方法），并在 Global Core 加入读取入口。相同内容会跳过；目标内容不同或入口冲突时会停止并列出路径。记忆包没有 `update` 命令。安装后，Agent 应从 Global Core 的入口读取相应正文；包本身不是 Brain MCP 接入，也不会启用语义搜索。
+
+其中core.md只指导记忆读取，专业Skill保持独立；思考流程在记忆外，由brain_think或Host hook自动提供。在Brain数据根config.json中以thinkWorkflowFile选择，例如@internal/think-workflow/brain-ai/index.md；普通相对路径从该配置目录解析，未配置采用内置default轻流程。配置或流程正文变更下一轮生效，读取异常使用内置default并记warning。

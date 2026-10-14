@@ -69,15 +69,34 @@ export class CoordinationError extends Error {
   }
 }
 
-export type StoreInvariantErrorCode = "restore-failed";
+export type MutationApplyErrorCode = "mutation-failed" | "mutation-partially-applied";
 
-export class StoreInvariantError extends Error {
-  readonly code: StoreInvariantErrorCode;
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-  constructor(code: StoreInvariantErrorCode, options?: { cause?: unknown }) {
-    super(`brain store invariant failed: ${code}`, options);
-    this.name = "StoreInvariantError";
+export class MutationApplyError extends Error {
+  readonly code: MutationApplyErrorCode;
+  readonly operationName: SemanticOperationName;
+  readonly originalError: unknown;
+  readonly compensationErrors: readonly unknown[];
+
+  constructor(
+    code: MutationApplyErrorCode,
+    options: {
+      readonly operationName: SemanticOperationName;
+      readonly originalError: unknown;
+      readonly compensationErrors?: readonly unknown[];
+    },
+  ) {
+    super(`brain semantic mutation failed: ${code}: ${errorMessage(options.originalError)}`, {
+      cause: options.originalError,
+    });
+    this.name = "MutationApplyError";
     this.code = code;
+    this.operationName = options.operationName;
+    this.originalError = options.originalError;
+    this.compensationErrors = options.compensationErrors ?? [];
   }
 }
 
@@ -223,10 +242,12 @@ function delayWithAbort(milliseconds: number, signal?: AbortSignal): Promise<voi
   });
 }
 
-
 interface PreparedEntry {
   readonly mutation: ResourceMutation;
   readonly prepared: PreparedPhysicalMutation;
+}
+
+interface RollbackEntry extends PreparedEntry {
   readonly before: ResourceBeforeState;
 }
 
@@ -244,13 +265,6 @@ function diagnosticForAuxiliaryFailure(error: unknown): TechnicalDiagnostic {
       message: "auxiliary learning update was not recorded",
     };
   }
-  if (error instanceof StoreInvariantError) {
-    return {
-      code: error.code,
-      message:
-        "auxiliary learning update was skipped because persistent state is not safely mutable",
-    };
-  }
   return {
     code: "auxiliary-update-failed",
     message: "auxiliary learning update was not recorded",
@@ -259,7 +273,6 @@ function diagnosticForAuxiliaryFailure(error: unknown): TechnicalDiagnostic {
 
 export class PersistentOperationCoordinator {
   private readonly processGate = new ProcessSerialGate();
-  private fatalStoreError: StoreInvariantError | undefined;
 
   constructor(
     private readonly resources: PersistentResourcePort,
@@ -290,7 +303,6 @@ export class PersistentOperationCoordinator {
     signal: AbortSignal | undefined,
     operation: () => Promise<T>,
   ): Promise<T> {
-    if (this.fatalStoreError) throw this.fatalStoreError;
     if (signal?.aborted) throw new CoordinationError("aborted");
     return this.globalLease.runExclusive(signal, operation);
   }
@@ -314,38 +326,62 @@ export class PersistentOperationCoordinator {
       preparedWithoutBefore.push({ mutation, prepared });
     }
 
-    const entries: PreparedEntry[] = [];
-    for (const entry of preparedWithoutBefore) {
-      entries.push({ ...entry, before: await this.resources.readBefore(entry.prepared) });
-    }
-    entries.sort(comparePreparedEntry);
+    preparedWithoutBefore.sort(comparePreparedEntry);
 
     if (request.signal?.aborted) throw new CoordinationError("aborted");
 
-    let sideEffectStarted = false;
+    if (preparedWithoutBefore.length === 1) {
+      const entry = preparedWithoutBefore[0]!;
+      try {
+        await this.applyMutation(entry);
+      } catch (error) {
+        throw new MutationApplyError("mutation-failed", {
+          operationName: request.name,
+          originalError: error,
+        });
+      }
+      return plan.result;
+    }
+
+    const entries: RollbackEntry[] = [];
+    for (const entry of preparedWithoutBefore) {
+      entries.push({ ...entry, before: await this.resources.readBefore(entry.prepared) });
+    }
+
+    const appliedEntries: RollbackEntry[] = [];
     try {
       for (const entry of entries) {
-        sideEffectStarted = true;
-        if (entry.mutation.kind === "put") {
-          await this.resources.putWhole(entry.prepared, entry.mutation.bytes);
-        } else {
-          await this.resources.deleteFile(entry.prepared);
-        }
+        await this.applyMutation(entry);
+        appliedEntries.push(entry);
       }
     } catch (error) {
-      if (!sideEffectStarted) throw error;
-      try {
-        for (const entry of entries) {
+      const compensationErrors: unknown[] = [];
+      for (const entry of [...appliedEntries].reverse()) {
+        try {
           await this.resources.restoreBefore(entry.prepared, entry.before);
+        } catch (compensationError) {
+          compensationErrors.push(compensationError);
         }
-      } catch (restoreError) {
-        const invariant = new StoreInvariantError("restore-failed", { cause: restoreError });
-        this.fatalStoreError = invariant;
-        throw invariant;
       }
-      throw error;
+
+      throw new MutationApplyError(
+        compensationErrors.length === 0 ? "mutation-failed" : "mutation-partially-applied",
+        {
+          operationName: request.name,
+          originalError: error,
+          compensationErrors,
+        },
+      );
     }
 
     return plan.result;
+  }
+
+  private async applyMutation(entry: PreparedEntry): Promise<void> {
+    if (entry.mutation.kind === "put") {
+      await this.resources.putWhole(entry.prepared, entry.mutation.bytes);
+      return;
+    }
+    await this.resources.deleteFile(entry.prepared);
   }
 }

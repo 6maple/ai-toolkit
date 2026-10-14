@@ -1,7 +1,7 @@
 // Approved tool wording from doc/brain/v7/16-model-facing-composition-review.md.
 export const BRAIN_TOOL_DESCRIPTIONS: Record<string, string> = {
   brain_think:
-    "建立本轮 Brain 工作上下文。仅在模型负责显式调用的模式暴露；每条新用户消息后、其他实质行动前调用，使用返回的 Core、候选和诊断。成功后不重复调用；失败时根据错误与副作用判断是否重试，并继续可完成的工作。",
+    "建立本轮 Brain 工作上下文，自动读取当前配置选定的think-workflow，返回实际取得的流程、Core、候选和诊断。仅在模型负责显式调用的模式暴露；每条新用户消息后、其他实质行动前调用。成功后不重复调用；失败时根据错误与副作用判断是否重试，并继续可完成的工作。",
   brain_cat:
     "按准确路径读取一份 Scope Core 或 archival 记忆。结果按稳定的 1 起始逻辑行分页；返回 `next_offset` 时从该位置续读。archival 结果包含当前可用的争议状态。",
   brain_ls:

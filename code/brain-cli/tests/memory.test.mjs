@@ -26,7 +26,15 @@ test("brain-ai package keeps one Core route and rejects edited package contents"
     const core = await readFile(path.join(root, "global", "core.md"), "utf8");
     assert.equal(core.match(/brain-ai\/core\.md/g)?.length, 1);
 
-    const target = path.join(root, "global", "memories", "skill", "brain-ai", "software.md");
+    const installed = path.join(root, "global", "memories", "skill", "brain-ai");
+    const names = ["agentic-software", "core", "instructions", "report-writing", "software", "user-facing-expression"];
+    assert.deepEqual(await readdir(installed), names.map((name) => name + ".md"));
+    for (const name of names) {
+      const bundled = new URL("../default-memories/skill/brain-ai/" + name + ".md", import.meta.url);
+      assert.equal(await readFile(path.join(installed, name + ".md"), "utf8"), await readFile(bundled, "utf8"));
+    }
+
+    const target = path.join(installed, "software.md");
     await writeFile(target, "user revision\n");
     const third = call(root, ["pack", "install", "brain-ai"]);
     assert.notEqual(third.status, 0);
@@ -60,7 +68,7 @@ test("Global export/import preserves paths, warns on invalid state, and prefligh
     const exported = call(source, ["memory", "export", "--output", exportPath]);
     assert.equal(exported.status, 0, exported.stderr);
     assert.match(exported.stdout, /状态或正文损坏/);
-    assert.equal((await readdir(path.join(exportPath, "global", "memories", "skill", "brain-ai"))).length, 3);
+    assert.deepEqual(await readdir(path.join(exportPath, "global", "memories", "skill", "brain-ai")), ["agentic-software.md", "core.md", "instructions.md", "report-writing.md", "software.md", "user-facing-expression.md"]);
     assert.equal(call(destination, ["memory", "import", exportPath]).status, 0);
     const importedState = JSON.parse(await readFile(path.join(destination, "global", ".state", "memories", "skill", "brain-ai", "software.json"), "utf8"));
     assert.equal(importedState.challenge, "仍需核对一个旧规则的适用范围");

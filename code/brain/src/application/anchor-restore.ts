@@ -25,10 +25,7 @@ import {
   hashMarkdownContent,
   type LogicalMarkdownText,
 } from "../persistence/codecs.ts";
-import {
-  DEFAULT_BRAIN_RUNTIME_FEATURES,
-  type BrainRuntimeFeatures,
-} from "../runtime/features.ts";
+import { DEFAULT_BRAIN_RUNTIME_FEATURES, type BrainRuntimeFeatures } from "../runtime/features.ts";
 import type {
   AuxiliaryUpdateOutcome,
   AuxiliaryUpdateRequest,
@@ -42,6 +39,7 @@ import {
   type RelatedProjectErrorProjection,
   type RelatedProjectProjection,
   type RelatedProjectWarningProjection,
+  type ThinkWorkflowProjection,
 } from "./anchor-renderer.ts";
 
 export const L0_MAX_CANDIDATES = 10;
@@ -144,9 +142,11 @@ export class AnchorRestore {
     private readonly operations: AnchorOperationPort,
     private readonly checkpoint: AnchorCheckpointPort,
     private readonly features: BrainRuntimeFeatures = DEFAULT_BRAIN_RUNTIME_FEATURES,
+    private readonly loadThinkWorkflow?: () => Promise<ThinkWorkflowProjection | undefined>,
   ) {}
 
   async runAnchor(request: AnchorRequest): Promise<AnchorResult> {
+    const thinkWorkflow = await this.loadThinkWorkflow?.();
     const scopes = applicableScopes();
 
     const scopeSnapshots = new Map<string, AnchorScopeSnapshot>();
@@ -212,6 +212,7 @@ export class AnchorRestore {
     }
 
     const projection: AnchorProjection = {
+      ...(thinkWorkflow === undefined ? {} : { thinkWorkflow }),
       cores,
       candidates: shown.map((item) => item.projection),
       ...(this.features.semanticSearch ? { semanticSearchEnabled: true } : {}),

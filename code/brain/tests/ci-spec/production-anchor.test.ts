@@ -254,13 +254,31 @@ function setup() {
 
 describe("anchor renderer", () => {
   it("renders the approved empty-Core branch exactly", () => {
-    const review = readFileSync(new URL("../../../../doc/brain/v7/16-model-facing-composition-review.md", import.meta.url), "utf8");
+    const review = readFileSync(
+      new URL("../../../../doc/brain/v7/16-model-facing-composition-review.md", import.meta.url),
+      "utf8",
+    );
     const blocks = [...review.matchAll(/````text\r?\n([\s\S]*?)\r?\n````/g)];
     const approved = blocks[1]?.[1].replaceAll("\r\n", "\n");
     const rendered = renderAnchorContext({
+      thinkWorkflow: {
+        source: "@internal/think-workflow/default/index.md",
+        text: readFileSync(
+          new URL("../../think-workflow/default/index.md", import.meta.url),
+          "utf8",
+        ),
+      },
       cores: [
-        { scope: globalScope, path: { kind: "core", scope: globalScope }, text: normalizeMarkdownInput("") },
-        { scope: projectScope, path: { kind: "core", scope: projectScope }, text: normalizeMarkdownInput("") },
+        {
+          scope: globalScope,
+          path: { kind: "core", scope: globalScope },
+          text: normalizeMarkdownInput(""),
+        },
+        {
+          scope: projectScope,
+          path: { kind: "core", scope: projectScope },
+          text: normalizeMarkdownInput(""),
+        },
       ],
       candidates: [],
     });
@@ -302,6 +320,16 @@ describe("anchor renderer", () => {
     const coreOpeningLines = rendered.split("\n").filter((line) => line.startsWith("<core "));
     expect(coreOpeningLines).toHaveLength(2);
     expect(rendered.match(/^# 本轮 Brain 工作上下文$/gm) ?? []).toHaveLength(1);
+    expect(rendered.match(/^## 维护已有 cognition$/gm) ?? []).toHaveLength(1);
+    expect(rendered).toContain(
+      "新的 evidence、owner decision、条件变化或明确目标改变什么，就修改什么",
+    );
+    expect(rendered.indexOf("## 记忆的角色")).toBeLessThan(
+      rendered.indexOf("## 维护已有 cognition"),
+    );
+    expect(rendered.indexOf("## 维护已有 cognition")).toBeLessThan(
+      rendered.indexOf("## 候选与发现"),
+    );
     expect(rendered.match(/^<recalled_cognition_description\b/gm) ?? []).toHaveLength(1);
     expect(rendered).not.toContain("importance=");
     expect(rendered).not.toContain("challenge=");

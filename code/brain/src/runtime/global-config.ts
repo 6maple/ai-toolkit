@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import {
-  DEFAULT_BRAIN_RUNTIME_FEATURES,
-  type BrainRuntimeFeatures,
-} from "./features.ts";
+import { DEFAULT_BRAIN_RUNTIME_FEATURES, type BrainRuntimeFeatures } from "./features.ts";
 
 export const DEFAULT_BRAIN_HOME = path.join(homedir(), ".brain-data");
 
@@ -21,6 +18,21 @@ export interface BrainGlobalConfigLoadResult {
 
 function isErrno(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+export function readBrainGlobalConfig(brainRoot: string): Record<string, unknown> | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(path.join(brainRoot, "config.json"), "utf8");
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return undefined;
+    throw error;
+  }
+  const value: unknown = JSON.parse(raw);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Brain global config must be a JSON object");
+  }
+  return value as Record<string, unknown>;
 }
 
 export function loadBrainGlobalConfig(
@@ -82,7 +94,8 @@ export function loadBrainGlobalConfig(
       diagnostics: [
         {
           code: "global-config-invalid",
-          message: "Brain global config semanticSearch must be an object; semantic search is disabled",
+          message:
+            "Brain global config semanticSearch must be an object; semantic search is disabled",
         },
       ],
     };
@@ -98,7 +111,8 @@ export function loadBrainGlobalConfig(
       diagnostics: [
         {
           code: "global-config-invalid",
-          message: "Brain global config semanticSearch.enabled must be boolean; semantic search is disabled",
+          message:
+            "Brain global config semanticSearch.enabled must be boolean; semantic search is disabled",
         },
       ],
     };

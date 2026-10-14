@@ -18,7 +18,7 @@ import {
 const ROLES = new Set(["decision", "knowledge", "intention", "skill"]);
 export const BRAIN_ROOT = process.env.BRAIN_CLI_ROOT ?? DEFAULT_BRAIN_HOME;
 const PACK_ROOT = fileURLToPath(new URL("./default-memories/skill/brain-ai/", import.meta.url));
-export const PACK_ROUTE = "- 立即读取 `@global/memories/skill/brain-ai/core.md` 的完整原文。继续按正文完成本轮相关读取，再使用适用的方法形成并说明工作方向。";
+export const PACK_ROUTE = "- 立即读取 `@global/memories/skill/brain-ai/core.md` 的完整原文，按其中记忆读取方法和路线取得适用认知。";
 
 function isMissing(error) { return error?.code === "ENOENT"; }
 async function readMaybe(target) {
@@ -213,7 +213,7 @@ export async function importGlobal(input) {
 
 export async function installBrainAi() {
   const entries = [];
-  for (const name of ["core", "software", "instructions"]) {
+  for (const name of ["core", "software", "agentic-software", "instructions", "user-facing-expression", "report-writing"]) {
     const relative = `global/memories/skill/brain-ai/${name}.md`;
     const bytes = await readFile(path.join(PACK_ROOT, `${name}.md`));
     validateDocument(relative, bytes);
