@@ -55,6 +55,7 @@ export function createBrainApplicationServices(
           options.semanticRuntime.embeddings,
         );
   const base = {
+    ...(options.sourceRoot === undefined ? {} : { sourceRoot: options.sourceRoot }),
     binding: infrastructure.binding,
     anchor,
     reads,

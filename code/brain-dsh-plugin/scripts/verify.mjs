@@ -35,15 +35,15 @@ const hookVisible = visibleToolDefinitions(true, true)
 const manualVisible = visibleToolDefinitions(false, true)
 const semanticHookVisible = visibleToolDefinitions(true, true, true)
 const semanticManualVisible = visibleToolDefinitions(false, true, true)
-if (hookVisible.length === 10 && !hookVisible.some((tool) => tool.name === 'brain_think')) ok('A0 hook hides think')
+if (hookVisible.length === 11 && !hookVisible.some((tool) => tool.name === 'brain_think')) ok('A0 hook hides think')
 else fail('A0 hook hides think', hookVisible.map((tool) => tool.name).join(','))
-if (manualVisible.length === 11 && manualVisible.some((tool) => tool.name === 'brain_think')) ok('A0 manual exposes think')
+if (manualVisible.length === 12 && manualVisible.some((tool) => tool.name === 'brain_think')) ok('A0 manual exposes think')
 else fail('A0 manual exposes think', manualVisible.map((tool) => tool.name).join(','))
-if (semanticHookVisible.length === 11 &&
+if (semanticHookVisible.length === 12 &&
     semanticHookVisible.some((tool) => tool.name === 'brain_ask_search') &&
     !semanticHookVisible.some((tool) => tool.name === 'brain_think')) ok('A0 semantic hook surface')
 else fail('A0 semantic hook surface', semanticHookVisible.map((tool) => tool.name).join(','))
-if (semanticManualVisible.length === 12 &&
+if (semanticManualVisible.length === 13 &&
     semanticManualVisible.some((tool) => tool.name === 'brain_ask_search') &&
     semanticManualVisible.some((tool) => tool.name === 'brain_think')) ok('A0 semantic manual surface')
 else fail('A0 semantic manual surface', semanticManualVisible.map((tool) => tool.name).join(','))
@@ -334,16 +334,28 @@ async function main() {
       const tools = await mgrReal.tools(realRoot)
       const liveNames = [...tools.keys()].sort()
       const publicNames = visibleToolDefinitions(false, true).map((t) => t.name).sort()
-      if (JSON.stringify(liveNames) === JSON.stringify(publicNames) && liveNames.length === 11) ok('C1 default public tool names')
+      if (JSON.stringify(liveNames) === JSON.stringify(publicNames) && liveNames.length === 12) ok('C1 default public tool names')
       else fail('C1 default public tool names', `live=${liveNames.join(',')} public=${publicNames.join(',')}`)
       const liveThink = tools.get('brain_think')?.inputSchema ?? {}
       const props = Object.keys(liveThink.properties ?? {})
       if (props.length === 0 && liveThink.additionalProperties === false) ok('C2 brain_think schema')
       else fail('C2 brain_think schema', JSON.stringify(liveThink))
+      const startedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message: 'DSH actual metadata forwarding check' }, undefined, { threadId: 'dsh-session-one', turnId: 'user-splice-42' })
+      const savedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'update', updates: { intent: 'DSH current round' } }, undefined, { threadId: 'dsh-session-one', turnId: 'user-splice-42' })
+      const otherStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message: 'Independent DSH session' }, undefined, { threadId: 'dsh-session-two', turnId: 'user-splice-43' })
+      const queriedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'status' }, undefined, { threadId: 'dsh-session-one', turnId: 'user-splice-42' })
+      const nextStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message: 'DSH next real user round' }, undefined, { threadId: 'dsh-session-one', turnId: 'user-splice-44' })
+      if (![startedStep, savedStep, otherStep, queriedStep, nextStep].some(result => result.isError) &&
+          queriedStep.content?.[0]?.text?.includes('DSH current round') &&
+          !nextStep.content?.[0]?.text?.includes('DSH current round')) ok('C2b brain_step metadata, isolation and new-round reset')
+      else fail('C2b brain_step metadata, isolation and new-round reset', JSON.stringify([startedStep, savedStep, otherStep, queriedStep, nextStep]))
       const r = await mgrReal.call(realRoot, 'brain_think', {})
       const text = r.content?.map((b) => b.text ?? '').join('\n') ?? ''
-      if (!r.isError && text.includes('# 本轮 Brain 工作上下文') && text.includes('@project/core.md')) ok('C3 brain_think restores Project cognition')
-      else fail('C3 brain_think restores Project cognition', text.slice(0, 300))
+      if (!r.isError && text.includes('# 处理流程') && text.includes('@brain-virtual/deep.md') && !text.includes('<core ')) ok('C3 brain_think provides processing entry')
+      else fail('C3 brain_think provides processing entry', text.slice(0, 300))
+      const memoryView = await mgrReal.call(realRoot, 'brain_cat', { path: '@brain-virtual/deep-memory.md', limit: 1 })
+      if (!memoryView.isError && memoryView.content?.[0]?.text?.includes('## 记忆的角色')) ok('C3b full virtual memory forwarding')
+      else fail('C3b full virtual memory forwarding', JSON.stringify(memoryView))
       const absolute = await mgrReal.call(realRoot, 'brain_absolute_path', { path: '@project' })
       if (!absolute.isError && absolute.content?.[0]?.text) ok('C4 brain_absolute_path forwarding')
       else fail('C4 brain_absolute_path forwarding', JSON.stringify(absolute))

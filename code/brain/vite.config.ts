@@ -4,7 +4,10 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   pack: tsdownConfig,
-  fmt: {},
+  fmt: {
+    // Keep reviewed model-visible guidance byte-for-byte; format its assembly code normally.
+    ignorePatterns: ["step/guidance/**", "think-workflow/brain-ai/**"],
+  },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },

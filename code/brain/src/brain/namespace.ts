@@ -1,6 +1,4 @@
-export type ScopeRef =
-  | { readonly kind: "global" }
-  | { readonly kind: "project" };
+export type ScopeRef = { readonly kind: "global" } | { readonly kind: "project" };
 
 export const COGNITIVE_ROLES = ["decision", "knowledge", "intention", "skill"] as const;
 export type CognitiveRole = (typeof COGNITIVE_ROLES)[number];

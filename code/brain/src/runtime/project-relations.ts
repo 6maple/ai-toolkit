@@ -150,7 +150,8 @@ export async function loadProjectRelationCatalog(
           ? (rawValue as Record<string, unknown>)
           : undefined;
       const configuredPath = typeof record?.path === "string" ? record.path : undefined;
-      const access = record?.access === "read" || record?.access === "write" ? record.access : undefined;
+      const access =
+        record?.access === "read" || record?.access === "write" ? record.access : undefined;
       pending.push({
         kind: "fixed",
         entry: unavailable(rawAlias, "relation entry is invalid", {

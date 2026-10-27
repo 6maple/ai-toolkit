@@ -39,7 +39,10 @@ Base 不因为新的研究结论而自动扩张。一个结论即使很有道理
 01-origin-and-goal.md
 → 02-design-philosophy.md
 → 03-epistemic-discipline.md
+→ 04-fact-intent-expression-model.md
 ```
+
+其中 [04](./04-fact-intent-expression-model.md)完整保留用户已确认的深度思考根本目的、本质模型及缓存例子；继续设计或审查思考方法时，应完整读取模型和示例。
 
 然后才进入当前版本，例如：
 

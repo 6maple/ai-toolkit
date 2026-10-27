@@ -493,10 +493,7 @@ export class ReadDiscovery {
 
   async cat(request: CatRequest): Promise<CatResult> {
     request.signal?.throwIfAborted();
-    const args = normalizeCatArguments(
-      request.offset ?? 1,
-      request.limit ?? CAT_DEFAULT_LIMIT,
-    );
+    const args = normalizeCatArguments(request.offset ?? 1, request.limit ?? CAT_DEFAULT_LIMIT);
 
     if (request.path.kind === "core") {
       const scope = await this.state.loadScope(request.path.scope);

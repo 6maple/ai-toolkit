@@ -5,6 +5,7 @@ export default defineBuildConfig({
   entries: [
     pluginConfig.entries.hook,
     pluginConfig.entries.permissionHook,
+    pluginConfig.entries.sessionEnd,
     pluginConfig.entries.mcp,
   ],
   outDir: "dist",

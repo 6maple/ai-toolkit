@@ -1,4 +1,10 @@
 import {
+  BRAIN_NORMAL_FLOW,
+  BRAIN_PROCESSING_ENTRY,
+  renderDeepFlow,
+  type BrainVirtualPath,
+} from "./think-context.ts";
+import {
   advanceScopeCycle,
   applyPassiveExposure,
   projectAccessibility,
@@ -113,10 +119,6 @@ export class AnchorStateInvariantError extends Error {
   }
 }
 
-function scopeKey(scope: ScopeRef): string {
-  return scope.kind;
-}
-
 function sameScope(a: ScopeRef, b: ScopeRef): boolean {
   return a.kind === b.kind;
 }
@@ -145,12 +147,54 @@ export class AnchorRestore {
     private readonly loadThinkWorkflow?: () => Promise<ThinkWorkflowProjection | undefined>,
   ) {}
 
-  async runAnchor(request: AnchorRequest): Promise<AnchorResult> {
-    const thinkWorkflow = await this.loadThinkWorkflow?.();
+  async runAnchor(_request: AnchorRequest): Promise<AnchorResult> {
+    const diagnostics: AnchorDiagnostic[] = [];
+    const scopes = applicableScopes();
+    for (const scope of scopes) {
+      if ((await this.state.loadScope(scope)) === undefined) {
+        throw new AnchorStateInvariantError("required-core-unavailable");
+      }
+    }
+    for (const scope of scopes) {
+      const outcome = await this.operations.tryApplyAuxiliaryUpdate({
+        scopes: [scope],
+        deriveAndApply: async () => {
+          const current = await this.state.loadScope(scope);
+          if (current === undefined)
+            throw new AnchorStateInvariantError("required-core-unavailable");
+          await this.state.putScopeCycle(scope, encodeScopeState(advanceScopeCycle(current.cycle)));
+        },
+      });
+      if (outcome.kind === "degraded")
+        diagnostics.push({
+          kind: "auxiliary-learning-degraded",
+          message: outcome.diagnostic.message,
+        });
+    }
+    const checkpoint = await this.checkpoint.checkpointWorkspace();
+    if (checkpoint.kind === "failed" || checkpoint.kind === "unavailable") {
+      diagnostics.push({
+        kind: "history-checkpoint-degraded",
+        message: checkpoint.diagnostic.message,
+      });
+    }
+
+    return { context: BRAIN_PROCESSING_ENTRY, diagnostics };
+  }
+
+  async readVirtual(path: BrainVirtualPath, request: AnchorRequest = {}): Promise<AnchorResult> {
+    if (path === "@brain-virtual/normal.md") return { context: BRAIN_NORMAL_FLOW, diagnostics: [] };
+    if (path === "@brain-virtual/deep.md") {
+      const workflow = await this.loadThinkWorkflow?.();
+      if (workflow === undefined) throw new Error("think-workflow unavailable");
+      return { context: renderDeepFlow(workflow.absolutePath), diagnostics: [] };
+    }
+    return this.readMemory(request);
+  }
+
+  async readMemory(request: AnchorRequest): Promise<AnchorResult> {
     const scopes = applicableScopes();
 
-    const scopeSnapshots = new Map<string, AnchorScopeSnapshot>();
-    const advancedCycles = new Map<string, ScopeCycleState>();
     const cores: AnchorCoreProjection[] = [];
     const pool: Array<ScarcityCandidate<RankedAnchorValue>> = [];
     const diagnostics: AnchorDiagnostic[] = [];
@@ -159,9 +203,6 @@ export class AnchorRestore {
     for (const scope of scopes) {
       const snapshot = await this.state.loadScope(scope);
       if (snapshot === undefined) throw new AnchorStateInvariantError("required-core-unavailable");
-      scopeSnapshots.set(scopeKey(scope), snapshot);
-      const advanced = advanceScopeCycle(snapshot.cycle);
-      advancedCycles.set(scopeKey(scope), advanced);
       cores.push({ scope, path: corePath(scope), text: snapshot.core.text as LogicalMarkdownText });
 
       const listing = await this.state.listArchival(scope);
@@ -182,7 +223,7 @@ export class AnchorRestore {
           path: item.path,
           importance: item.document.importance,
           epistemicStatus: status,
-          accessibility: projectAccessibility(advanced, item.accessibility),
+          accessibility: projectAccessibility(snapshot.cycle, item.accessibility),
           exposure: item.accessibility.exposure,
           value: { projection, snapshot: item },
         });
@@ -212,7 +253,6 @@ export class AnchorRestore {
     }
 
     const projection: AnchorProjection = {
-      ...(thinkWorkflow === undefined ? {} : { thinkWorkflow }),
       cores,
       candidates: shown.map((item) => item.projection),
       ...(this.features.semanticSearch ? { semanticSearchEnabled: true } : {}),
@@ -237,13 +277,12 @@ export class AnchorRestore {
           if (currentScope === undefined) {
             throw new AnchorStateInvariantError("required-core-unavailable");
           }
-          const advanced = advanceScopeCycle(currentScope.cycle);
-          await this.state.putScopeCycle(scope, encodeScopeState(advanced));
+          const currentCycle = currentScope.cycle;
 
           for (const shownItem of shownInScope) {
             const current = await this.state.loadArchival(shownItem.snapshot.path);
             if (current === undefined) continue;
-            const accessibility = applyPassiveExposure(advanced, current.accessibility);
+            const accessibility = applyPassiveExposure(currentCycle, current.accessibility);
             await this.state.putCompanion(
               current.path,
               encodeCompanion({
@@ -261,14 +300,6 @@ export class AnchorRestore {
           message: outcome.diagnostic.message,
         });
       }
-    }
-
-    const checkpoint = await this.checkpoint.checkpointWorkspace();
-    if (checkpoint.kind === "failed" || checkpoint.kind === "unavailable") {
-      diagnostics.push({
-        kind: "history-checkpoint-degraded",
-        message: checkpoint.diagnostic.message,
-      });
     }
 
     return { context, diagnostics };

@@ -81,8 +81,14 @@ describe("real runtime + MCP integration", () => {
 
       const think = await client.callTool({ name: "brain_think", arguments: {} });
       expect(think.isError).not.toBe(true);
-      expect(textOf(think)).toContain("# 本轮 Brain 工作上下文");
-      expect(textOf(think)).toContain("@project/memories/knowledge/real.md");
+      expect(textOf(think)).toContain("# 处理流程");
+      expect(textOf(think)).not.toContain("@project/memories/knowledge/real.md");
+      const view = await client.callTool({
+        name: "brain_cat",
+        arguments: { path: "@brain-virtual/deep-memory.md" },
+      });
+      expect(view.isError).not.toBe(true);
+      expect(textOf(view)).toContain("@project/memories/knowledge/real.md");
     } finally {
       await client.close();
       await server.close();

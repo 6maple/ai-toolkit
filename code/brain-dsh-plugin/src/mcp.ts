@@ -40,6 +40,7 @@ export interface McpCallResult {
 /** Trusted host invocation facts forwarded in the MCP request envelope. */
 export interface McpInvocationMeta {
   threadId?: string
+  turnId?: string
 }
 
 interface PendingRequest {
@@ -114,7 +115,10 @@ export class McpClient {
       {
         name,
         arguments: args,
-        ...(meta?.threadId === undefined ? {} : { _meta: { threadId: meta.threadId } }),
+        ...(meta === undefined ? {} : { _meta: {
+          ...(meta.threadId === undefined ? {} : { threadId: meta.threadId }),
+          ...(meta.turnId === undefined ? {} : { turnId: meta.turnId }),
+        } }),
       },
       signal,
     )) as McpCallResult

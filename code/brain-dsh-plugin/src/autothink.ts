@@ -45,7 +45,7 @@ interface SpliceEvent {
 }
 
 /** 会话事件流中最后一条"插入过 user 消息"的 splice 事件 seq。 */
-function lastUserMessageSeq(agent: Agent): number {
+export function lastUserMessageSeq(agent: Agent): number {
   const events = agent.session.snapshotEvents()
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as unknown as SpliceEvent

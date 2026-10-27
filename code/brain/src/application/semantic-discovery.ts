@@ -3,10 +3,7 @@ import {
   renderDiscoveryRecord,
   type DiscoveryNodeRecord,
 } from "../brain/discovery.ts";
-import {
-  parsePublicPath,
-  type LogicalArchivalPath,
-} from "../brain/namespace.ts";
+import { parsePublicPath, type LogicalArchivalPath } from "../brain/namespace.ts";
 import type { SemanticIndex, SemanticIndexEntry } from "../runtime/semantic-index.ts";
 import type { EmbeddingPort } from "../runtime/semantic-runtime.ts";
 
@@ -42,9 +39,7 @@ function dot(a: Float32Array, b: Float32Array): number {
 }
 
 function archivalPath(root: string, entry: SemanticIndexEntry): LogicalArchivalPath {
-  const parsed = parsePublicPath(
-    root + "/memories/" + entry.role + "/" + entry.relativePath,
-  );
+  const parsed = parsePublicPath(root + "/memories/" + entry.role + "/" + entry.relativePath);
   if (parsed.kind !== "archival") throw new Error("semantic index produced invalid archival path");
   return parsed;
 }

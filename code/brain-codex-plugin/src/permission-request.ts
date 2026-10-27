@@ -15,6 +15,7 @@ const MUTATION_TOOLS = new Set([
   "mcp__brain__brain_rm",
   "mcp__brain__brain_mv",
   "mcp__brain__brain_feedback",
+  "mcp__brain__brain_step",
 ]);
 
 interface PermissionRequestInput {

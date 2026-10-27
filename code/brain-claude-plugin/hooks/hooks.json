@@ -15,9 +15,23 @@
         ]
       }
     ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/dist/session-end.mjs"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PermissionRequest": [
       {
-        "matcher": "^mcp__plugin_brain-claude-plugin_brain__brain_(absolute_path|ls|glob|grep|ask_search|cat|write|edit|rm|mv|feedback)$",
+        "matcher": "^mcp__plugin_brain-claude-plugin_brain__brain_(absolute_path|ls|glob|grep|ask_search|cat|write|edit|rm|mv|feedback|step)$",
         "hooks": [
           {
             "type": "command",

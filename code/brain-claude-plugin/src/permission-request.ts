@@ -5,7 +5,7 @@ const READ_TOOLS = new Set([
   "brain_absolute_path", "brain_ls", "brain_glob", "brain_grep", "brain_ask_search", "brain_cat",
 ].map((name) => `${PREFIX}${name}`));
 const MUTATION_TOOLS = new Set([
-  "brain_write", "brain_edit", "brain_rm", "brain_mv", "brain_feedback",
+  "brain_write", "brain_edit", "brain_rm", "brain_mv", "brain_feedback", "brain_step",
 ].map((name) => `${PREFIX}${name}`));
 
 interface PermissionRequestInput {

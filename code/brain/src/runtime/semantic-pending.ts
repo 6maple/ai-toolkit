@@ -22,18 +22,10 @@ function normalizeRelativePath(value: string): string {
 
 function semanticMemoryPath(relativePath: string): boolean {
   const parts = relativePath.split("/");
-  if (
-    parts[0] === "global" &&
-    parts[1] === "memories" &&
-    parts.length >= 4
-  ) {
+  if (parts[0] === "global" && parts[1] === "memories" && parts.length >= 4) {
     return parts.at(-1)!.endsWith(".md");
   }
-  if (
-    parts[0] === "projects" &&
-    parts.length >= 5 &&
-    parts[2] === "memories"
-  ) {
+  if (parts[0] === "projects" && parts.length >= 5 && parts[2] === "memories") {
     return parts.at(-1)!.endsWith(".md");
   }
   return false;
@@ -46,14 +38,13 @@ function semanticMemoryPath(relativePath: string): boolean {
  * changes are intentionally left to periodic reconciliation because ordinary
  * accessibility/exposure updates do not affect semantic retrieval.
  */
-export function classifySemanticWatchPath(filename: string | null): SemanticPendingChange | undefined {
+export function classifySemanticWatchPath(
+  filename: string | null,
+): SemanticPendingChange | undefined {
   if (filename === null || filename === "") return { kind: "full" };
   const relativePath = normalizeRelativePath(filename);
 
-  if (
-    !relativePath.startsWith("global/") &&
-    !relativePath.startsWith("projects/")
-  ) {
+  if (!relativePath.startsWith("global/") && !relativePath.startsWith("projects/")) {
     return undefined;
   }
 
@@ -65,7 +56,11 @@ export function classifySemanticWatchPath(filename: string | null): SemanticPend
   if (basename.startsWith(".") && basename.includes(".brain-") && basename.endsWith(".tmp")) {
     return undefined;
   }
-  if (basename === "core.md" || basename === "project.json" || basename.startsWith("project.json.tmp-")) {
+  if (
+    basename === "core.md" ||
+    basename === "project.json" ||
+    basename.startsWith("project.json.tmp-")
+  ) {
     return undefined;
   }
 

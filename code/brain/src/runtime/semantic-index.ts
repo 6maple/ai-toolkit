@@ -558,12 +558,14 @@ export class SemanticIndex {
   private configureDatabase(): void {
     this.db.exec("PRAGMA busy_timeout=5000");
     this.db.exec("PRAGMA journal_mode=WAL");
-    this.db.exec([
-      "CREATE TABLE IF NOT EXISTS meta (",
-      "  key TEXT PRIMARY KEY,",
-      "  value TEXT NOT NULL",
-      ");",
-    ].join("\n"));
+    this.db.exec(
+      [
+        "CREATE TABLE IF NOT EXISTS meta (",
+        "  key TEXT PRIMARY KEY,",
+        "  value TEXT NOT NULL",
+        ");",
+      ].join("\n"),
+    );
 
     const schema = this.db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as
       | { value?: unknown }
@@ -572,31 +574,32 @@ export class SemanticIndex {
       .prepare("SELECT value FROM meta WHERE key='embedding_fingerprint'")
       .get() as { value?: unknown } | undefined;
     const rebuild =
-      schema?.value !== INDEX_SCHEMA_VERSION ||
-      fingerprint?.value !== this.embeddings.fingerprint;
+      schema?.value !== INDEX_SCHEMA_VERSION || fingerprint?.value !== this.embeddings.fingerprint;
     if (rebuild) this.db.exec("DROP TABLE IF EXISTS cognitions");
 
-    this.db.exec([
-      "CREATE TABLE IF NOT EXISTS cognitions (",
-      "  cognition_key TEXT PRIMARY KEY,",
-      "  scope_kind TEXT NOT NULL,",
-      "  project_id TEXT,",
-      "  role TEXT NOT NULL,",
-      "  relative_path TEXT NOT NULL,",
-      "  description TEXT NOT NULL,",
-      "  summary TEXT NOT NULL,",
-      "  summary_hash TEXT NOT NULL,",
-      "  status TEXT,",
-      "  content_hash TEXT NOT NULL,",
-      "  content_mtime_ms REAL NOT NULL,",
-      "  content_size INTEGER NOT NULL,",
-      "  state_mtime_ms REAL NOT NULL,",
-      "  state_size INTEGER NOT NULL,",
-      "  embedding BLOB NOT NULL",
-      ");",
-      "CREATE INDEX IF NOT EXISTS cognitions_scope_idx",
-      "  ON cognitions(scope_kind, project_id);",
-    ].join("\n"));
+    this.db.exec(
+      [
+        "CREATE TABLE IF NOT EXISTS cognitions (",
+        "  cognition_key TEXT PRIMARY KEY,",
+        "  scope_kind TEXT NOT NULL,",
+        "  project_id TEXT,",
+        "  role TEXT NOT NULL,",
+        "  relative_path TEXT NOT NULL,",
+        "  description TEXT NOT NULL,",
+        "  summary TEXT NOT NULL,",
+        "  summary_hash TEXT NOT NULL,",
+        "  status TEXT,",
+        "  content_hash TEXT NOT NULL,",
+        "  content_mtime_ms REAL NOT NULL,",
+        "  content_size INTEGER NOT NULL,",
+        "  state_mtime_ms REAL NOT NULL,",
+        "  state_size INTEGER NOT NULL,",
+        "  embedding BLOB NOT NULL",
+        ");",
+        "CREATE INDEX IF NOT EXISTS cognitions_scope_idx",
+        "  ON cognitions(scope_kind, project_id);",
+      ].join("\n"),
+    );
 
     if (rebuild) {
       const upsert = this.db.prepare(
@@ -609,20 +612,14 @@ export class SemanticIndex {
 
   private startWatcher(): void {
     try {
-      this.watcher = watch(
-        this.brainRoot,
-        { recursive: true },
-        (_event, filename) => {
-          const change = classifySemanticWatchPath(
-            typeof filename === "string" ? filename : null,
-          );
-          if (change === undefined) return;
-          void this.pending
-            .record(change)
-            .then(() => this.schedulePendingFlush())
-            .catch((error) => this.degradeWatcher(error));
-        },
-      );
+      this.watcher = watch(this.brainRoot, { recursive: true }, (_event, filename) => {
+        const change = classifySemanticWatchPath(typeof filename === "string" ? filename : null);
+        if (change === undefined) return;
+        void this.pending
+          .record(change)
+          .then(() => this.schedulePendingFlush())
+          .catch((error) => this.degradeWatcher(error));
+      });
       this.watcher.on("error", (error) => this.degradeWatcher(error));
     } catch (error) {
       this.degradeWatcher(error);
@@ -779,9 +776,7 @@ export class SemanticIndex {
     try {
       if (parts[0] === "global" && parts[1] === "memories" && parts.length >= 4) {
         const parsed = parsePublicPath("@global/" + parts.slice(1).join("/"));
-        return parsed.kind === "archival"
-          ? { binding: this.seedBinding, item: parsed }
-          : undefined;
+        return parsed.kind === "archival" ? { binding: this.seedBinding, item: parsed } : undefined;
       }
 
       if (parts[0] !== "projects" || parts.length < 5) return undefined;
@@ -792,7 +787,6 @@ export class SemanticIndex {
         const parsed = parsePublicPath("@project/" + parts.slice(2).join("/"));
         return parsed.kind === "archival" ? { binding, item: parsed } : undefined;
       }
-
     } catch {
       return undefined;
     }
@@ -860,16 +854,15 @@ export class SemanticIndex {
         prefix = "@global";
         break;
       case "project": {
-        if (row.projectId === undefined) throw new Error("semantic project row is missing project id");
+        if (row.projectId === undefined)
+          throw new Error("semantic project row is missing project id");
         binding = await this.bindingForProject(parseProjectId(row.projectId));
         prefix = "@project";
         break;
       }
     }
 
-    const parsed = parsePublicPath(
-      prefix + "/memories/" + row.role + "/" + row.relativePath,
-    );
+    const parsed = parsePublicPath(prefix + "/memories/" + row.role + "/" + row.relativePath);
     if (parsed.kind !== "archival" || keyFor(binding, parsed) !== row.key) {
       throw new Error("semantic index catalog row has invalid path identity");
     }

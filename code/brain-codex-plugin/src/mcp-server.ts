@@ -73,6 +73,13 @@ async function resolveCodexInvocation(extra: unknown): Promise<BrainToolInvocati
   const binding = await readCodexInvocationBinding(threadId);
   return {
     services: await servicesFor(binding.sourceRoot),
+    ...(binding.turnId === undefined ? {} : {
+      stepHost: {
+        conversationId: binding.sessionId,
+        turnId: binding.turnId,
+        sourceRoot: binding.sourceRoot,
+      },
+    }),
   };
 }
 

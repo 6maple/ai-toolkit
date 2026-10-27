@@ -1,6 +1,6 @@
 # Brain Claude Code plugin
 
-Claude Code adapter for `../brain`. Brain owns cognition and tool behavior. This plugin restores Global and Project cognition before every user prompt and exposes Brain's remaining tools through MCP.
+Claude Code adapter for `../brain`. Brain owns cognition and tool behavior. This plugin provides the Brain processing entry before every user prompt and exposes Brain's remaining tools through MCP.
 
 ## Behavior
 
@@ -9,6 +9,8 @@ Claude Code adapter for `../brain`. Brain owns cognition and tool behavior. This
 - The MCP server hides `brain_think`. With Semantic Search disabled it exposes ten Brain tools; enabling Semantic Search in `~/.brain-data/config.json` adds `brain_ask_search` after restarting Claude Code.
 - Brain reads are automatically allowed. Brain mutations are automatically allowed in normal edit modes only after the current prompt's restoration completed with a Git history checkpoint. If the checkpoint degrades, Claude handles the permission request normally. Explicit read-only modes stay in control.
 - The permission hook records its state in `CLAUDE_PLUGIN_DATA` and checks the current session and transcript before allowing a mutation.
+
+Flow and memory requirements are loaded on demand from dedicated `@brain-virtual/` paths with `brain_cat`, returned in full. The deep flow points to the actual workflow file; the default is the full brain-ai workflow.
 
 ## Local development
 

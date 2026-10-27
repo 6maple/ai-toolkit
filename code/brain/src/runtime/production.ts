@@ -1,21 +1,12 @@
 import type { AnchorResult } from "../application/anchor-restore.ts";
 import type { BrainApplicationServices } from "../integration/mcp-adapter.ts";
 import { resolveOrCreateProject } from "../persistence/project-mapping.ts";
-import {
-  createBrainApplicationServices,
-  type BrainSemanticRuntime,
-} from "./application.ts";
+import { createBrainApplicationServices, type BrainSemanticRuntime } from "./application.ts";
 import { bootstrapBrainRuntimeInfrastructure } from "./bootstrap.ts";
 import type { BrainRuntimeFeatures } from "./features.ts";
-import {
-  DEFAULT_BRAIN_HOME,
-  loadBrainGlobalConfig,
-} from "./global-config.ts";
+import { DEFAULT_BRAIN_HOME, loadBrainGlobalConfig } from "./global-config.ts";
 import { SemanticIndex } from "./semantic-index.ts";
-import {
-  assertSemanticRuntimeReady,
-  PythonEmbeddingRuntime,
-} from "./semantic-runtime.ts";
+import { assertSemanticRuntimeReady, PythonEmbeddingRuntime } from "./semantic-runtime.ts";
 
 const semanticRuntimeByRoot = new Map<string, Promise<BrainSemanticRuntime | undefined>>();
 
@@ -27,6 +18,7 @@ function semanticDebug(event: string, detail: Record<string, unknown> = {}): voi
 
 export interface ProductionBrainRestoreRequest {
   readonly sourceRoot: string;
+  readonly brainRoot?: string;
 }
 
 export interface CreateBrainServicesOptions {
@@ -126,10 +118,12 @@ export async function createProductionBrainServices(
 export async function restoreProductionBrainContext(
   request: ProductionBrainRestoreRequest,
 ): Promise<AnchorResult> {
-  const services = await createProductionBrainServices(request.sourceRoot, {
-    initializeSemantic: false,
-  });
-  return services.routed === undefined
-    ? services.anchor.runAnchor({})
-    : services.routed.think();
+  const services = await createBrainServicesForRoot(
+    request.brainRoot ?? DEFAULT_BRAIN_HOME,
+    request.sourceRoot,
+    {
+      initializeSemantic: false,
+    },
+  );
+  return services.routed === undefined ? services.anchor.runAnchor({}) : services.routed.think();
 }

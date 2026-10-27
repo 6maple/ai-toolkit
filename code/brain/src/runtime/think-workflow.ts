@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import type { ThinkWorkflowProjection } from "../application/anchor-renderer.ts";
 import { readBrainGlobalConfig } from "./global-config.ts";
 
-export const DEFAULT_THINK_WORKFLOW = "@internal/think-workflow/default/index.md";
-const INTERNAL_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+export const DEFAULT_THINK_WORKFLOW = "@internal/think-workflow/brain-ai/index.md";
+const INTERNAL_ROOT = path.dirname(fileURLToPath(import.meta.resolve("brain/package.json")));
 
 function resolveWorkflowFile(entry: string, brainRoot: string, internalRoot: string): string {
   if (entry.startsWith("@internal/")) {
@@ -33,6 +33,7 @@ export async function loadThinkWorkflow(
     const target = resolveWorkflowFile(source, brainRoot, internalRoot);
     return {
       source: source.startsWith("@internal/") ? source : target,
+      absolutePath: target,
       text: await readFile(target, "utf8"),
     };
   };

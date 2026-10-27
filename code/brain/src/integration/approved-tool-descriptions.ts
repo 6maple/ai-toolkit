@@ -1,9 +1,9 @@
-// Approved tool wording from doc/brain/v7/16-model-facing-composition-review.md.
+// Canonical tool wording; layered reads: doc/brain/v7/17-layered-context.md.
 export const BRAIN_TOOL_DESCRIPTIONS: Record<string, string> = {
   brain_think:
-    "建立本轮 Brain 工作上下文，自动读取当前配置选定的think-workflow，返回实际取得的流程、Core、候选和诊断。仅在模型负责显式调用的模式暴露；每条新用户消息后、其他实质行动前调用。成功后不重复调用；失败时根据错误与副作用判断是否重试，并继续可完成的工作。",
+    "取得本轮处理入口，严格按入口选择并读取相应流程及记忆要求。仅在模型负责显式调用的模式暴露；每条新用户消息后、其他实质行动前调用。成功后不重复调用；失败时根据错误与副作用判断是否重试，并继续可完成的工作。",
   brain_cat:
-    "按准确路径读取一份 Scope Core 或 archival 记忆。结果按稳定的 1 起始逻辑行分页；返回 `next_offset` 时从该位置续读。archival 结果包含当前可用的争议状态。",
+    "按准确路径读取一份 Scope Core、archival 记忆或内置虚拟内容。`@brain-virtual/normal.md`、`deep.md`、`normal-memory.md`、`deep-memory.md` 每次按当前项目生成并完整返回，不分页。普通认知按 1 起始逻辑行分页；返回 `next_offset` 时从该位置续读，archival 结果包含当前可用的争议状态。",
   brain_ls:
     "已知记忆目录时列出直接子项。结果有限且不可分页；根据路径、描述和状态识别候选；默认按路径读取完整正文，只有明确无关时才跳过，拿不准时读取。被截断时缩小范围或改用其他发现工具。",
   brain_glob:
@@ -54,11 +54,11 @@ export const BRAIN_TOOL_FIELDS: Record<string, Record<string, string>> = {
       "（必填，非空）：用自然语言描述“当前对象和动作＋要找的过去决定、约束或经验”，按当前要找的对象聚焦查询，不机械复制用户消息；新线索改变搜索对象时可调整查询。内部只查活跃 archival 记忆的 frontmatter `summary`；正文不参加语义搜索。结果是有限的记忆级候选，每份最多出现一次，显示路径、说明何时读取的 `description`、概括正文当前认识的 `summary` 和可用的争议标记。排名与摘要都不证明当前适用；记忆缺少摘要或细节只在正文时可能漏掉，未出现也不证明不存在。候选默认按路径调用 `brain_cat` 读取完整正文和当前争议；只有明确无关时才跳过，拿不准时读取。已知具体词句用 `brain_grep`，已知路径模式用 `brain_glob`。\n\n  例如，用户说“帮我规划个人网站”，本轮缺少可能影响方案的既有个人目标时，可查询“个人网站规划：过去确定的展示目标、目标受众与表达偏好”。查询只是寻找候选；命中后按路径读取正文，未命中时继续使用本轮已有资料，不据此断言过去没有相关决定。",
   },
   brain_cat: {
-    path: "（必填）：准确的一份 cognition Markdown。可填 `<scope-root>/core.md` 或 `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`。不能填裸 scope、目录或非 `.md` 路径；相关项目的 `#alias` 要写实际值。",
+    path: "（必填）：内置虚拟路径 `@brain-virtual/normal.md`、`@brain-virtual/deep.md`、`@brain-virtual/normal-memory.md`、`@brain-virtual/deep-memory.md`，或准确的一份 cognition Markdown。可填 `<scope-root>/core.md` 或 `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`。不能填裸 scope、目录或非 `.md` 路径；相关项目的 `#alias` 要写实际值。",
     offset:
-      "（可选，正整数）：从第几条逻辑行开始，首行为 `1`；省略时从第 1 行开始。续读时准确传入前次结果的 `next_offset`。超出末尾时返回空行且无后续位置。",
+      "（可选，正整数）：仅用于普通认知，内置虚拟内容忽略此参数并完整返回。从第几条逻辑行开始，首行为 `1`；省略时从第 1 行开始。续读时准确传入前次结果的 `next_offset`。超出末尾时返回空行且无后续位置。",
     limit:
-      "（可选，正整数）：本次最多请求多少条逻辑行；省略时用默认值。传输预算可能使实际返回少于请求值，以 `next_offset` 判断是否续读。能容纳的一行会完整返回；单行过大时仅返回标为不完整的片段，`next_offset` 会走到后续行，不能据此认为该行已经读全。若该行影响判断，按结果给出的恢复位置用 `brain_absolute_path` 和宿主文件工具取得原文。archival 读取同时呈现可用的当前状态和争议。",
+      "（可选，正整数）：仅用于普通认知，内置虚拟内容忽略此参数并完整返回。本次最多请求多少条逻辑行；省略时用默认值。传输预算可能使实际返回少于请求值，以 `next_offset` 判断是否续读。能容纳的一行会完整返回；单行过大时仅返回标为不完整的片段，`next_offset` 会走到后续行，不能据此认为该行已经读全。若该行影响判断，按结果给出的恢复位置用 `brain_absolute_path` 和宿主文件工具取得原文。archival 读取同时呈现可用的当前状态和争议。",
   },
   brain_write: {
     path: "（必填）：要创建或有意替换的准确 archival 路径，形式为 `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`。scope 决定连续使用范围，角色目录记录认知角色。不能填 Core、裸 scope、目录或非 `.md` 路径。已有内容被替换时不继承原记忆的争议和学习连续性；修订同一认知用 `brain_edit`。",

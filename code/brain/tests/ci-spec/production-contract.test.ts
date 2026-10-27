@@ -26,6 +26,7 @@ const EXPECTED_TOOLS = [
   "brain_ls",
   "brain_mv",
   "brain_rm",
+  "brain_step",
   "brain_think",
   "brain_write",
 ] as const;
@@ -41,6 +42,7 @@ function fakeServices(projectId = "project-1") {
       platform: "posix",
     },
     anchor: {
+      readVirtual: vi.fn(async () => ({ context: "virtual-result", diagnostics: [] })),
       runAnchor: vi.fn(async (request) => {
         calls.push({ name: "think", args: request });
         return { context: "<brain_think_context />\n", diagnostics: [] };
@@ -142,13 +144,15 @@ describe("generic MCP public contract", () => {
     const registered = captureRegistration(services);
     expect([...registered.keys()].sort()).toEqual([...EXPECTED_TOOLS]);
     expect(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort()).toEqual(EXPECTED_SEMANTIC_TOOLS);
-    expect(new Set(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name)).size).toBe(12);
+    expect(new Set(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name)).size).toBe(13);
     for (const tool of PUBLIC_BRAIN_TOOLS) {
       expect(tool.description.length).toBeGreaterThan(0);
       if (tool.name === "brain_ask_search") continue;
       expect(registered.get(tool.name)?.config.inputSchema).toBe(tool.inputSchema);
-      expect(tool).not.toHaveProperty("outputSchema");
-      expect(registered.get(tool.name)?.config).not.toHaveProperty("outputSchema");
+      if (tool.name !== "brain_step") {
+        expect(tool).not.toHaveProperty("outputSchema");
+        expect(registered.get(tool.name)?.config).not.toHaveProperty("outputSchema");
+      }
       expect(registered.get(tool.name)?.config.annotations).toBe(tool.annotations);
     }
   });
@@ -207,9 +211,12 @@ describe("generic MCP public contract", () => {
       const listedCat = listed.tools.find((tool) => tool.name === "brain_cat")!;
       expect(listedCat.description?.length).toBeGreaterThan(0);
       expect(listedCat.inputSchema).toMatchObject({
-        properties: { path: { type: "string", pattern: expect.any(String) } },
+        properties: { path: { anyOf: expect.any(Array) } },
       });
-      for (const tool of listed.tools) expect(tool.outputSchema).toBeUndefined();
+      for (const tool of listed.tools) {
+        if (tool.name === "brain_step") expect(tool.outputSchema).toBeDefined();
+        else expect(tool.outputSchema).toBeUndefined();
+      }
       const called = await client.callTool({
         name: "brain_write",
         arguments: {
@@ -401,10 +408,10 @@ describe("generic MCP public contract", () => {
 
   test("every public argument has model-facing schema guidance without locking copy", () => {
     for (const tool of PUBLIC_BRAIN_TOOLS) {
-      const shape = (
-        tool.inputSchema as unknown as { shape: Record<string, { description?: string }> }
-      ).shape;
-      for (const schema of Object.values(shape)) {
+      const jsonSchema = tool.inputSchema.toJSONSchema() as {
+        properties: Record<string, { description?: string }>;
+      };
+      for (const schema of Object.values(jsonSchema.properties)) {
         expect(schema.description?.length).toBeGreaterThan(0);
       }
     }

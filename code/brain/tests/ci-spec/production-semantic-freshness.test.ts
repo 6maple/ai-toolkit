@@ -102,9 +102,13 @@ describe("Brain semantic freshness", () => {
         kind: "path",
         relativePath: "projects/" + setup.projectId + "/memories/knowledge/fresh.md",
       });
-      await expect(setup.index.ensureFresh()).rejects.toThrow("embedding intentionally unavailable");
+      await expect(setup.index.ensureFresh()).rejects.toThrow(
+        "embedding intentionally unavailable",
+      );
       await setup.index.ensureFresh();
-      expect(setup.index.listEligible({ currentProjectId: setup.projectId })[0]?.summary).toBe("new summary");
+      expect(setup.index.listEligible({ currentProjectId: setup.projectId })[0]?.summary).toBe(
+        "new summary",
+      );
     } finally {
       setup.index.close();
       await fs.rm(setup.temp, { recursive: true, force: true });
@@ -114,7 +118,11 @@ describe("Brain semantic freshness", () => {
   test("keeps old memories without summary out of semantic results", async () => {
     const setup = await setupIndexedMemory();
     try {
-      await fs.writeFile(setup.physical, "---\ndescription: still readable\nimportance: high\n---\nbody\n", "utf8");
+      await fs.writeFile(
+        setup.physical,
+        "---\ndescription: still readable\nimportance: high\n---\nbody\n",
+        "utf8",
+      );
       await setup.index.refreshPath(setup.infrastructure.binding, setup.item);
       expect(setup.index.listEligible({ currentProjectId: setup.projectId })).toHaveLength(0);
       expect(await fs.readFile(setup.physical, "utf8")).toContain("still readable");

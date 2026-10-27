@@ -4,10 +4,7 @@ import type {
   FeedbackKind,
   MaintenanceResult,
 } from "./cognition-maintenance.ts";
-import type {
-  LogicalArchivalPath,
-  LogicalBrainPath,
-} from "../brain/namespace.ts";
+import type { LogicalArchivalPath, LogicalBrainPath } from "../brain/namespace.ts";
 import type { StorageBinding } from "../persistence/storage.ts";
 import type { SemanticIndex } from "../runtime/semantic-index.ts";
 

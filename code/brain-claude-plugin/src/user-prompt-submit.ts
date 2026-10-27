@@ -1,4 +1,5 @@
 import { restoreProductionBrainContext } from "../../brain/src/index.ts";
+import { randomUUID } from "node:crypto";
 import { brainRestoreFailureDiagnostic } from "../../brain/src/integration/server-instructions.ts";
 import { writeClaudeInvocationState } from "./invocation-state.ts";
 
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
   }
   const state = {
     sessionId: input.session_id,
+    turnId: randomUUID(),
     sourceRoot,
     transcriptPath: input.transcript_path,
   };

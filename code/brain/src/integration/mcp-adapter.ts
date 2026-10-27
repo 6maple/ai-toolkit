@@ -1,5 +1,7 @@
+import { isBrainVirtualPath } from "../application/think-context.ts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { createFileRuntime, type BrainStepHost } from "brain/step";
 
 import type { AnchorRestore } from "../application/anchor-restore.ts";
 import type {
@@ -15,8 +17,9 @@ import type { BrainRuntimeFeatures } from "../runtime/features.ts";
 import { selectPublicBrainTools, type BrainToolName } from "./public-tools.ts";
 
 export interface BrainApplicationServices {
+  readonly sourceRoot?: string;
   readonly binding: StorageBinding;
-  readonly anchor: Pick<AnchorRestore, "runAnchor">;
+  readonly anchor: Pick<AnchorRestore, "runAnchor" | "readVirtual">;
   readonly reads: Pick<ReadDiscovery, "ls" | "glob" | "grep" | "cat">;
   readonly maintenance: Pick<
     CognitionMaintenance,
@@ -33,6 +36,7 @@ export interface BrainApplicationServices {
 
 export interface BrainToolInvocation {
   readonly services: BrainApplicationServices;
+  readonly stepHost?: BrainStepHost;
 }
 
 export type BrainToolInvocationResolver = (
@@ -103,7 +107,7 @@ const OBJECT_PATH_GUIDANCE: Partial<Record<BrainToolName, string>> = {
   brain_grep:
     "When path is provided, brain_grep accepts only a memories directory under a built-in root or configured #alias. Omit path to search global memories and all workspace project memories (current + available related projects). This tool searches archival memories, not a Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`.",
   brain_cat:
-    "brain_cat accepts one concrete Scope Core path matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, or one archival cognition .md document; bare roots and directories are invalid.",
+    "brain_cat accepts one concrete Scope Core path matching `@global/core.md`, `@project/core.md`, or `#*/core.md`, or one archival cognition .md document, or a built-in @brain-virtual/{normal,deep,normal-memory,deep-memory}.md view; bare roots and directories are invalid.",
   brain_write:
     "brain_write accepts only a concrete archival .md path under a memories role, including configured #alias paths. It cannot write a Scope Core matching `@global/core.md`, `@project/core.md`, or `#*/core.md`; maintain an existing Scope Core with brain_edit.",
   brain_edit:
@@ -326,6 +330,27 @@ function handlerFor(
       const signal = invocationSignal(extra);
       const routed = invocationServices.routed;
       switch (name) {
+        case "brain_step": {
+          const metadata =
+            typeof extra === "object" &&
+            extra !== null &&
+            "_meta" in extra &&
+            typeof extra._meta === "object" &&
+            extra._meta !== null
+              ? (extra._meta as Record<string, unknown>)
+              : {};
+          const host = invocation.stepHost ?? {
+            conversationId: typeof metadata.threadId === "string" ? metadata.threadId : "",
+            turnId: typeof metadata.turnId === "string" ? metadata.turnId : "",
+            sourceRoot: invocationServices.sourceRoot ?? "",
+          };
+          const runtime = await createFileRuntime({ resolveHost: () => host })(extra);
+          const output = await runtime.execute(rawArgs);
+          return {
+            structuredContent: { ...output },
+            content: [{ type: "text", text: JSON.stringify(output) }],
+          };
+        }
         case "brain_think": {
           const result =
             routed === undefined
@@ -415,6 +440,18 @@ function handlerFor(
           return textResult(result.text);
         }
         case "brain_cat": {
+          const path = String(args.path);
+          if (isBrainVirtualPath(path)) {
+            signal?.throwIfAborted();
+            const view =
+              routed === undefined
+                ? await invocationServices.anchor.readVirtual(path)
+                : await routed.readVirtual(path);
+            return textResult(
+              view.context,
+              view.diagnostics.map((diagnostic) => diagnostic.message),
+            );
+          }
           const result =
             routed === undefined
               ? await invocationServices.reads.cat({
@@ -500,6 +537,20 @@ function handlerFor(
         }
       }
     } catch (error) {
+      if (name === "brain_step") {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text:
+                error instanceof Error
+                  ? error.message
+                  : "操作未正常完成；保存影响尚未确认，需按实际失败范围继续。",
+            },
+          ],
+        };
+      }
       return errorResult(name, error);
     }
   };
@@ -519,6 +570,7 @@ export function registerBrainTools(
         title: definition.name,
         description: definition.description,
         inputSchema: definition.inputSchema,
+        ...(definition.outputSchema === undefined ? {} : { outputSchema: definition.outputSchema }),
         annotations: definition.annotations,
       },
       handlerFor(definition.name, services, options.resolveInvocation),

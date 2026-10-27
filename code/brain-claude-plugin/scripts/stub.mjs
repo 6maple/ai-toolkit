@@ -79,6 +79,7 @@ await writeJson(resolve(pluginRoot, "hooks/hooks.json"), {
   description: pluginConfig.hook.description,
   hooks: {
     UserPromptSubmit: [{ hooks: [commandHook(pluginConfig.entries.hook.name, pluginConfig.hook.timeout)] }],
+    SessionEnd: [{ hooks: [commandHook(pluginConfig.entries.sessionEnd.name, pluginConfig.hook.timeout)] }],
     PermissionRequest: [{
       matcher: pluginConfig.permissionHook.matcher,
       hooks: [commandHook(pluginConfig.entries.permissionHook.name, pluginConfig.permissionHook.timeout)],

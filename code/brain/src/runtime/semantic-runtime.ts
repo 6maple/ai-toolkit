@@ -4,8 +4,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 export const SEMANTIC_FASTEMBED_VERSION = "0.8.0";
-export const SEMANTIC_MODEL =
-  "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2";
+export const SEMANTIC_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2";
 export const SEMANTIC_DIMENSION = 384;
 export const SEMANTIC_RUNTIME_SCHEMA_VERSION = 1;
 
@@ -134,10 +133,7 @@ export class PythonEmbeddingRuntime implements EmbeddingPort {
 
   constructor(private readonly brainRoot: string) {}
 
-  async embed(
-    texts: readonly string[],
-    signal?: AbortSignal,
-  ): Promise<readonly Float32Array[]> {
+  async embed(texts: readonly string[], signal?: AbortSignal): Promise<readonly Float32Array[]> {
     if (texts.length === 0) return [];
     const startedAt = Date.now();
     semanticDebug("embedding.embed.start", { count: texts.length });
@@ -181,9 +177,12 @@ export class PythonEmbeddingRuntime implements EmbeddingPort {
       this.pending.set(id, pending);
       child.stdin.write(`${JSON.stringify({ id, texts })}\n`, (error) => {
         if (error === null || error === undefined) return;
-        this.rejectPending(id, new SemanticSearchUnavailableError("embedding worker write failed", {
-          cause: error,
-        }));
+        this.rejectPending(
+          id,
+          new SemanticSearchUnavailableError("embedding worker write failed", {
+            cause: error,
+          }),
+        );
       });
     });
   }
@@ -238,16 +237,23 @@ export class PythonEmbeddingRuntime implements EmbeddingPort {
         try {
           message = JSON.parse(line) as unknown;
         } catch {
-          this.failWorker(new SemanticSearchUnavailableError("embedding worker emitted invalid JSON"));
+          this.failWorker(
+            new SemanticSearchUnavailableError("embedding worker emitted invalid JSON"),
+          );
           return;
         }
         if (typeof message !== "object" || message === null || Array.isArray(message)) {
-          this.failWorker(new SemanticSearchUnavailableError("embedding worker emitted invalid message"));
+          this.failWorker(
+            new SemanticSearchUnavailableError("embedding worker emitted invalid message"),
+          );
           return;
         }
         const record = message as Record<string, unknown>;
         if (record.type === "ready") {
-          if (record.dimension !== SEMANTIC_DIMENSION || record.fingerprint !== SEMANTIC_FINGERPRINT) {
+          if (
+            record.dimension !== SEMANTIC_DIMENSION ||
+            record.fingerprint !== SEMANTIC_FINGERPRINT
+          ) {
             const error = new SemanticSearchUnavailableError(
               "embedding worker identity does not match this Brain build",
             );

@@ -16,8 +16,8 @@ async function fixture() {
   const brainRoot = path.join(root, "data");
   const internalRoot = path.join(root, "package");
   await fs.mkdir(brainRoot);
-  await fs.mkdir(path.join(internalRoot, "think-workflow/default"), { recursive: true });
-  await fs.writeFile(path.join(internalRoot, "think-workflow/default/index.md"), "DEFAULT FLOW\n");
+  await fs.mkdir(path.join(internalRoot, "think-workflow/brain-ai"), { recursive: true });
+  await fs.writeFile(path.join(internalRoot, "think-workflow/brain-ai/index.md"), "DEFAULT FLOW\n");
   const warnings: string[] = [];
   return {
     root,
@@ -37,15 +37,19 @@ afterEach(async () => {
 describe("think-workflow runtime", () => {
   it("resolves default, internal, config-relative and absolute files; empty is a successful read", async () => {
     const f = await fixture();
-    expect(await f.load()).toEqual({ source: DEFAULT_THINK_WORKFLOW, text: "DEFAULT FLOW\n" });
-    await fs.mkdir(path.join(f.internalRoot, "think-workflow/brain-ai"));
-    await fs.writeFile(path.join(f.internalRoot, "think-workflow/brain-ai/index.md"), "INTERNAL");
-    await f.config({ thinkWorkflowFile: "@internal/think-workflow/brain-ai/index.md" });
+    expect(await f.load()).toEqual({
+      source: DEFAULT_THINK_WORKFLOW,
+      absolutePath: path.join(f.internalRoot, "think-workflow/brain-ai/index.md"),
+      text: "DEFAULT FLOW\n",
+    });
+    await fs.mkdir(path.join(f.internalRoot, "think-workflow/custom"));
+    await fs.writeFile(path.join(f.internalRoot, "think-workflow/custom/index.md"), "INTERNAL");
+    await f.config({ thinkWorkflowFile: "@internal/think-workflow/custom/index.md" });
     expect((await f.load())?.text).toBe("INTERNAL");
     const external = path.join(f.brainRoot, "mine.md");
     await fs.writeFile(external, "RELATIVE");
     await f.config({ thinkWorkflowFile: "./mine.md", semanticSearch: { enabled: false } });
-    expect(await f.load()).toEqual({ source: external, text: "RELATIVE" });
+    expect(await f.load()).toEqual({ source: external, absolutePath: external, text: "RELATIVE" });
     await f.config({ thinkWorkflowFile: external, semanticSearch: "invalid but independent" });
     expect((await f.load())?.text).toBe("RELATIVE");
     await fs.writeFile(external, "");
@@ -65,7 +69,11 @@ describe("think-workflow runtime", () => {
       [],
     ]) {
       await f.config(value);
-      expect(await f.load()).toEqual({ source: DEFAULT_THINK_WORKFLOW, text: "DEFAULT FLOW\n" });
+      expect(await f.load()).toEqual({
+        source: DEFAULT_THINK_WORKFLOW,
+        absolutePath: path.join(f.internalRoot, "think-workflow/brain-ai/index.md"),
+        text: "DEFAULT FLOW\n",
+      });
     }
     await fs.writeFile(path.join(f.brainRoot, "config.json"), "{ invalid");
     expect((await f.load())?.text).toBe("DEFAULT FLOW\n");
@@ -76,7 +84,7 @@ describe("think-workflow runtime", () => {
     expect(
       f.warnings.every((message) => message.includes("warning") && message.includes("fallback=")),
     ).toBe(true);
-    await fs.unlink(path.join(f.internalRoot, "think-workflow/default/index.md"));
+    await fs.unlink(path.join(f.internalRoot, "think-workflow/brain-ai/index.md"));
     expect(await f.load()).toBeUndefined();
   });
 
@@ -96,25 +104,37 @@ describe("think-workflow runtime", () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     try {
       await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-      const text = async () => {
-        const result = await client.callTool({ name: "brain_think", arguments: {} });
+      const deep = async () => {
+        const result = await client.callTool({
+          name: "brain_cat",
+          arguments: { path: "@brain-virtual/deep.md" },
+        });
         expect(result.isError).not.toBe(true);
-        return JSON.stringify(result.content);
+        return (result.content as Array<{ type: string; text: string }>)
+          .map((block) => block.text)
+          .join("\n");
       };
-      expect(await text()).toContain("complete tail A");
+      const initial = await client.callTool({ name: "brain_think", arguments: {} });
+      expect(JSON.stringify(initial.content)).toContain("# 处理流程");
+      expect(JSON.stringify(initial.content)).not.toContain("FLOW A");
+      expect(await deep()).toContain(path.join(f.brainRoot, "a.md"));
       await f.config({ thinkWorkflowFile: "b.md" });
-      expect(await text()).toContain("complete tail B");
+      expect(await deep()).toContain(path.join(f.brainRoot, "b.md"));
       await fs.writeFile(path.join(f.brainRoot, "b.md"), "UPDATED B");
-      expect(await text()).toContain("UPDATED B");
+      const deepText = await deep();
+      const workflowPath = deepText.match(/`([^`]+)`/)![1];
+      expect(path.isAbsolute(workflowPath!)).toBe(true);
+      expect(await fs.readFile(workflowPath!, "utf8")).toBe("UPDATED B");
       const restored =
         services.routed === undefined
           ? await services.anchor.runAnchor({})
           : await services.routed.think();
-      expect(restored.context).toContain("UPDATED B");
-      expect(restored.context).toContain("## 本轮记忆上下文");
+      expect(restored.context).toContain("# 处理流程");
+      expect(restored.context).not.toContain("UPDATED B");
+      expect(restored.context).not.toContain("## 本轮记忆上下文");
       await f.config({ thinkWorkflowFile: "missing.md" });
-      const fallback = await text();
-      expect(fallback).toContain("# 思考流程");
+      const fallback = await deep();
+      expect(fallback).toContain(path.join("think-workflow", "brain-ai", "index.md"));
       expect(fallback).not.toContain("ENOENT");
     } finally {
       await client.close();

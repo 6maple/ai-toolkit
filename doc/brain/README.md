@@ -19,6 +19,8 @@ archive/
 
 ## 版本状态
 
+[三阶段深度思考流程](three-phase-workflow.md)：已验证模块的定稿位置、职责、模型入口、确定性检查和正式宿主接入边界。
+
 | 目录 | 状态 | 用途 |
 |---|---|---|
 | [base/](base/) | **Stable cross-version anchors** | Brain 为什么存在、用户真正要什么、长期设计思想和认识论纪律。Base 不拥有当前版本 Architecture。 |
@@ -40,6 +42,7 @@ base/README.md
 → base/01-origin-and-goal.md
 → base/02-design-philosophy.md
 → base/03-epistemic-discipline.md
+→ base/04-fact-intent-expression-model.md
 ~~~
 
 然后进入当前 v7：

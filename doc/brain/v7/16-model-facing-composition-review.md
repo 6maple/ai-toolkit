@@ -1,5 +1,7 @@
 # 16 · 完整模型可见文字实施审核稿
 
+2026-10-15 分层更新：当前入口、A/B 及完整记忆视图规则见[分层上下文](17-layered-context.md)。下方旧的全量自动返回样例保留为历史基线，不再表示当前恢复返回。
+
 2026-10-14实施更新：思考流程在记忆外，由think/钩子自动提供；记忆读取指导和专业Skill仍在Brain。当前配置及路径说明见[Brain README](../../../code/brain/README.md)，完整流程见[brain-ai index](../../../code/brain/think-workflow/brain-ai/index.md)。下文当前记忆包正文和返回样例已同步；较早设计经过保留其日期语境。
 
 2026-10-04，仓库默认包与本文六篇全文已完成表达修订，供 Git 审核：删去冗词和重复解释，保留动作、条件、关系、状态与边界。实际 Global 尚沿用此前版本。详见[改写与审查记录](research/21-brain-ai-expression-edit-review.md)。

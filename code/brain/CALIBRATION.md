@@ -21,13 +21,13 @@ Acceptance tests 不锁 calibration 数字；Invariant/Mechanism tests 可以读
 
 ### `src/memory/store.ts`
 
-| 参数                     |  当时值 | 作用                                             |
-| ------------------------ | ------: | ------------------------------------------------ |
-| `STABILITY_GOOD`         |   `2.2` | successful-use review 的 stability 增益。        |
-| `STABILITY_AGAIN`        |   `0.4` | failed/corrected-use 的 stability 调整。         |
-| `STABILITY_HARD`         |   `1.2` | read/exposure review 的较弱 stability 调整。     |
-| `DIFFICULTY_GOOD_DELTA`  | `-0.05` | successful-use 对 difficulty 的调整。            |
-| `DIFFICULTY_AGAIN_DELTA` |  `0.15` | failed/corrected-use 对 difficulty 的调整。      |
+| 参数                     |  当时值 | 作用                                         |
+| ------------------------ | ------: | -------------------------------------------- |
+| `STABILITY_GOOD`         |   `2.2` | successful-use review 的 stability 增益。    |
+| `STABILITY_AGAIN`        |   `0.4` | failed/corrected-use 的 stability 调整。     |
+| `STABILITY_HARD`         |   `1.2` | read/exposure review 的较弱 stability 调整。 |
+| `DIFFICULTY_GOOD_DELTA`  | `-0.05` | successful-use 对 difficulty 的调整。        |
+| `DIFFICULTY_AGAIN_DELTA` |  `0.15` | failed/corrected-use 对 difficulty 的调整。  |
 
 ### `src/memory/core.ts`
 

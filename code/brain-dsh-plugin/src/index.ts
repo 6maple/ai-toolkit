@@ -22,7 +22,7 @@ import {
   type BrainToolDefinition,
 } from 'brain/public-tools'
 import { BRAIN_MCP_RESTORE_MODE_ENV, loadBrainGlobalConfig } from 'brain/shared'
-import { setupAutoThink } from './autothink.js'
+import { lastUserMessageSeq, setupAutoThink } from './autothink.js'
 import { InstanceManager } from './instances.js'
 import { extractText } from './mcp.js'
 import { setupOpenCodeSessionHeader } from './opencode-session.js'
@@ -191,7 +191,11 @@ export function apply(ctx: Context, config: Config): void {
           async execute(args: unknown, exec: ToolRunContext) {
             const sourceRoot = resolveSourceRoot(exec.agent)
             const callArgs = buildCallArgs(args)
-            const result = await manager.call(sourceRoot, definition.name, callArgs, exec.signal)
+            const userSeq = definition.name === 'brain_step' && exec.agent ? lastUserMessageSeq(exec.agent) : 0
+            const meta = definition.name === 'brain_step' && exec.agent
+              ? { threadId: exec.agent.id, turnId: userSeq > 0 ? String(userSeq) : '' }
+              : undefined
+            const result = await manager.call(sourceRoot, definition.name, callArgs, exec.signal, meta)
             if (result.isError === true) throw new Error(extractText(result.content, definition.name))
             return { content: result.content }
           },

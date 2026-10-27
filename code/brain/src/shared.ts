@@ -17,6 +17,7 @@ export {
 } from "./integration/mcp-adapter.ts";
 export {
   createProductionBrainServices,
+  createBrainServicesForRoot,
   restoreProductionBrainContext,
   type ProductionBrainRestoreRequest,
 } from "./runtime/production.ts";
@@ -26,10 +27,7 @@ export {
   type BrainGlobalConfigDiagnostic,
   type BrainGlobalConfigLoadResult,
 } from "./runtime/global-config.ts";
-export {
-  DEFAULT_BRAIN_RUNTIME_FEATURES,
-  type BrainRuntimeFeatures,
-} from "./runtime/features.ts";
+export { DEFAULT_BRAIN_RUNTIME_FEATURES, type BrainRuntimeFeatures } from "./runtime/features.ts";
 export {
   BRAIN_EXPLICIT_RESTORE_INSTRUCTIONS,
   BRAIN_MCP_RESTORE_MODE_ENV,

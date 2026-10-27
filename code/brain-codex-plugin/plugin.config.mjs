@@ -36,7 +36,7 @@ export const pluginConfig = {
     omitToolsFrom: ["deferred"],
   },
   permissionHook: {
-    matcher: "^mcp__brain__brain_(absolute_path|ls|glob|grep|ask_search|cat|write|edit|rm|mv|feedback)$",
+    matcher: "^mcp__brain__brain_(absolute_path|ls|glob|grep|ask_search|cat|write|edit|rm|mv|feedback|step)$",
     timeout: 10,
     statusMessage: "Checking Brain permission",
   },

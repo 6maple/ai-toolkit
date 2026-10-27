@@ -49,8 +49,7 @@ function updatedGitignore(current: string): string {
   if (missing.length === 0) return current;
   const header = "# Brain machine-local config and derived runtime state";
   const additions = [...(lines.includes(header) ? [] : [header]), ...missing];
-  const prefix =
-    current.length === 0 ? "" : current.endsWith("\n") ? current : current + newline;
+  const prefix = current.length === 0 ? "" : current.endsWith("\n") ? current : current + newline;
   return prefix + additions.join(newline) + newline;
 }
 

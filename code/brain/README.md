@@ -42,9 +42,18 @@
 
 ## brain_think
 
-工具和Host自动restore都返回当前选定的think-workflow全文。流程在记忆外，专业技能及记忆读取方法仍由Brain记忆保存。
+工具和 Host 自动恢复都只返回宏观处理入口。模型按入口选择 A/B，再通过 brain_cat 取得对应专用内容：
 
-在Brain数据根的`config.json`选择流程：
+| 路径                              | 内容                                        |
+| --------------------------------- | ------------------------------------------- |
+| `@brain-virtual/normal.md`        | A：常规流程                                 |
+| `@brain-virtual/deep.md`          | B：深度思考流程，包含实际 workflow 绝对路径 |
+| `@brain-virtual/normal-memory.md` | A 专用记忆读取与维护要求及当前记忆上下文    |
+| `@brain-virtual/deep-memory.md`   | B 专用记忆读取与维护要求及当前记忆上下文    |
+
+内置视图每次按当前项目重新计算并完整返回；offset/limit 对它们不生效，不分页、不保存恢复快照。普通认知仍按原 brain_cat 分页契约读取；这些虚拟路径不参与记忆搜索或维护。
+
+思考方法在记忆外，记忆读取方法及专业技能仍由 Brain 记忆保存。在 Brain 数据根的 config.json 中通过 thinkWorkflowFile 选择方法：
 
 ```json
 {
@@ -52,26 +61,29 @@
 }
 ```
 
-未配置使用`@internal/think-workflow/default/index.md`的轻流程。开发stub中的`@internal/`相对于Brain源码包根；普通相对路径相对于配置目录，绝对路径直接使用。配置和正文每次建立上下文重新读取，无需为此重启服务。读取异常转读内置default，日志记warning，返回实际生效的来源及正文。
+未配置时使用完整的内置 brain-ai。读取 B 时重新加载配置并取得实际绝对路径，模型再用文件工具读取该文件；无需为配置或正文更新重启。@internal/ 相对 Brain 包根，普通相对路径相对 Brain 数据根。沿用原配置回退与空文件读取行为。
 
-收到每条新的用户消息后，显式 restore 模式应立即调用一次 `brain_think({})`，再继续解释、规划、回答或调用其他工具。
+显式恢复模式每条新用户消息先调用一次 brain_think 并严格执行入口。Host hook 自动恢复时注入相同入口，隐藏或避免重复调用 brain_think。当前 source root 决定 ProjectId；记忆视图按该次调用解析相关项目。初始恢复推进周期并建立历史检查点，记忆视图返回时记录实际展示的候选曝光。
 
-Host hook 已自动 restore 时，由宿主注入返回的 cognition context，并隐藏或避免再次要求模型调用 `brain_think`。
+完整文字及空记忆示例见[分层上下文](../../doc/brain/v7/17-layered-context.md)。
 
-`brain_think` 没有模型可见参数。当前 source root 决定 ProjectId；relatedProjects 仍按 active source root 的配置解析。
+## 三阶段 brain_step 模块
 
-返回的 resident cognition 包括 Global Core、Project Core、bounded archival descriptions，以及 applicable related-project routing。不存在 Session Core。
+已定稿的三阶段控制器从 `brain/step` 导出，包含工具注册、宿主上下文绑定接口及文件 State runtime，使用说明见 [step/README.md](step/README.md)，设计和验证边界见[三阶段流程](../../doc/brain/three-phase-workflow.md)。
+
+`brain_step` 已通过默认 `registerBrainTools` 与其它工具一起注册；默认 `think-workflow/brain-ai/index.md` 使用三阶段入口。Codex、Claude 和 DSH 从各自可信宿主上下文绑定会话和轮次，不增加模型业务身份参数。缺少有效宿主身份时，本工具明确失败，不串用其它会话状态。
 
 ## Public tools
 
 主要模型可见工具：
 
-- `brain_think` — restore 当前 Global / Project working cognition；
+- `brain_think` — 取得当前处理入口；
+- `brain_step` — 读取并推进当前会话本轮的三阶段深度思考流程；
 - `brain_absolute_path` — 把 Brain workspace 地址映射为 filesystem path；
 - `brain_ls` — 浏览一个 archival cognition directory；
 - `brain_glob` — 按 public path glob 查找 archival cognition；
 - `brain_grep` — 按 Markdown content 查找 archival cognition；
-- `brain_cat` — 读取一个 Scope Core 或 archival cognition；
+- `brain_cat` — 读取一个 Scope Core、archival cognition 或内置虚拟视图；
 - `brain_write` — 创建新的 archival cognition，或有意用另一份 cognition 替换目标；
 - `brain_edit` — 更新同一份 Scope Core / archival cognition；
 - `brain_rm` — 删除一个 archival cognition；
@@ -81,7 +93,7 @@ Host hook 已自动 restore 时，由宿主注入返回的 cognition context，�
 
 具体 model-visible schema / guidance 以 `src/integration/public-tools.ts` 为准。
 
-Brain 工具通过 MCP `content` 返回渲染后的文本，正文只传输一份，不提供 `structuredContent` 或 `outputSchema`。警告保留为独立文本块，分页信息保留在正文中，失败继续使用 `isError: true`。宿主应读取全部 `content` 文本块；工具分页和宿主自身的输出截断需要分别处理。
+既有 cognition 工具通过 MCP `content` 返回渲染后的文本，不提供 `structuredContent` 或 `outputSchema`。`brain_step` 沿用受测的结构化结果契约，并在文本块中返回同一对象的JSON。警告保留为独立文本块，分页信息保留在正文中，失败继续使用 `isError: true`。宿主应读取全部 `content` 文本块；工具分页和宿主自身的输出截断需要分别处理。
 
 ## Archival cognition
 
@@ -239,6 +251,6 @@ pnpm run build
 pnpm run stub
 ```
 
-`stub` 与 production 都使用 `dist/index.mjs` 入口。源码更新后，已经运行的 MCP / host process需要重启以加载新runtime；think-workflow配置与正文更新下一次建立上下文即生效。当前workflow资源交付只验证开发stub，发布构建另行处理。
+`stub` 与 production 都使用 `dist/index.mjs` 入口。源码更新后，已经运行的 MCP / host process需要重启以加载新runtime；think-workflow配置更新下一次读取 B 时生效，正文通过实际文件读取。发布包包含 workflow 资源。
 
 不同 host 的接线见 [MCP_HOSTS.md](MCP_HOSTS.md)。DSH AutoThink 由独立 `brain-dsh-plugin` 提供；Codex 的 thread/session binding 由 `brain-codex-plugin` 持有；Claude Code 的 turn-start restore 与 MCP 接线由 `brain-claude-plugin` 提供。这些 host adapter 不改变 Brain cognition scope。

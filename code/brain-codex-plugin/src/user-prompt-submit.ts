@@ -1,4 +1,5 @@
 import { restoreProductionBrainContext } from "../../brain/src/index.ts";
+import { randomUUID } from "node:crypto";
 import { brainRestoreFailureDiagnostic } from "../../brain/src/integration/server-instructions.ts";
 
 import { writeCodexInvocationBinding } from "./invocation-binding.ts";
@@ -55,7 +56,7 @@ async function main(): Promise<void> {
   await writeCodexInvocationBinding({
     sessionId: input.session_id,
     sourceRoot: input.cwd,
-    ...(input.turn_id === undefined ? {} : { turnId: input.turn_id }),
+    turnId: input.turn_id ?? randomUUID(),
     historyCheckpointReady,
   });
   for (const diagnostic of result.diagnostics) {

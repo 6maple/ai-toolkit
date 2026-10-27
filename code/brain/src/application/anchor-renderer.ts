@@ -41,7 +41,6 @@ export interface RelatedProjectWarningProjection {
   readonly message: string;
 }
 export interface AnchorProjection {
-  readonly thinkWorkflow?: ThinkWorkflowProjection;
   readonly cores: readonly AnchorCoreProjection[];
   readonly candidates: readonly AnchorCandidateProjection[];
   readonly semanticSearchEnabled?: boolean;
@@ -52,11 +51,8 @@ export interface AnchorProjection {
 
 export interface ThinkWorkflowProjection {
   readonly source: string;
+  readonly absolutePath: string;
   readonly text: string;
-}
-
-export function renderThinkWorkflow(workflow: ThinkWorkflowProjection): string {
-  return `## 本轮 think-workflow\n来源：${workflow.source}\n\n${workflow.text}`;
 }
 
 export function escapeXmlAttribute(value: string): string {
@@ -135,9 +131,6 @@ export function renderAnchorContext(projection: AnchorProjection): string {
       : projection.candidates.map(renderAnchorCandidateItem).join("\n\n");
   return [
     BRAIN_CONTEXT_PREFIX,
-    ...(projection.thinkWorkflow === undefined
-      ? []
-      : ["", renderThinkWorkflow(projection.thinkWorkflow)]),
     "",
     "## 本轮记忆上下文",
     "",

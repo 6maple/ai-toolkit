@@ -221,7 +221,10 @@ describe("related project cognition", () => {
       const services = await createBrainServicesForRoot(brainRoot, a);
 
       await withClient(services, async (client) => {
-        const think = await client.callTool({ name: "brain_think", arguments: {} });
+        const think = await client.callTool({
+          name: "brain_cat",
+          arguments: { path: "@brain-virtual/deep-memory.md" },
+        });
         const text = textOf(think);
         expect(think.isError).not.toBe(true);
         expect(text).toContain("related-project-duplicate-target");
@@ -263,7 +266,10 @@ describe("related project cognition", () => {
       const services = await createBrainServicesForRoot(brainRoot, a);
 
       await withClient(services, async (client) => {
-        const think = await client.callTool({ name: "brain_think", arguments: {} });
+        const think = await client.callTool({
+          name: "brain_cat",
+          arguments: { path: "@brain-virtual/deep-memory.md" },
+        });
         const thinkText = textOf(think);
         expect(think.isError).not.toBe(true);
         expect(thinkText).toContain("#b/core.md");

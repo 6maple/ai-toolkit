@@ -1,0 +1,5 @@
+{
+  "intent": "调查中持续用update保存当前意图理解、依据、具体存疑及进展。\n按阶段1方法核对后，用submit提交phase=\"intent\"及实际判断和assessment。\nadvance：按该有据范围进入阶段2；continue：仍须继续深挖。\n当前确无可继续的获准工作时，提交handoff及实际assessment和workflow核对，保留阶段未完成。",
+  "essence": "调查中持续用update保存当前事实关系、依据、具体存疑、实际停止依据及进展。\n按阶段2方法核对后，用submit提交phase=\"essence\"及实际判断和assessment。\nadvance：按有据范围进入阶段3；continue：继续调查；revisit_intent：意图理解需要重新查明。\n当前确无可继续的获准工作时，提交handoff及实际assessment和workflow核对，保留阶段未完成。",
+  "work": "持续用update维护最新方法、验收目标、计划、实际结果和进展；后续工作也必须有验收目标和计划。\n本轮交付后仍须完成的工作，也用updates.taskChanges登记为scheduledFor=\"future\"；\ndescription写明预期结果、验收目标和方式、推进安排及依赖，具体存疑就近标明。\n用submit提交phase=\"work\"及当前实际判断：\nreview_execution：提交review，实际核对当前计划，并列出真实可执行的本轮任务ID。\ncontinue：本阶段仍有工作；revisit_intent或revisit_essence：需要回查相应上游，提交具体assessment。\nfinish：核对本轮实际成果和流程，提交completion与workflow；已有仍有效的passed成果验收可沿用，失效后须重新核对。\n当前确无可继续的获准工作时，提交handoff及实际assessment和workflow核对，保留未完工作。"
+}

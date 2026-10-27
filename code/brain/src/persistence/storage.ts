@@ -70,9 +70,7 @@ export const nodeStorageFs: StorageFs = {
   lstat: (target) => fsPromises.lstat(target),
 };
 
-export type StorageBindingErrorCode =
-  | "brain-root-unavailable"
-  | "project-id-invalid";
+export type StorageBindingErrorCode = "brain-root-unavailable" | "project-id-invalid";
 
 export class StorageBindingError extends Error {
   readonly code: StorageBindingErrorCode;

@@ -1,3 +1,4 @@
+import { type BrainVirtualPath } from "./think-context.ts";
 import {
   formatAddressedPublicPath,
   isSameLogicalPath,
@@ -14,11 +15,7 @@ import {
 import { CognitionStateStore } from "../persistence/cognition-state-store.ts";
 import type { PersistentOperationCoordinator } from "../persistence/operation-coordination.ts";
 import { projectAbsoluteLocation, type StorageBinding } from "../persistence/storage.ts";
-import type {
-  AnchorRequest,
-  AnchorRestore,
-  AnchorResult,
-} from "./anchor-restore.ts";
+import type { AnchorRequest, AnchorRestore, AnchorResult } from "./anchor-restore.ts";
 import {
   CognitionMaintenance,
   deriveMovePlan,
@@ -37,7 +34,10 @@ import type {
   ReadDiscovery,
   ReadDiscoveryContext,
 } from "./read-discovery.ts";
-import { createRelatedProjectAccess, type ProjectCognitionAccess } from "../runtime/project-access.ts";
+import {
+  createRelatedProjectAccess,
+  type ProjectCognitionAccess,
+} from "../runtime/project-access.ts";
 import type { SemanticIndex } from "../runtime/semantic-index.ts";
 import { SemanticSearchUnavailableError } from "../runtime/semantic-runtime.ts";
 import {
@@ -68,7 +68,7 @@ export class RelatedProjectAccessError extends Error {
 export interface RoutedBrainCurrentServices {
   readonly sourceRoot: string;
   readonly binding: StorageBinding;
-  readonly anchor: Pick<AnchorRestore, "runAnchor">;
+  readonly anchor: Pick<AnchorRestore, "runAnchor" | "readVirtual">;
   readonly reads: Pick<
     ReadDiscovery,
     "ls" | "glob" | "grep" | "cat" | "collectGlob" | "finalizeGlob" | "collectGrep" | "finalizeGrep"
@@ -101,7 +101,10 @@ interface ResolvedResourceTarget {
   readonly binding: StorageBinding;
 }
 
-function requireArchival(path: LogicalBrainPath, code: "mv-requires-archival-source" | "mv-requires-archival-destination"): LogicalArchivalPath {
+function requireArchival(
+  path: LogicalBrainPath,
+  code: "mv-requires-archival-source" | "mv-requires-archival-destination",
+): LogicalArchivalPath {
   if (path.kind !== "archival") throw new MaintenanceTargetError(code);
   return path;
 }
@@ -176,9 +179,12 @@ function withWorkspaceRelatedReferenceNote<
   if (!containsRelatedProjectReference) return result;
   const note =
     "For a related result under `#alias/...`, follow an `@project/...` reference with that same `#alias/...` in Brain tools; keep `@project/...` unchanged when writing back.";
-  return { ...result, text: `${note}
+  return {
+    ...result,
+    text: `${note}
 
-${result.text}` };
+${result.text}`,
+  };
 }
 
 function renderSingleMaintenanceResult(result: MaintenanceResult, root: PublicBrainRoot): string {
@@ -235,7 +241,9 @@ export class RoutedBrainApplication {
     return entry;
   }
 
-  private async accessForRelation(relation: AvailableProjectRelation): Promise<ProjectCognitionAccess> {
+  private async accessForRelation(
+    relation: AvailableProjectRelation,
+  ): Promise<ProjectCognitionAccess> {
     return createRelatedProjectAccess({
       brainRoot: this.current.binding.brainRoot,
       projectId: relation.projectId,
@@ -285,6 +293,13 @@ export class RoutedBrainApplication {
   }
 
   async think(): Promise<AnchorResult> {
+    return this.current.anchor.runAnchor({});
+  }
+
+  async readVirtual(path: BrainVirtualPath): Promise<AnchorResult> {
+    if (path === "@brain-virtual/normal.md" || path === "@brain-virtual/deep.md") {
+      return this.current.anchor.readVirtual(path);
+    }
     const catalog = await this.loadCatalog();
     const availableRelations = catalog.entries.filter(
       (entry): entry is AvailableProjectRelation => entry.kind === "available",
@@ -318,7 +333,7 @@ export class RoutedBrainApplication {
       ...(relatedProjectWarnings.length === 0 ? {} : { relatedProjectWarnings }),
       ...(relatedProjectErrors.length === 0 ? {} : { relatedProjectErrors }),
     };
-    return this.current.anchor.runAnchor(request);
+    return this.current.anchor.readVirtual(path, request);
   }
 
   async absolutePath(raw: string): Promise<string> {
@@ -361,7 +376,10 @@ export class RoutedBrainApplication {
     }
     const catalog = await this.loadCatalog();
     const target = await this.resolvePath(request.path, catalog);
-    const result = await target.reads.glob({ pattern: request.pattern, path: target.address.path }, context);
+    const result = await target.reads.glob(
+      { pattern: request.pattern, path: target.address.path },
+      context,
+    );
     return withRelatedProjectReferenceNote(result, target.address.root);
   }
 
@@ -467,7 +485,12 @@ export class RoutedBrainApplication {
     return withWorkspaceRelatedReferenceNote(result);
   }
 
-  async cat(request: { path: string; offset?: number; limit?: number; signal?: AbortSignal }): Promise<CatResult> {
+  async cat(request: {
+    path: string;
+    offset?: number;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<CatResult> {
     const catalog = await this.loadCatalog();
     const target = await this.resolvePath(request.path, catalog);
     const result = await target.reads.cat({
@@ -528,7 +551,10 @@ export class RoutedBrainApplication {
     const src = requireArchival(sourceTarget.address.path, "mv-requires-archival-source");
     const dst = requireArchival(destinationTarget.address.path, "mv-requires-archival-destination");
 
-    if (sameBinding(sourceTarget.binding, destinationTarget.binding) && isSameLogicalPath(src, dst)) {
+    if (
+      sameBinding(sourceTarget.binding, destinationTarget.binding) &&
+      isSameLogicalPath(src, dst)
+    ) {
       throw new MaintenanceInputError("same-source-destination");
     }
 
@@ -556,8 +582,7 @@ export class RoutedBrainApplication {
           kind: "change" as const,
           mutations: plan.mutations.map((entry) => ({
             ...entry.mutation,
-            binding:
-              entry.owner === "source" ? sourceTarget.binding : destinationTarget.binding,
+            binding: entry.owner === "source" ? sourceTarget.binding : destinationTarget.binding,
           })),
           result: plan.result,
         };

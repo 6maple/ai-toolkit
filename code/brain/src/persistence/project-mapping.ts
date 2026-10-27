@@ -214,27 +214,30 @@ async function writeMetadata(brainRoot: string, metadata: ProjectMetadata): Prom
   await fs.rename(temporary, target);
 }
 
-
 export async function resolveRegisteredProjects(
   options: ResolveRegisteredProjectsOptions,
 ): Promise<readonly RegisteredProjectLookup[]> {
   const canonical = await Promise.all(
-    options.sourceRoots.map(async (sourceRoot): Promise<
-      | { readonly kind: "canonical"; readonly sourceRoot: string }
-      | { readonly kind: "error"; readonly error: ProjectMappingError }
-    > => {
-      try {
-        return { kind: "canonical", sourceRoot: await canonicalExistingDirectory(sourceRoot) };
-      } catch (error) {
-        return {
-          kind: "error",
-          error:
-            error instanceof ProjectMappingError
-              ? error
-              : new ProjectMappingError("source-root-invalid", { cause: error }),
-        };
-      }
-    }),
+    options.sourceRoots.map(
+      async (
+        sourceRoot,
+      ): Promise<
+        | { readonly kind: "canonical"; readonly sourceRoot: string }
+        | { readonly kind: "error"; readonly error: ProjectMappingError }
+      > => {
+        try {
+          return { kind: "canonical", sourceRoot: await canonicalExistingDirectory(sourceRoot) };
+        } catch (error) {
+          return {
+            kind: "error",
+            error:
+              error instanceof ProjectMappingError
+                ? error
+                : new ProjectMappingError("source-root-invalid", { cause: error }),
+          };
+        }
+      },
+    ),
   );
   if (canonical.every((entry) => entry.kind === "error")) {
     return canonical.map((entry) => ({ kind: "error", error: entry.error }));

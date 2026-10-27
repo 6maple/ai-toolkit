@@ -255,19 +255,12 @@ function setup() {
 describe("anchor renderer", () => {
   it("renders the approved empty-Core branch exactly", () => {
     const review = readFileSync(
-      new URL("../../../../doc/brain/v7/16-model-facing-composition-review.md", import.meta.url),
+      new URL("../../../../doc/brain/v7/17-layered-context.md", import.meta.url),
       "utf8",
     );
     const blocks = [...review.matchAll(/````text\r?\n([\s\S]*?)\r?\n````/g)];
-    const approved = blocks[1]?.[1].replaceAll("\r\n", "\n");
+    const approved = blocks[0]?.[1].replaceAll("\r\n", "\n");
     const rendered = renderAnchorContext({
-      thinkWorkflow: {
-        source: "@internal/think-workflow/default/index.md",
-        text: readFileSync(
-          new URL("../../think-workflow/default/index.md", import.meta.url),
-          "utf8",
-        ),
-      },
       cores: [
         {
           scope: globalScope,
@@ -282,7 +275,7 @@ describe("anchor renderer", () => {
       ],
       candidates: [],
     });
-    expect(rendered).toBe(approved);
+    expect(rendered.trimEnd()).toBe(approved?.trimEnd());
   });
 
   it("escapes dynamic attributes while preserving core Markdown verbatim", () => {
@@ -319,10 +312,10 @@ describe("anchor renderer", () => {
     expect(rendered).not.toContain('a "quote" & <fact>');
     const coreOpeningLines = rendered.split("\n").filter((line) => line.startsWith("<core "));
     expect(coreOpeningLines).toHaveLength(2);
-    expect(rendered.match(/^# 本轮 Brain 工作上下文$/gm) ?? []).toHaveLength(1);
+    expect(rendered.match(/^# 记忆读取与维护要求$/gm) ?? []).toHaveLength(1);
     expect(rendered.match(/^## 维护已有 cognition$/gm) ?? []).toHaveLength(1);
     expect(rendered).toContain(
-      "新的 evidence、owner decision、条件变化或明确目标改变什么，就修改什么",
+      "新的 evidence、owner decision、条件变化或明确目标影响已有 cognition 时，必须及时修订实际受到影响的部分",
     );
     expect(rendered.indexOf("## 记忆的角色")).toBeLessThan(
       rendered.indexOf("## 维护已有 cognition"),
@@ -362,7 +355,7 @@ describe("anchor renderer", () => {
 describe("anchor restore", () => {
   it("always restores only Global and Project cognition", async () => {
     const { app, operations } = setup();
-    const result = await app.runAnchor({});
+    const result = await app.readMemory({});
     expect(result.context.indexOf("@global/core.md")).toBeLessThan(
       result.context.indexOf("@project/core.md"),
     );
@@ -370,14 +363,15 @@ describe("anchor restore", () => {
     expect(operations.semanticMutations).toHaveLength(0);
   });
 
-  it("uses the in-memory advanced cycle before D1/D2 ranking", async () => {
+  it("uses the current restored cycle before D1/D2 ranking", async () => {
     const { state, app } = setup();
     const freshLow = archival("@project/memories/knowledge/a-fresh-low.md");
     const protectedHigh = archival("@project/memories/knowledge/z-protected-high.md");
     state.add(freshLow, { importance: "low", durability: 1, ageCycles: 0, anchorCycle: 0 });
     state.add(protectedHigh, { importance: "high", durability: 1, ageCycles: 1, anchorCycle: 0 });
 
-    const result = await app.runAnchor({});
+    await app.runAnchor({});
+    const result = await app.readMemory({});
     const first = result.context.indexOf(formatPublicPath(protectedHigh));
     const second = result.context.indexOf(formatPublicPath(freshLow));
     expect(first).toBeGreaterThanOrEqual(0);
@@ -393,7 +387,7 @@ describe("anchor restore", () => {
       state.add(item, { importance: "critical", exposure: 0 });
     }
 
-    const result = await app.runAnchor({});
+    const result = await app.readMemory({});
     const surfaced = paths.filter((item) => result.context.includes(formatPublicPath(item)));
     expect(L0_MAX_CANDIDATES).toBe(10);
     expect(surfaced).toHaveLength(10);
@@ -407,7 +401,7 @@ describe("anchor restore", () => {
     const { state, app } = setup();
     const item = archival("@project/memories/decision/questioned.md");
     state.add(item, { importance: "critical", challenge: "private unresolved basis" });
-    const result = await app.runAnchor({});
+    const result = await app.readMemory({});
     expect(result.context).toContain(`path="${formatPublicPath(item)}"`);
     expect(result.context).toContain('status="questioned"');
     expect(result.context).not.toContain("private unresolved basis");
@@ -423,7 +417,7 @@ describe("anchor restore", () => {
     });
     state.add(normal, { importance: "high", description: "normal" });
 
-    const result = await app.runAnchor({});
+    const result = await app.readMemory({});
     expect(result.context).not.toContain(formatPublicPath(huge));
     expect(result.context).toContain(formatPublicPath(normal));
     expect(state.items.get(formatPublicPath(huge))?.accessibility.exposure).toBe(0);
@@ -438,7 +432,7 @@ describe("anchor restore", () => {
     state.add(first, { importance: "critical", description: "a".repeat(5000) });
     state.add(second, { importance: "critical", description: "b".repeat(5000) });
     state.add(third, { importance: "critical", description: "short" });
-    const result = await app.runAnchor({});
+    const result = await app.readMemory({});
     expect(result.context).toContain(formatPublicPath(first));
     expect(result.context).not.toContain(formatPublicPath(second));
     expect(result.context).not.toContain(formatPublicPath(third));
@@ -460,7 +454,7 @@ describe("anchor restore", () => {
       });
     };
 
-    await app.runAnchor({});
+    await app.readMemory({});
     const updated = state.items.get(formatPublicPath(item))!;
     expect(updated.epistemic).toEqual({ challenge: "concurrent challenge" });
     expect(updated.accessibility.exposure).toBe(8);
@@ -469,7 +463,7 @@ describe("anchor restore", () => {
   it("localizes auxiliary degradation by scope and still returns the already formed context", async () => {
     const { operations, app } = setup();
     operations.failAuxiliary.add("global");
-    const result = await app.runAnchor({});
+    const result = await app.readMemory({});
     expect(result.context).toContain("GLOBAL");
     expect(result.context).toContain("PROJECT");
     expect(operations.auxiliaryScopes).toEqual(["global", "project"]);
@@ -486,7 +480,7 @@ describe("anchor restore", () => {
     };
     const result = await app.runAnchor({});
     expect(checkpoint.calls).toBe(1);
-    expect(result.context).toContain("GLOBAL");
+    expect(result.context).toContain("# 处理流程");
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({ kind: "history-checkpoint-degraded" }),
     );
@@ -500,7 +494,7 @@ describe("anchor restore", () => {
     state.listingDiagnostics.set("project", [
       { kind: "archival-item-skipped", path: bad, message: "malformed archival item" },
     ]);
-    const result = await app.runAnchor({});
+    const result = await app.readMemory({});
     expect(result.context).toContain(formatPublicPath(good));
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({ kind: "archival-item-skipped", path: bad }),
@@ -510,8 +504,8 @@ describe("anchor restore", () => {
   it("fails primary restore when a required global/project core is absent", async () => {
     const { state, app } = setup();
     state.cores.delete("project");
-    await expect(app.runAnchor({})).rejects.toBeInstanceOf(AnchorStateInvariantError);
-    await expect(app.runAnchor({})).rejects.toMatchObject({ code: "required-core-unavailable" });
+    await expect(app.readMemory({})).rejects.toBeInstanceOf(AnchorStateInvariantError);
+    await expect(app.readMemory({})).rejects.toMatchObject({ code: "required-core-unavailable" });
   });
 
   it("rejects duplicate canonical archival identity rather than silently ranking two copies", async () => {
@@ -525,6 +519,28 @@ describe("anchor restore", () => {
         ? { ...listing, items: [...listing.items, ...listing.items] }
         : listing;
     };
-    await expect(app.runAnchor({})).rejects.toMatchObject({ code: "duplicate-archival-path" });
+    await expect(app.readMemory({})).rejects.toMatchObject({ code: "duplicate-archival-path" });
+  });
+  it("keeps initial restoration short and charges exposure only on fresh memory reads", async () => {
+    const { state, app, checkpoint } = setup();
+    const item = archival("@project/memories/knowledge/visible.md");
+    state.add(item, { importance: "critical" });
+    const initial = await app.runAnchor({});
+    expect(initial.context).toContain("@brain-virtual/deep.md");
+    expect(initial.context).not.toContain("GLOBAL");
+    expect(initial.context).not.toContain(formatPublicPath(item));
+    expect(state.cycles.get("project")?.cycle).toBe(1);
+    expect(state.items.get(formatPublicPath(item))?.accessibility.exposure).toBe(0);
+    expect(checkpoint.calls).toBe(1);
+    for (const path of [
+      "@brain-virtual/normal-memory.md",
+      "@brain-virtual/deep-memory.md",
+    ] as const) {
+      const memory = await app.readVirtual(path);
+      expect(memory.context).toContain(formatPublicPath(item));
+      expect(state.cycles.get("project")?.cycle).toBe(1);
+    }
+    expect(state.items.get(formatPublicPath(item))?.accessibility.exposure).toBe(2);
+    expect(checkpoint.calls).toBe(1);
   });
 });

@@ -1,0 +1,3 @@
+# Reviewed model-visible payloads retain their source bytes on every platform.
+code/brain/step/guidance/** -text whitespace=cr-at-eol
+code/brain/think-workflow/brain-ai/index.md -text whitespace=cr-at-eol

@@ -108,7 +108,6 @@ describe("namespace", () => {
     expect(COGNITIVE_ROLES).toEqual(["decision", "knowledge", "intention", "skill"]);
     expect(errorCode(() => parsePublicPath("@project/memories/other/x.md"))).toBe("invalid-role");
   });
-
 });
 
 describe("markdown and cognition codecs", () => {

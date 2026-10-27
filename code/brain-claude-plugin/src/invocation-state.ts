@@ -5,6 +5,7 @@ import path from "node:path";
 interface StoredInvocationState {
   readonly schemaVersion: 1;
   readonly sessionId: string;
+  readonly turnId?: string;
   readonly sourceRoot: string;
   readonly transcriptPath: string;
   readonly historyCheckpointReady: boolean;
@@ -12,6 +13,7 @@ interface StoredInvocationState {
 
 export interface ClaudeInvocationState {
   readonly sessionId: string;
+  readonly turnId?: string;
   readonly sourceRoot: string;
   readonly transcriptPath: string;
   readonly historyCheckpointReady: boolean;
@@ -43,6 +45,7 @@ export async function writeClaudeInvocationState(input: ClaudeInvocationState): 
   const stored: StoredInvocationState = {
     schemaVersion: 1,
     sessionId: input.sessionId,
+    ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
     sourceRoot,
     transcriptPath: input.transcriptPath,
     historyCheckpointReady: input.historyCheckpointReady,
@@ -70,6 +73,7 @@ export async function readClaudeInvocationState(sessionId: string): Promise<Clau
   if (
     state.schemaVersion !== 1 ||
     state.sessionId !== sessionId ||
+    (state.turnId !== undefined && typeof state.turnId !== "string") ||
     typeof state.sourceRoot !== "string" ||
     typeof state.transcriptPath !== "string" ||
     typeof state.historyCheckpointReady !== "boolean"
@@ -78,8 +82,13 @@ export async function readClaudeInvocationState(sessionId: string): Promise<Clau
   }
   return {
     sessionId,
+    ...(typeof state.turnId === "string" ? { turnId: state.turnId } : {}),
     sourceRoot: await existingDirectory(state.sourceRoot),
     transcriptPath: state.transcriptPath,
     historyCheckpointReady: state.historyCheckpointReady,
   };
+}
+
+export async function removeClaudeInvocationState(sessionId: string): Promise<void> {
+  await fs.rm(statePath(sessionId), { force: true });
 }

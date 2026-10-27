@@ -1,0 +1,430 @@
+{
+  "name": "brain_step",
+  "description": "记录并推进当前会话本轮的深度思考流程，返回当前要做的工作和对应方法。\n\nstart：开始本轮并初始化本轮流程工作状态；同轮重复调用会继续当前工作。\nstatus：读取当前阶段、进展、必要信息、详细方法和提交要求。\noverview：读取当前整体意图、工作边界、事实关系、方法计划、实际进度及未知。\nupdate：保存当前修订的认识、任务、结果或阶段进展；重要变化同时提供impact。\nsubmit：提交当前阶段的实际判断；工具据此处理继续、阶段转换、回查或交付。\n\n工作中持续用update维护实际变化，也可随submit提交本次变化。\n忘记当前要做什么时调用status；需要核对整体时调用overview。\n调用成功后按返回继续；被拒绝时按错误中的指导纠正原操作。",
+  "inputSchema": {
+    "type": "object",
+    "description": "brain_step输入；各字段仅在对应action/phase/decision下合法。更新与组合规则由业务层严格校验；不接受任意nextPhase或直接改内部State。",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "start",
+          "status",
+          "overview",
+          "update",
+          "submit"
+        ],
+        "description": "本次动作：start开始本轮；status读取当前工作；overview读取整体；update保存实际变化；submit提交当前阶段判断。"
+      },
+      "message": {
+        "type": "string",
+        "minLength": 1,
+        "description": "用户本轮原消息。仅start提供；保持原意与原文，不用模型解释替代。"
+      },
+      "updates": {
+        "$ref": "#/$defs/WorkUpdate",
+        "description": "update/submit使用。仅提供本次实际修订的字段；省略保持原值。文本替换该项完整内容，null会清空该项已有内容，不能用来表示未修改。具体存疑写在对应内容中。"
+      },
+      "progress": {
+        "type": "string",
+        "minLength": 1,
+        "description": "当前阶段的实际进展和仍需处理的内容。仅update提供；不表示阶段完成。"
+      },
+      "impact": {
+        "$ref": "#/$defs/WorkImpact",
+        "description": "update/submit中实际修订的重要影响；用于对应检查和回查。"
+      },
+      "phase": {
+        "type": "string",
+        "enum": [
+          "intent",
+          "essence",
+          "work"
+        ],
+        "description": "仅submit提供；使用工具当前返回的阶段：intent深挖意图，essence深挖本质，work完成本轮工作。"
+      },
+      "decision": {
+        "type": "string",
+        "enum": [
+          "advance",
+          "continue",
+          "revisit_intent",
+          "revisit_essence",
+          "review_execution",
+          "finish",
+          "handoff"
+        ],
+        "description": "仅submit提供。advance在intent/essence按对应方法核对后进入下一阶段；continue继续当前阶段；revisit_intent从essence/work回查意图；revisit_essence从work回查本质；review_execution在work核对可执行工作；finish在work验收本轮成果并检查流程；handoff在当前无可继续获准工作时交付现状，保留阶段未完成。使用当前返回允许的分支。"
+      },
+      "assessment": {
+        "type": "string",
+        "minLength": 1,
+        "description": "仅advance、continue、revisit_intent、revisit_essence、handoff使用；说明当前实际判断、依据、具体缺口或交接原因。"
+      },
+      "review": {
+        "$ref": "#/$defs/ExecutionReview",
+        "description": "仅work的review_execution提供；实际核对可执行的本轮任务。"
+      },
+      "completion": {
+        "$ref": "#/$defs/Review",
+        "description": "仅work的finish使用；对照当前验收目标和方式核对实际结果、组合效果、未完及后续安排。已有仍有效的passed成果验收时可省略，由工具沿用；修订使其失效时必须重新核对并提交。\n对照准备交付的实际成果和回复文本，核对决定用户判断的事实、计算和解释；能够从原始资料、程序运行或实际结果核验的，取得这些依据。核对关键解释的成立条件和实际声称的范围是否与最新认识及核查依据一致；回复新增的关键判断同样核验，不能由主方案通过验收代替。发现不一致，查明并修正受影响内容，再完成验收。"
+      },
+      "workflow": {
+        "$ref": "#/$defs/Review",
+        "description": "仅finish/handoff提供；只核对是否严格执行本轮应执行的流程，未严格执行则给具体纠正，不代替成果验收。其中必须核对是否执行网络调查；未查时，核对是否事先说明具体理由。"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "TaskResult": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "description": "实际产物、核查依据、证明范围、置信度及具体存疑。"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "真实成果位置；无独立成果位置时为空。"
+          }
+        },
+        "required": [
+          "content",
+          "artifacts"
+        ],
+        "additionalProperties": false
+      },
+      "TaskChange": {
+        "type": "object",
+        "description": "字段组合按kind严格校验。revise至少修订description或scheduledFor一项；不适用字段拒绝，不静默删掉。",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "add",
+              "revise",
+              "progress",
+              "complete",
+              "correct_result",
+              "block",
+              "defer",
+              "cancel"
+            ],
+            "description": "add新增；revise修订安排/说明；progress记录实际进行；complete记录实际完成；correct_result修正已有产物及效力；block/defer/cancel记录实际阻塞/暂缓/取消。"
+          },
+          "taskId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "除add外使用工具已返回的真实任务ID。"
+          },
+          "parentId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "仅add使用；实际分层所需的已有父任务ID。"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "description": "add必填；revise可提供。实际工作及其背景、目的、预期结果、验收目标和方式、必要依赖；暂定内容和具体存疑就近标明。"
+          },
+          "scheduledFor": {
+            "type": "string",
+            "enum": [
+              "current_round",
+              "future"
+            ],
+            "description": "add必填；revise可修订。current_round本轮执行，future后续执行；改变安排须符合真实决定，不因验收未通过自动移到未来。"
+          },
+          "progress": {
+            "type": "string",
+            "minLength": 1,
+            "description": "仅任务progress使用；该任务的实际进展。"
+          },
+          "result": {
+            "$ref": "#/$defs/TaskResult",
+            "description": "complete/correct_result必填，任务progress可提供；实际产物和核验依据。"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "block/defer/cancel必填；对应实际原因。"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "PendingUserInput": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "description": "需向用户澄清、确认、决定或授权的具体事项。"
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1,
+            "description": "对哪些判断或工作有何影响。"
+          },
+          "progress": {
+            "type": "string",
+            "minLength": 1,
+            "description": "尚需提出、已提出待回答、已取得回答待处理等实际进展；记录不代表已询问。"
+          }
+        },
+        "required": [
+          "question",
+          "impact",
+          "progress"
+        ],
+        "additionalProperties": false
+      },
+      "WorkUpdate": {
+        "type": "object",
+        "properties": {
+          "background": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "关键原话、用户决定、背景、既有依据及待承接工作；区分原文、转述和模型解释。"
+          },
+          "intent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "当前用户完整意图及本次委托；具体写明依据、推测和仍存疑之处。"
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "本轮目标、交付层级、已获准范围及用户限制。"
+          },
+          "analysis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "整体认识、实际形成关系、关键分支与反证、停止依据及未知影响；未证关系标明存疑。"
+          },
+          "research": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "实际取得的资料及来源、取得条件、证明范围和待核查内容。"
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "当前方法、专业实践依据、适用条件、原则和重点；暂定方法及具体存疑就近标明。"
+          },
+          "acceptance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "整体目标、实际结果应满足的标准及核验方式；标准修订同时保留理由。单项工作的标准在任务中维护，完成情况在result或任务结果中记录。"
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "当前整体结果及验证范围、依据和具体存疑。单项任务产物记录在对应任务。"
+          },
+          "replyDraft": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "当前准备向用户交付的实际文本。"
+          },
+          "taskChanges": {
+            "type": "array",
+            "description": "本次任务操作列表；必须放在updates内。新增任务ID由工具生成并返回；后续操作使用返回的真实ID。",
+            "items": {
+              "$ref": "#/$defs/TaskChange",
+              "description": "一项真实任务操作。"
+            }
+          },
+          "pendingUserInput": {
+            "type": "array",
+            "description": "当前完整用户待决列表。省略保持；空数组清空；与可独立继续的获准工作可以并存。",
+            "items": {
+              "$ref": "#/$defs/PendingUserInput",
+              "description": "必要用户输入及其影响和实际进展。"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorkImpact": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "本次变化是什么、为什么影响已有认识或工作。"
+          },
+          "areas": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "intent",
+                "essence",
+                "scope",
+                "method_or_plan",
+                "results",
+                "reply"
+              ]
+            },
+            "description": "实际重要影响：intent完整意图；essence关键事实关系；scope范围；method_or_plan方法或计划；results结果；reply表达。按真实影响选择，普通进展无需填写。"
+          },
+          "affectedTaskIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "实际受影响的已有任务ID；没有具体对应任务时为空。"
+          }
+        },
+        "required": [
+          "reason",
+          "areas",
+          "affectedTaskIds"
+        ],
+        "additionalProperties": false
+      },
+      "Correction": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "intent",
+              "essence",
+              "work"
+            ],
+            "description": "具体缺口所属阶段；程序按实际当前阶段处理，不跳过尚未完成的阶段。"
+          },
+          "details": {
+            "type": "string",
+            "minLength": 1,
+            "description": "具体缺口及相关依赖，供继续补查或纠正。"
+          }
+        },
+        "required": [
+          "kind",
+          "details"
+        ],
+        "additionalProperties": false
+      },
+      "Review": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "needs-work"
+            ],
+            "description": "按实际核对填写。passed表示本项核对在其范围内通过；needs-work发现具体缺口，必须同时提供correction。"
+          },
+          "assessment": {
+            "type": "string",
+            "minLength": 1,
+            "description": "实际核对内容、依据、结论、有效范围及具体存疑。"
+          },
+          "correction": {
+            "$ref": "#/$defs/Correction",
+            "description": "outcome为passed时省略此字段；为needs-work时提供kind和details，kind使用intent、essence或work，details说明实际缺口及纠正方向。"
+          }
+        },
+        "required": [
+          "outcome",
+          "assessment"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionReview": {
+        "type": "object",
+        "properties": {
+          "assessment": {
+            "type": "string",
+            "minLength": 1,
+            "description": "对当前实际工作核对意图、事实和专业方法依据、获准范围、关键前提、依赖及验收目标/方式，记录结论和具体缺口。"
+          },
+          "runnableTaskIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "实际存在、已核对可执行且获准的本轮todo/doing任务ID；当前没有则为空，并在assessment说明实际情况。"
+          }
+        },
+        "required": [
+          "assessment",
+          "runnableTaskIds"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "currentPhase": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "intent",
+          "essence",
+          "work",
+          null
+        ],
+        "description": "操作后实际当前阶段；null仅表示本轮流程已完成，不表示已发送回复。handoff保留未完成的原阶段，由guidance说明当前交付。"
+      },
+      "guidance": {
+        "type": "string",
+        "minLength": 1,
+        "description": "本次实际操作结果，以及当前要做的工作、所需内容与继续方式。overview返回整体及当前用途；普通update简短返回，阶段切换或status返回当前完整指导。"
+      }
+    },
+    "required": [
+      "currentPhase",
+      "guidance"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -1,11 +1,18 @@
+import { BRAIN_VIRTUAL_PATHS } from "../application/think-context.ts";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import {
+  definition as stepDefinition,
+  inputSchema as stepInputSchema,
+  outputSchema as stepOutputSchema,
+} from "brain/step";
 import { BRAIN_TOOL_DESCRIPTIONS, BRAIN_TOOL_FIELDS } from "./approved-tool-descriptions.ts";
 
 import { DEFAULT_BRAIN_RUNTIME_FEATURES, type BrainRuntimeFeatures } from "../runtime/features.ts";
 
 export const BRAIN_TOOL_NAMES = [
   "brain_think",
+  "brain_step",
   "brain_absolute_path",
   "brain_ls",
   "brain_glob",
@@ -131,16 +138,21 @@ export const askSearchInputSchema = z.strictObject({
 });
 
 export const catInputSchema = z.strictObject({
-  path: cognitionDocumentPath(
-    "Concrete cognition Markdown document to read. Scope Core paths match `@global/core.md`, `@project/core.md`, or `#*/core.md`; archival paths use `<scope-root>/memories/{decision,knowledge,intention,skill}/<relative-item-path>.md`. Replace `*` with the actual related-project alias. Use forward slashes. A bare scope, directory, or non-`.md` path is not a readable cognition document for this tool.",
-  ),
+  path: z
+    .union([
+      cognitionDocumentPath("Concrete Scope Core or archival cognition Markdown."),
+      z.enum(BRAIN_VIRTUAL_PATHS),
+    ])
+    .describe(
+      "Concrete cognition document, or a built-in @brain-virtual/{normal,deep,normal-memory,deep-memory}.md view. Built-in views are generated fresh and returned in full.",
+    ),
   offset: z
     .number()
     .int()
     .positive()
     .optional()
     .describe(
-      "Positive 1-based logical document line at which reading begins. Omit it to start at line `1`. To continue a bounded read, pass the exact `next_offset` returned by the preceding result. An `offset` beyond the end of the document returns no lines and no continuation.",
+      "For cognition documents only; ignored for built-in virtual views, which return in full. Positive 1-based logical document line at which reading begins. Omit it to start at line `1`. To continue a bounded read, pass the exact `next_offset` returned by the preceding result. An `offset` beyond the end of the document returns no lines and no continuation.",
     ),
   limit: z
     .number()
@@ -148,7 +160,7 @@ export const catInputSchema = z.strictObject({
     .positive()
     .optional()
     .describe(
-      "Positive integer maximum number of logical document lines to return. Omit it to use the tool default. The transport budget may return fewer lines than this `limit`. A line that fits is returned in full; an oversized line is returned as a marked excerpt and does not prevent later lines from being read.",
+      "For cognition documents only; ignored for built-in virtual views, which return in full. Positive integer maximum number of logical document lines to return. Omit it to use the tool default. The transport budget may return fewer lines than this `limit`. A line that fits is returned in full; an oversized line is returned as a marked excerpt and does not prevent later lines from being read.",
     ),
 });
 
@@ -273,11 +285,18 @@ export interface BrainToolDefinition {
   readonly name: BrainToolName;
   readonly description: string;
   readonly inputSchema: z.ZodTypeAny;
+  readonly outputSchema?: z.ZodTypeAny;
   readonly annotations?: ToolAnnotations;
 }
 
-// Brain returns rendered text in MCP content, so it declares no structured output schema.
+// Cognition tools return text; brain_step retains its reviewed structured result contract.
 const rawPublicBrainTools: readonly BrainToolDefinition[] = [
+  {
+    name: "brain_step",
+    description: stepDefinition.description,
+    inputSchema: stepInputSchema,
+    outputSchema: stepOutputSchema,
+  },
   {
     name: "brain_think",
     description:

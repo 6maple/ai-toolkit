@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,6 +10,7 @@ const pluginRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const hookEntry = join(pluginRoot, "dist", "user-prompt-submit.mjs");
 const permissionEntry = join(pluginRoot, "dist", "permission-request.mjs");
 const mcpEntry = join(pluginRoot, "dist", "mcp-server.mjs");
+const sessionEndEntry = join(pluginRoot, "dist", "session-end.mjs");
 const toolPrefix = "mcp__plugin_brain-claude-plugin_brain__";
 
 function runProcess(entry, { cwd, env, input }) {
@@ -129,7 +131,7 @@ async function main() {
   await mkdir(secondRoot);
   await mkdir(data);
   const baseEnv = { ...process.env, HOME: temp, USERPROFILE: temp, CLAUDE_PLUGIN_DATA: data };
-  const firstEnv = { ...baseEnv, CLAUDE_PROJECT_DIR: firstRoot };
+  const firstEnv = { ...baseEnv, CLAUDE_PROJECT_DIR: firstRoot, CLAUDE_CODE_SESSION_ID: "claude-verify-one" };
   const secondEnv = { ...baseEnv, CLAUDE_PROJECT_DIR: secondRoot };
   const prompt = {
     hook_event_name: "UserPromptSubmit",
@@ -153,10 +155,11 @@ async function main() {
     const restored = await runProcess(hookEntry, { cwd: pluginRoot, env: firstEnv, input: prompt });
     assert.equal(restored.code, 0, restored.stderr);
     const context = JSON.parse(restored.stdout).hookSpecificOutput.additionalContext;
-    assert.match(context, /# 本轮 Brain 工作上下文/);
-    assert.match(context, /@global\/core\.md/);
-    assert.match(context, /@project\/core\.md/);
-    console.log("PASS hook restores Global and Project cognition from Claude project root");
+    assert.match(context, /# 处理流程/);
+    assert.match(context, /@brain-virtual\/normal\.md/);
+    assert.match(context, /@brain-virtual\/deep\.md/);
+    assert.doesNotMatch(context, /<core\b/);
+    console.log("PASS hook provides processing entry from Claude project root");
 
     const readPermission = await runProcess(permissionEntry, {
       cwd: pluginRoot,
@@ -186,12 +189,34 @@ async function main() {
           content: "---\ndescription: Claude first project\nimportance: high\n---\nFirst project only.\n",
         }),
         call(4, "brain_cat", { path: "@project/memories/knowledge/routed.md" }),
+        call(5, "brain_step", { action: "start", message: "当前真实会话轮次" }),
+        call(6, "brain_step", { action: "update", updates: { intent: "本轮有据理解" } }),
       ],
     });
     assert.equal(firstMcp[0].result.instructions, undefined);
     const names = firstMcp[2].result.tools.map((tool) => tool.name);
     assert.equal(names.includes("brain_think"), false);
-    assert.equal(names.length, 10);
+    assert.equal(names.length, 11);
+    assert.equal(names.includes("brain_step"), true);
+    assert.notEqual(firstMcp[5].result.isError, true);
+    assert.notEqual(firstMcp[6].result.isError, true);
+    const stepFile = join(firstRoot, ".brain-working", "brain-step-three-phase", createHash("sha256").update(prompt.session_id).digest("hex") + ".json");
+    const firstStep = JSON.parse(await readFile(stepFile, "utf8"));
+    assert.equal(firstStep.state.notes.intent, "本轮有据理解");
+    assert.ok(firstStep.turnId);
+    const nextPrompt = await runProcess(hookEntry, { cwd: pluginRoot, env: firstEnv, input: { ...prompt, prompt: "下一轮" } });
+    assert.equal(nextPrompt.code, 0, nextPrompt.stderr);
+    const nextStep = await mcpSession({ env: firstEnv, requests: [init, initialized, call(3, "brain_step", { action: "start", message: "下一轮" })] });
+    assert.notEqual(nextStep[2].result.isError, true);
+    const refreshedStep = JSON.parse(await readFile(stepFile, "utf8"));
+    assert.notEqual(refreshedStep.turnId, firstStep.turnId);
+    assert.equal(refreshedStep.state.notes.intent, null);
+    const ended = await runProcess(sessionEndEntry, { cwd: pluginRoot, env: firstEnv, input: { hook_event_name: "SessionEnd", session_id: prompt.session_id, reason: "clear" } });
+    assert.equal(ended.code, 0, ended.stderr);
+    const stale = await mcpSession({ env: firstEnv, requests: [init, initialized, call(3, "brain_step", { action: "start", message: "不得串用已结束会话" })] });
+    assert.equal(stale[2].result.isError, true);
+    assert.equal(await readFile(stepFile, "utf8"), JSON.stringify(refreshedStep, null, 2) + "\n");
+    console.log("PASS native brain_step resets trusted hook turns and refuses ended session bindings");
     assert.match(firstMcp[4].result.content[0].text, /First project only/);
     const secondMcp = await mcpSession({
       env: secondEnv,
@@ -232,7 +257,7 @@ async function main() {
     const semanticMcp = await mcpSession({ env: firstEnv, requests: [init, initialized, list] });
     const semanticNames = semanticMcp[2].result.tools.map((tool) => tool.name);
     assert.equal(semanticNames.includes("brain_ask_search"), true);
-    assert.equal(semanticNames.length, 11);
+    assert.equal(semanticNames.length, 12);
     console.log("PASS global Semantic Search config adds brain_ask_search");
   } finally {
     await rm(temp, { recursive: true, force: true });
