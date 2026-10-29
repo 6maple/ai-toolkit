@@ -28,6 +28,8 @@ registerBrainStep(
 
 宿主未提供有效身份时，brain_step 返回失败并保持原状态；其它 cognition 工具继续可用。Claude 较旧版本可能没有 `CLAUDE_CODE_SESSION_ID`，清空/恢复后保留旧 MCP 进程的场景也须重新连接到正确会话；不能用固定标识或扫描其它会话代替。
 
+独立 CLI 通过 [brain-skill](../../brain-skill-toolkit-cli/README.md) 的 `step --input-file` 接入本 runtime，schema 和业务指导沿用本模块。它从真实宿主会话标识建立独立 CLI 绑定，每次成功 think 分配逻辑轮次；不会假定宿主安装了恢复 hook。
+
 ## 动作与保存
 
 - `start`：以宿主轮次开始本轮；同轮同消息重复调用保留进展，新轮清空旧工作内容。

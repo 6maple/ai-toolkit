@@ -6,7 +6,7 @@ Codex host adapter for `../brain`.
   its unchanged result as developer context before Codex handles the user prompt.
 - The same synchronous hook records Codex's documented `session_id` and `cwd` as
   one host-owned invocation binding before the restored context reaches the model.
-- The bundled MCP server omits `brain_think`, preventing duplicate model-triggered restoration. With Semantic Search disabled it exposes the remaining ten Brain tools; when the Brain global config enables Semantic Search it additionally exposes `brain_ask_search`.
+- The bundled MCP server omits `brain_think`, preventing duplicate model-triggered restoration. With Semantic Search disabled it exposes the remaining eleven Brain tools, including `brain_step`; when the Brain global config enables Semantic Search it additionally exposes `brain_ask_search`.
 
 The shared restore path provides a short processing entry. The model reads dedicated `@brain-virtual/` flow and memory views with `brain_cat`; each view is generated fresh and returned in full. The deep flow gives the configured workflow's absolute file path for native reading. The built-in default is the full brain-ai workflow. Memory reading guidance remains in Brain memories; see the Brain README for paths and configuration.
 - Each MCP call uses the host-owned thread/session binding to resolve the correct

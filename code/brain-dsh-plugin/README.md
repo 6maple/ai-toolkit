@@ -6,8 +6,9 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 ## 行为边界
 
 - 工具定义直接来自 `brain/public-tools`。Semantic Search 默认关闭，此时 hook 默认开启时模型可见
-  10 个操作工具；关闭 hook 后，`exposeThink` 决定是否额外公开 `brain_think`。当 Brain 全局配置启用
+  11 个操作工具（含 `brain_step`）；关闭 hook 后，`exposeThink` 决定是否额外公开 `brain_think`。当 Brain 全局配置启用
   Semantic Search 时，再额外公开 `brain_ask_search`。
+- 显式公开 `brain_think` 时，`brain_step` 描述先要求本轮立即调用一次 `brain_think`，再按返回引导使用 step；AutoThink 开启时使用原 step 描述，避免重复恢复。
 - 每个真实用户消息边界只调用一次 `brain_think`。成功时把短宏观处理入口作为 plugin message 注入下一次模型输入，模型再用 brain_cat 读取各自专用的 @brain-virtual/ 流程和记忆视图（每次计算、完整返回）；自动建立失败时把明确诊断注入同一通道，并记录日志。其他可完成的工作继续进行。
 - 工具与 AutoThink 先用当前 DSH agent/session 的 cwd 选择正确的 source root / Brain instance。DSH session identity 只属于宿主，不注入 Brain tool args；`brain_think` 的模型可见输入为空对象。
 - 对 `opencode` / `opencode-go` 的 `opencode.ai` 推理请求，插件把当前 DSH 会话 ID 写入

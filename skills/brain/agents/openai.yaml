@@ -1,0 +1,6 @@
+interface:
+  display_name: "Brain"
+  short_description: "通过本机 brain-skill 命令按需读取、搜索并维护 Brain 项目与全局记忆"
+  default_prompt: "使用 $brain，通过 CLI 读取适用记忆并帮助我完成当前任务。"
+policy:
+  allow_implicit_invocation: false

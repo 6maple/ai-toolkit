@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { buildCallArgs, extractAnchorContext, InstanceManager, isOpenCodeUrl, PUBLIC_BRAIN_TOOLS, setupAutoThink, setupOpenCodeSessionHeader, toHostSchema, visibleToolDefinitions } from '../dist/index.mjs'
+import { BRAIN_EXPLICIT_STEP_INSTRUCTION } from 'brain/public-tools'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN = join(HERE, '..')
@@ -35,6 +36,15 @@ const hookVisible = visibleToolDefinitions(true, true)
 const manualVisible = visibleToolDefinitions(false, true)
 const semanticHookVisible = visibleToolDefinitions(true, true, true)
 const semanticManualVisible = visibleToolDefinitions(false, true, true)
+const coreStep = PUBLIC_BRAIN_TOOLS.find((tool) => tool.name === 'brain_step')
+if (manualVisible.find((tool) => tool.name === 'brain_step')?.description ===
+    `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${coreStep?.description}` &&
+    semanticManualVisible.find((tool) => tool.name === 'brain_step')?.description ===
+    `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${coreStep?.description}` &&
+    hookVisible.find((tool) => tool.name === 'brain_step')?.description === coreStep?.description &&
+    visibleToolDefinitions(false, false).find((tool) => tool.name === 'brain_step')?.description === coreStep?.description)
+  ok('A0 explicit step requires think; host mode and hidden-think mode retain core guidance')
+else fail('A0 step restore-mode guidance', 'step description differs from its actual entry mode')
 if (hookVisible.length === 11 && !hookVisible.some((tool) => tool.name === 'brain_think')) ok('A0 hook hides think')
 else fail('A0 hook hides think', hookVisible.map((tool) => tool.name).join(','))
 if (manualVisible.length === 12 && manualVisible.some((tool) => tool.name === 'brain_think')) ok('A0 manual exposes think')

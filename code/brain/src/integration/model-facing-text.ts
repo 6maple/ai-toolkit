@@ -45,6 +45,9 @@ Global cognition跨项目使用；Project cognition用于对应项目。相关�
 export const BRAIN_EXPLICIT_INSTRUCTION =
   "每收到一条新的用户消息，在其他实质行动前调用brain_think，取得本轮处理入口并严格执行；按入口读取相应流程及记忆要求。成功建立后不重复调用；调用失败时根据实际错误及副作用判断重试，继续可完成的工作。";
 
+export const BRAIN_EXPLICIT_STEP_INSTRUCTION =
+  "每轮收到新的用户消息后，必须立即先调用一次 brain_think，再根据其返回内容中的引导调用本工具。";
+
 export const BRAIN_FAILURE_TEMPLATE = `# 本轮 Brain 上下文未建立
 
 Brain 未能为这条用户消息建立工作上下文：<可公开的简短错误说明>。本轮可能缺少仍有效的决定、约束和续作状态；这次失败不表示其它能力不可用，未取得的认知也不代表已经核对。`;

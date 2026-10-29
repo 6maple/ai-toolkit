@@ -6,7 +6,7 @@ Claude Code adapter for `../brain`. Brain owns cognition and tool behavior. This
 
 - `UserPromptSubmit` runs the same restoration path as `brain_think` and injects the resulting context before Claude handles the prompt.
 - The hook and MCP server use Claude Code's `CLAUDE_PROJECT_DIR` as the source root. Claude's session ID remains host state and does not enter Brain cognition.
-- The MCP server hides `brain_think`. With Semantic Search disabled it exposes ten Brain tools; enabling Semantic Search in `~/.brain-data/config.json` adds `brain_ask_search` after restarting Claude Code.
+- The MCP server hides `brain_think`. With Semantic Search disabled it exposes eleven Brain tools, including `brain_step`; enabling Semantic Search in `~/.brain-data/config.json` adds `brain_ask_search` after restarting Claude Code.
 - Brain reads are automatically allowed. Brain mutations are automatically allowed in normal edit modes only after the current prompt's restoration completed with a Git history checkpoint. If the checkpoint degrades, Claude handles the permission request normally. Explicit read-only modes stay in control.
 - The permission hook records its state in `CLAUDE_PLUGIN_DATA` and checks the current session and transcript before allowing a mutation.
 

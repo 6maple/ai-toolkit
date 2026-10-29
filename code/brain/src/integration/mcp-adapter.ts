@@ -15,6 +15,8 @@ import { MutationApplyError } from "../persistence/operation-coordination.ts";
 import { projectAbsoluteLocation, type StorageBinding } from "../persistence/storage.ts";
 import type { BrainRuntimeFeatures } from "../runtime/features.ts";
 import { selectPublicBrainTools, type BrainToolName } from "./public-tools.ts";
+import { BRAIN_EXPLICIT_STEP_INSTRUCTION } from "./model-facing-text.ts";
+import type { BrainMcpRestoreMode } from "./server-instructions.ts";
 
 export interface BrainApplicationServices {
   readonly sourceRoot?: string;
@@ -49,6 +51,8 @@ export type BrainToolRegistrar = Pick<McpServer, "registerTool">;
 export type BrainToolResult = CallToolResult;
 
 export interface BrainToolRegistrationOptions {
+  /** Whether the model or the host owns turn-start restoration. */
+  readonly restoreMode?: BrainMcpRestoreMode;
   /** Tools owned by a host lifecycle integration and therefore hidden from the model. */
   readonly exclude?: readonly BrainToolName[];
   /** Optional runtime capabilities selected from Brain's global config. */
@@ -568,7 +572,10 @@ export function registerBrainTools(
       definition.name,
       {
         title: definition.name,
-        description: definition.description,
+        description:
+          definition.name === "brain_step" && (options.restoreMode ?? "explicit") === "explicit"
+            ? `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${definition.description}`
+            : definition.description,
         inputSchema: definition.inputSchema,
         ...(definition.outputSchema === undefined ? {} : { outputSchema: definition.outputSchema }),
         annotations: definition.annotations,

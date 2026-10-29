@@ -1,0 +1,24 @@
+{
+  "name": "brain-skill-toolkit-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Use Brain from an explicitly selected AI skill through the brain-skill command.",
+  "bin": {
+    "brain-skill": "./dist/brain-skill.mjs"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "unbuild --stub --config build.config.ts",
+    "stub": "unbuild --stub --config build.config.ts",
+    "test": "node --experimental-transform-types --test tests/*.test.mjs",
+    "typecheck": "pnpm --dir ../brain exec tsc --noEmit -p ../brain-skill-toolkit-cli/tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "unbuild": "3.6.1"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "packageManager": "pnpm@11.21.0"
+}

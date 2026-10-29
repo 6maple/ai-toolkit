@@ -73,6 +73,8 @@
 
 `brain_step` 已通过默认 `registerBrainTools` 与其它工具一起注册；默认 `think-workflow/brain-ai/index.md` 使用三阶段入口。Codex、Claude 和 DSH 从各自可信宿主上下文绑定会话和轮次，不增加模型业务身份参数。缺少有效宿主身份时，本工具明确失败，不串用其它会话状态。
 
+通过独立 CLI 使用时，配套 [brain-skill](../brain-skill-toolkit-cli/README.md) 提供 `step --input-file`，并用真实宿主会话标识与每次成功 think 建立的 CLI 轮次接入同一状态机；安装与 skill 用法见该入口。
+
 ## Public tools
 
 主要模型可见工具：

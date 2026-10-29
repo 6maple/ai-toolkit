@@ -137,6 +137,19 @@ describe("generic MCP public contract", () => {
     expect(() => resolveBrainMcpRestoreMode("unknown")).toThrow(
       "BRAIN_MCP_RESTORE_MODE must be explicit or host",
     );
+    const { services } = fakeServices();
+    const canonicalStep = PUBLIC_BRAIN_TOOLS.find((tool) => tool.name === "brain_step")!;
+    const explicit = captureRegistration(services, { restoreMode: "explicit" });
+    const host = captureRegistration(services, {
+      restoreMode: "host",
+      exclude: ["brain_think"],
+    });
+    expect(explicit.has("brain_think")).toBe(true);
+    expect(explicit.get("brain_step")?.config.description).toBe(
+      `每轮收到新的用户消息后，必须立即先调用一次 brain_think，再根据其返回内容中的引导调用本工具。\n\n${canonicalStep.description}`,
+    );
+    expect(host.has("brain_think")).toBe(false);
+    expect(host.get("brain_step")?.config.description).toBe(canonicalStep.description);
   });
 
   test("keeps semantic search off by default while the canonical tool source contains the optional definition", () => {

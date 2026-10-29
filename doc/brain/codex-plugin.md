@@ -24,8 +24,8 @@ passes the complete result directly instead of spilling an oversized result to a
 
 1. Given a Codex `UserPromptSubmit` event, when the hook runs, then it restores Brain with the
    documented `cwd` and `session_id` and returns the complete rendered context as developer context.
-2. Given the plugin MCP server, when Codex lists tools, then it sees the remaining ten Brain tools
-   and does not see `brain_think`.
+2. Given the plugin MCP server with Semantic Search disabled, when Codex lists tools, then it sees
+   the remaining eleven Brain tools, including `brain_step`, and does not see `brain_think`.
 3. Given the hook result is injected, then Codex receives the same rendered context that
    `brain_think` would return for that project and session.
 4. Given two Codex sessions from different source roots share one long-lived MCP server, when each

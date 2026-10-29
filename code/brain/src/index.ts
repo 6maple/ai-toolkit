@@ -52,8 +52,7 @@ export async function runBrainMcpServer(options: BrainMcpServerOptions = {}): Pr
   const features = options.features ?? config.features;
   const restoreMode =
     options.restoreMode ?? resolveBrainMcpRestoreMode(process.env[BRAIN_MCP_RESTORE_MODE_ENV]);
-  const { restoreMode: _restoreMode, ...toolOptions } = options;
-  const registrationOptions = { ...toolOptions, features };
+  const registrationOptions = { ...options, features, restoreMode };
   const services =
     options.resolveInvocation === undefined
       ? await createProductionBrainServices(process.cwd(), { features })

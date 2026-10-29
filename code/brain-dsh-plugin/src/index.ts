@@ -17,6 +17,7 @@ import { createRequire } from 'node:module'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import {
+  BRAIN_EXPLICIT_STEP_INSTRUCTION,
   PUBLIC_BRAIN_TOOLS,
   selectPublicBrainTools,
   type BrainToolDefinition,
@@ -115,9 +116,11 @@ export function visibleToolDefinitions(
   exposeThink: boolean,
   semanticSearchEnabled = false,
 ): readonly BrainToolDefinition[] {
-  return selectPublicBrainTools({ semanticSearch: semanticSearchEnabled }).filter(
-    (definition) => definition.name !== 'brain_think' || (exposeThink && !autoThinkEnabled),
-  )
+  return selectPublicBrainTools({ semanticSearch: semanticSearchEnabled })
+    .filter((definition) => definition.name !== 'brain_think' || (exposeThink && !autoThinkEnabled))
+    .map((definition) => definition.name === 'brain_step' && exposeThink && !autoThinkEnabled
+      ? { ...definition, description: `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${definition.description}` }
+      : definition)
 }
 
 /** Per-call source root comes from the trusted session cwd. */
