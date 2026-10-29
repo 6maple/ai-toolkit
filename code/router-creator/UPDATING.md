@@ -72,10 +72,10 @@ node scripts/update-from-official.mjs --no-proxy
 
 ```powershell
 # 对比 router-core
-git diff --no-index "$env:USERPROFILE\.dsh\.agent-presets\router-standard\router-core.mjs" "D:\Workspace\ai-projects\c-skills\code\router-creator\router-core.mjs"
+git diff --no-index "$env:USERPROFILE\.dsh\.agent-presets\router-standard\router-core.mjs" "D:\Workspace\ai-projects\ai-toolkit\code\router-creator\router-core.mjs"
 
 # 对比 router-bootstrap 上游 v1 与本 fork
-git diff --no-index "$env:USERPROFILE\.dsh\.agent-presets\router-standard\router-bootstrap-v1.mjs" "D:\Workspace\ai-projects\c-skills\code\router-creator\router-bootstrap-creator.mjs"
+git diff --no-index "$env:USERPROFILE\.dsh\.agent-presets\router-standard\router-bootstrap-v1.mjs" "D:\Workspace\ai-projects\ai-toolkit\code\router-creator\router-bootstrap-creator.mjs"
 ```
 
 - `router-core.mjs` 当前与上游逐字一致，可直接覆盖。

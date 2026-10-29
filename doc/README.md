@@ -1,6 +1,6 @@
 # Documentation
 
-`doc/` 按“跨项目认知基线 → c-skills 项目规则 → capability 具体 truth”分层。
+`doc/` 按“跨项目认知基线 → ai-toolkit 项目规则 → capability 具体 truth”分层。
 
 ## Brain 的初始背景与当前设计入口
 
@@ -66,7 +66,14 @@ brain/base/
 
 | 文档 | 职责 |
 |---|---|
-| [design-rule.md](design-rule.md) | 仅记录 c-skills 自身采用的文档组织、capability 迭代、测试、实现和仓库规则。 |
+| [AGENTS.md](../AGENTS.md) | 项目协作与修改流程：改动依据、执行、验证与规范持续维护；[CLAUDE.md](../CLAUDE.md) 引用同一正文。 |
+| [design-rule.md](design-rule.md) | 仅记录 ai-toolkit 自身采用的文档组织、capability 迭代、测试、实现和仓库规则。 |
+
+## 安装与使用
+
+- [仓库 README](../README.zh-CN.md)：当前组件与接入方式。
+- [Brain 安装管理 CLI](../code/brain-cli/README.md)：宿主插件安装、更新和记忆迁移。
+- [Brain CLI + skill](../code/brain-skill-toolkit-cli/README.md) 与[项目接入引导](../code/brain-skill-toolkit-cli/INSTALL.md)：准备本机命令并为目标项目安装 skill。
 
 ## Capabilities
 
@@ -74,4 +81,4 @@ brain/base/
 |---|---|
 | [brain/](brain/) | brain 版本化 Requirements / Contract / Acceptance / Design 与历史 evidence。 |
 
-新增通用规则时，先判断它在其他项目是否仍自然成立：跨领域认知原则进入 `ai-think/core.md`，软件领域的跨阶段稳定原则进入 `ai-think/software-core.md`，阶段顺序和 Gate 进入 `ai-think/software-workflow.md`；只有 c-skills 自身约定进入 `design-rule.md`。具体 capability 的产品 truth 保留在自己的子目录。
+新增通用规则时，先判断它在其他项目是否仍自然成立：跨领域认知原则进入 `ai-think/core.md`，软件领域的跨阶段稳定原则进入 `ai-think/software-core.md`，阶段顺序和 Gate 进入 `ai-think/software-workflow.md`；只有 ai-toolkit 自身约定进入 `design-rule.md`。具体 capability 的产品 truth 保留在自己的子目录。

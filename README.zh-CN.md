@@ -1,51 +1,57 @@
-# c-skills
+# ai-toolkit
 
 English docs: [README.md](README.md).
 
-本仓库只包含 `cqf` skill，用于聚焦澄清讨论：在进入后续工作前，帮助明确真实目标、范围、约束、关键决策和未解决风险，并形成共同理解。
+面向 AI Agent 的工具、skills 和宿主插件集合。当前主要组件是 **Brain**，提供持久化 Global / Project 记忆、发现与维护命令，以及跨会话继续工作的思考指引。
 
-## Skill
+## Brain 接入
 
-- `cqf`：澄清意图、范围、约束、决策和未解决风险。
+### 宿主插件 / MCP
 
-该 skill 在达成对齐后停止。除非用户明确开始新的任务，否则不会创建计划、实现、PRD 或其他后续产物。
-
-## 安装
-
-在你想安装 skill 的项目根目录运行以下命令。
-
-PowerShell：
-
-```powershell
-New-Item -ItemType Directory -Force .cache
-Invoke-WebRequest https://raw.githubusercontent.com/6maple/c-skills/main/scripts/install.py -OutFile .cache/install.py
-uv run .cache/install.py --agent claude
-```
-
-macOS/Linux：
+为 Codex、Claude Code 或 DSH 接入 Brain，在用户消息边界恢复上下文，并提供记忆工具。从仓库根目录执行：
 
 ```sh
-mkdir -p .cache
-curl -fsSL https://raw.githubusercontent.com/6maple/c-skills/main/scripts/install.py -o .cache/install.py
-uv run .cache/install.py --agent claude
+pnpm --dir code/brain install
+pnpm --dir code/brain stub
+pnpm --dir code/brain-cli install
+node code/brain-cli/index.mjs install --agent codex --source local --path .
 ```
 
-如果不使用 `uv`，可以执行 `python .cache/install.py --agent claude`。
-如果要安装到 Codex 的目录，把 `claude` 换成 `codex`：
+Claude Code 使用 `--agent claude`；DSH 使用 `--agent dsh --profile <名称>`。按安装结果重启宿主，完成信任或启用步骤。依赖与更新命令见[安装器 README](code/brain-cli/README.md)。
+
+### CLI + skill
+
+为任务显式选择 [brain skill](skills/brain/SKILL.md)，或通过 `brain-skill` 执行单项记忆命令。从仓库根目录准备本机命令：
 
 ```sh
-uv run .cache/install.py --agent codex
+pnpm --dir code/brain install
+pnpm --dir code/brain-skill-toolkit-cli install
+pnpm --dir code/brain-skill-toolkit-cli stub
+node code/brain-skill-toolkit-cli/dist/brain-skill.mjs --help
 ```
 
-安装器会将本仓库 clone 或更新到 `.cache/c-skills`，再把 `skills/` 复制到统一的 `.agents/skills/` 目录。
-如果选择 Claude，会创建 `.claude/skills` 到 `.agents/skills` 的目录链接：Windows 使用 junction，macOS/Linux 使用相对符号链接。如果当前环境不支持创建链接，安装器会自动降级为复制；也可以用 `--copy` 强制 Claude 使用复制模式。
+按 [CLI README](code/brain-skill-toolkit-cli/README.md) 链接 `brain-skill`，再按[项目接入引导](code/brain-skill-toolkit-cli/INSTALL.md) 安装 skill。单独复制 skill 不会安装 CLI。完整 `think` / `step` 流程需要真实宿主会话标识；单项记忆命令可独立执行。参数见[命令参考](skills/brain/references/commands.md)。
 
-`.claude/skills` 是安装器生成的本地目录，已加入 Git 忽略；`.agents/skills/` 是项目共享的实际安装目录。
+Brain 数据默认保存在 `~/.brain-data`。配置、记忆语义与可选语义搜索见[运行 README](code/brain/README.md)。
 
-## 项目结构
+## 组件
 
-- `skills/cqf/SKILL.md`：skill 定义。
-- `.agents/skills/`：项目共享的实际安装目录。
-- `scripts/install.py`：将 `cqf` 安装到其他项目。
-- `README.md` 和 `README.zh-CN.md`：项目文档。
-- `LICENSE`：许可证信息。
+| 路径 | 用途 |
+| --- | --- |
+| [code/brain](code/brain/README.md) | Brain 运行时、MCP 工具、记忆与思考流程。 |
+| [code/brain-cli](code/brain-cli/README.md) | 宿主安装与更新、记忆迁移及可选依赖管理。 |
+| [code/brain-skill-toolkit-cli](code/brain-skill-toolkit-cli/README.md) | brain-skill 命令及安装引导。 |
+| [code/brain-codex-plugin](code/brain-codex-plugin/README.md) | Codex 的 Brain 接入。 |
+| [code/brain-claude-plugin](code/brain-claude-plugin/README.md) | Claude Code 的 Brain 接入。 |
+| [code/brain-dsh-plugin](code/brain-dsh-plugin/README.md) | DSH 的 Brain 接入。 |
+| [code/brain-web](code/brain-web/README.md) | Brain 数据的本地浏览界面。 |
+| [code/custom-dsh-plugin](code/custom-dsh-plugin/README.md) | DSH 审批审查插件。 |
+| [code/router-creator](code/router-creator/README.md) | DSH 创造模式 Agent 预设与配套工具。 |
+
+## 文档与开发
+
+- [文档索引](doc/README.md)与 [Brain 设计记录](doc/brain/README.md)。
+- [AI 阅读入口](llm.txt)。
+- [项目协作与修改流程](AGENTS.md)；Claude 通过 [CLAUDE.md](CLAUDE.md) 读取同一份规则。
+- 各组件的依赖与检查命令以其 README 和 package scripts 为准。
+- [许可证](LICENSE)。

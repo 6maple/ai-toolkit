@@ -1,8 +1,10 @@
-# c-skills Project Design Rules
+# ai-toolkit Project Design Rules
 
-> **用途：只记录 c-skills 仓库自身采用的设计、文档和交付规则。**
+项目协作与修改流程见根目录 [AGENTS.md](../AGENTS.md)。本文补充文档组织与组件设计约定。
+
+> **用途：只记录 ai-toolkit 仓库自身采用的设计、文档和交付规则。**
 >
-> 跨项目通用的认知原则以 [`ai-think/core.md`](ai-think/core.md) 为准；软件领域跨阶段稳定原则以 [`ai-think/software-core.md`](ai-think/software-core.md) 为准；软件迭代的阶段顺序和 Gate 以 [`ai-think/software-workflow.md`](ai-think/software-workflow.md) 为准。本文只说明这些通用方法在 c-skills 中怎样落地，以及本仓库特有的目录、truth owner 和工程约束。
+> 跨项目通用的认知原则以 [`ai-think/core.md`](ai-think/core.md) 为准；软件领域跨阶段稳定原则以 [`ai-think/software-core.md`](ai-think/software-core.md) 为准；软件迭代的阶段顺序和 Gate 以 [`ai-think/software-workflow.md`](ai-think/software-workflow.md) 为准。本文只说明这些通用方法在 ai-toolkit 中怎样落地，以及本仓库特有的目录、truth owner 和工程约束。
 >
 > 当本文与某个 capability 的当前 Requirements / Contract / Design 冲突时，先按 `core.md` 恢复背景、目的和责任关系，判断是项目规则需要更新，还是 capability 文档理解有误；不能因为某个旧 artifact 已经存在就机械延续。
 
@@ -10,7 +12,7 @@
 
 ## 1. 文档职责与目录
 
-c-skills 的文档按责任分层：
+ai-toolkit 的文档按责任分层：
 
 ```text
 doc/ai-think/core.md
@@ -26,7 +28,7 @@ doc/ai-think/cognitive-model.md
     长篇认知案例与历史校准材料
 
 doc/design-rule.md
-    c-skills 项目自身规则
+    ai-toolkit 项目自身规则
 
 doc/ai-mds/
     AI / Agent 相关专项规则；只有对应任务适用时读取
@@ -38,15 +40,15 @@ code/<capability>/
     capability implementation
 ```
 
-一个通用原则如果在不同项目仍然自然成立，应根据 owner 提升到 `ai-think/core.md`、`software-core.md` 或 `software-workflow.md`；`design-rule.md` 只保留 c-skills 自身需要的具体采用方式。
+一个通用原则如果在不同项目仍然自然成立，应根据 owner 提升到 `ai-think/core.md`、`software-core.md` 或 `software-workflow.md`；`design-rule.md` 只保留 ai-toolkit 自身需要的具体采用方式。
 
 具体 capability 的产品 truth 只能由自己的当前规范拥有，不在 `design-rule.md` 复制一套近似定义。
 
 ---
 
-## 2. c-skills 的 capability 迭代默认采用公共软件 workflow
+## 2. ai-toolkit 的 capability 迭代默认采用公共软件 workflow
 
-当一个 capability 的改动已经进入稳定规格与交付阶段，c-skills 默认采用 [`ai-think/software-workflow.md`](ai-think/software-workflow.md) 定义的 Requirements / Acceptance / System Design / Detailed Design / Test / Implementation / Readiness 流程，并采用 [`ai-think/software-core.md`](ai-think/software-core.md) 的跨阶段 truth、Design 和 Test 原则。
+当一个 capability 的改动已经进入稳定规格与交付阶段，ai-toolkit 默认采用 [`ai-think/software-workflow.md`](ai-think/software-workflow.md) 定义的 Requirements / Acceptance / System Design / Detailed Design / Test / Implementation / Readiness 流程，并采用 [`ai-think/software-core.md`](ai-think/software-core.md) 的跨阶段 truth、Design 和 Test 原则。
 
 简单改动可以合并相邻步骤；探索 / research 任务只做到足以回答当前 material question 的程度。具体 capability 如果需要偏离公共 workflow，应在自己的 README / Design / Test Strategy 中说明当前背景和理由。
 
@@ -83,7 +85,7 @@ top-level System Design
 
 ## 4. 当前 truth 与历史资料分开
 
-c-skills 会长期保留历史 discussion、旧版本 specification 和实现记录用于追溯，但这些材料只作为 evidence。
+ai-toolkit 会长期保留历史 discussion、旧版本 specification 和实现记录用于追溯，但这些材料只作为 evidence。
 
 当前工作时：
 
@@ -96,11 +98,11 @@ c-skills 会长期保留历史 discussion、旧版本 specification 和实现记
 
 ---
 
-## 5. c-skills 文档按公共表达基线编写
+## 5. ai-toolkit 文档按公共表达基线编写
 
 所有 normative docs、Prompt、Tool description 和自动注入 guidance 都采用 [`ai-think/core.md`](ai-think/core.md) §11 的表达基线：先保证语义正确、边界和因果清楚，并使缺少历史上下文、能力较弱的执行者也能稳定理解，再考虑去冗余和压缩。
 
-c-skills 额外约定：对会 materially 影响实现的规则，优先直接给出完整路径、完整条件或 canonical reference。只有增加间接层确实降低当前理解成本时才引入新的抽象。
+ai-toolkit 额外约定：对会 materially 影响实现的规则，优先直接给出完整路径、完整条件或 canonical reference。只有增加间接层确实降低当前理解成本时才引入新的抽象。
 
 ---
 
@@ -117,9 +119,9 @@ Prompt / Context / Tool / State 的具体分工属于该 capability 的 Design�
 
 ---
 
-## 7. Acceptance 和测试在 c-skills 中的落地
+## 7. Acceptance 和测试在 ai-toolkit 中的落地
 
-c-skills 的稳定 capability 行为默认按 [`ai-think/software-core.md`](ai-think/software-core.md) 的测试语义与资源边界，以及 [`ai-think/software-workflow.md`](ai-think/software-workflow.md) 的 Example Design、Test Review、Fake Green 和 Production Red/Green 阶段组织验证。
+ai-toolkit 的稳定 capability 行为默认按 [`ai-think/software-core.md`](ai-think/software-core.md) 的测试语义与资源边界，以及 [`ai-think/software-workflow.md`](ai-think/software-workflow.md) 的 Example Design、Test Review、Fake Green 和 Production Red/Green 阶段组织验证。
 
 每个 capability 自己的 Test Strategy 只需要补充项目公共 workflow 无法决定的内容，例如哪些真实 filesystem / process / host / browser / LLM 验证进入 CI、integration、E2E、release gate 或 manual acceptance。
 
@@ -129,7 +131,7 @@ c-skills 的稳定 capability 行为默认按 [`ai-think/software-core.md`](ai-t
 
 实现阶段直接读取当前 capability 的 Requirements / Contract / Acceptance / Design，并按 [`ai-think/software-core.md`](ai-think/software-core.md) 的 truth change 与双向审查原则，以及 [`ai-think/software-workflow.md`](ai-think/software-workflow.md) 的阶段回退规则处理偏差。Implementation Plan 不是实现前置条件；复杂迭代若保留 Plan，它只作为执行导航，不能替代 canonical specification / Design。
 
-c-skills 的 review 必须同时包含当前规格的正向 traceability 和 Original Intent Reverse Audit；审查结论需要区分 implementation deviation、Design gap、Requirement gap，以及更早理解本身已经被新 evidence 推翻的情况。
+ai-toolkit 的 review 必须同时包含当前规格的正向 traceability 和 Original Intent Reverse Audit；审查结论需要区分 implementation deviation、Design gap、Requirement gap，以及更早理解本身已经被新 evidence 推翻的情况。
 
 ---
 
@@ -181,7 +183,7 @@ doc/<capability>/README.md
 
 ---
 
-## 12. c-skills 修改完成时的检查原则
+## 12. ai-toolkit 修改完成时的检查原则
 
 每次能力迭代完成前，只运行与当前改动和该 capability Test Strategy 对应的检查。
 
@@ -214,7 +216,7 @@ doc/<capability>/README.md
 软件阶段顺序或 Gate
 → software-workflow.md
 
-只在 c-skills 成立
+只在 ai-toolkit 成立
 → design-rule.md
 
 只在某个 capability 成立

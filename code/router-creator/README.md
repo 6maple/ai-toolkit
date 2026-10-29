@@ -25,7 +25,7 @@
 dsh plugin --profile web add .\code\router-creator\tool-cordis-idempotent
 
 # 方式 B：如果已装 dsh-super-injector，可运行时热装
-# dev_install_package D:\Workspace\ai-projects\c-skills\code\router-creator\tool-cordis-idempotent
+# dev_install_package D:\Workspace\ai-projects\ai-toolkit\code\router-creator\tool-cordis-idempotent
 ```
 
 ### 2. 安装预设

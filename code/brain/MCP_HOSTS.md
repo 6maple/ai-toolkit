@@ -20,8 +20,8 @@ mcp-client:
   - serverName: brain
     transport: stdio
     command: node
-    args: ["D:/Workspace/ai-projects/c-skills/code/brain/dist/index.mjs"]
-    cwd: D:/Workspace/ai-projects/c-skills
+    args: ["D:/Workspace/ai-projects/ai-toolkit/code/brain/dist/index.mjs"]
+    cwd: D:/Workspace/ai-projects/ai-toolkit
     env:
       BRAIN_ASK_LONG_TERM: none
 ```

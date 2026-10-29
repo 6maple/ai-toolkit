@@ -1,6 +1,11 @@
 # Brain 使用入口
 
-Brain 让支持 MCP 的 Agent 在后续工作中取回和维护长期记忆。本仓库的 Brain 主体位于 `code/brain/`，安装与日常辅助命令位于 `code/brain-cli/`。本文件面向准备使用 Brain 的人及其 AI 助手；具体命令见 `code/brain-cli/llm.txt`，当前 Brain 行为见 `code/brain/README.md`。
+Brain 帮助 AI Agent 取回和维护长期记忆。本仓库为 ai-toolkit，Brain 主体位于 `code/brain/`。当前行为见 `code/brain/README.md`，完整组件导航见 `README.zh-CN.md`。
+
+## 选择接入方式
+
+- 宿主插件 / MCP：通过 `code/brain-cli/` 安装 Codex、Claude Code 或 DSH 接入，在用户消息边界恢复上下文。下面的“开始使用”说明此方式。
+- CLI + skill：通过 `brain-skill` 命令使用 Brain，由用户为任务选择 `brain` skill，也可单独执行记忆操作。本机 CLI 准备见 `code/brain-skill-toolkit-cli/README.md`；目标项目接入见 `code/brain-skill-toolkit-cli/INSTALL.md`；命令参考见 `skills/brain/references/commands.md`。复制 skill 不会安装 CLI，完整 think/step 流程还需真实宿主会话标识。
 
 ## 开始使用
 
