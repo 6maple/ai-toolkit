@@ -1,5 +1,7 @@
 # @dsh-external/brain-dsh-plugin
 
+Default complete setup includes the six formal brain-ai methods and their Global Core route. The shared Brain installer prepares them automatically; manual checkout setup uses the pack command below. Conflicts preserve existing content and must be resolved before completing an upgrade.
+
 DSH 的 brain v2 A2 host adapter。插件按source root启动并复用一个brain MCP
 stdio process；它不拥有 memory schema、工具 contract 或 cognition workflow。
 
@@ -73,6 +75,8 @@ pnpm run typecheck
 pnpm run test
 
 cd ..
+pnpm --dir brain-cli install
+node brain-cli/index.mjs pack install brain-ai
 dsh plugin --profile web add ./brain-dsh-plugin
 dsh --profile web --dump-config
 ```

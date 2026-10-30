@@ -1,5 +1,7 @@
 # Brain Codex plugin
 
+Default complete setup includes the six formal brain-ai methods and their Global Core route. The shared Brain installer prepares them automatically; manual checkout setup uses the pack command below. Conflicts preserve existing content and must be resolved before completing an upgrade.
+
 Codex host adapter for `../brain`.
 
 - `UserPromptSubmit` executes the same restoration path as `brain_think` and adds
@@ -57,6 +59,8 @@ install the plugin:
 
 ```powershell
 pnpm run stub
+pnpm --dir ../brain-cli install
+node ../brain-cli/index.mjs pack install brain-ai
 codex plugin marketplace add D:\Workspace\ai-projects\ai-toolkit\code\brain-codex-plugin
 codex plugin add brain-codex-plugin@ai-toolkit-local
 ```

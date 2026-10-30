@@ -1,6 +1,6 @@
 # 将已就绪的 Brain 接入目标项目
 
-这份引导给目标项目的使用者或 AI 执行。Brain 的安装、依赖和构建已经由维护者准备好；目标项目只使用现成命令与 skill 文件。
+这份引导给目标项目的使用者或 AI 执行。Brain 的安装、依赖、构建，以及实际数据根中的六份正式 brain-ai 方法和 Global Core 入口已经由维护者准备好；目标项目只使用现成命令与 skill 文件。
 
 维护者首次准备本机 CLI 时，先按 [README 的本地安装步骤](README.md#本地安装命令windows--powershell) 安装依赖、生成 stub 并执行本地 `npm link`。无需发布包。先在目标宿主中确认 `brain-skill --version`、`step --help`、`step --schema` 可用，再执行本页项目接入；复制或链接 skill 本身不会安装 CLI。
 
@@ -45,13 +45,19 @@ AI 宿主：<当前宿主，例如 Codex 或 Claude Code>
    共享目录链接没有独立副本，不在链接内添加宿主专用字段；需要此字段时使用独立副本。
 5. 执行 brain-skill --project '<目标项目根>' --json cat '@project/core.md'。
    检查退出码为 0、ok 为 true，且 binding.sourceRoot 对应目标项目根。
-   Core 为空是正常结果。报告有影响的警告。
+   Project Core 为空是正常结果。报告有影响的警告。
+   使用同一 --project 和 --brain-root 读取 @global/core.md，核对正式方法入口；
+   再读取 @global/memories/skill/brain-ai/ 下的 core.md、software.md、agentic-software.md、
+   instructions.md、user-facing-expression.md、report-writing.md，确认六份正文均可用。
+   六份方法的 cat 结果均须退出码为 0、ok 为 true；可用 --limit 限制输出，无需逐页读完。
+   实际任务按适用条件读取完整方法正文。
+   缺少方法或入口时报告完整环境未就绪，交由维护者准备；不自行写入 Global。
    另外执行 brain-skill step --help 与 brain-skill step --schema，确认交付包含流程控制命令。
    完整工作需要真实宿主会话标识；检查当前宿主是否提供 CODEX_THREAD_ID 或
    CLAUDE_CODE_SESSION_ID，或维护者是否提供 BRAIN_SESSION_ID / --session 的接入方式。
    缺少时报告“记忆命令已可用，完整流程仍缺会话标识”，不要猜测标识，也不要为验证运行 think。
 6. 报告 skill 安装位置、CLI 入口与版本、项目绑定验证结果、用户如何显式调用，
-   并区分文件/CLI 已验证与宿主是否已经实际发现该 skill。
+   并分别说明方法记忆/入口、会话标识的就绪情况，以及宿主是否已经实际发现该 skill。
 
 本次接入只安装项目 skill 并验证命令，不启用“每轮强制使用 Brain”，
 不新增 MCP/hook，不改变全局配置，也不修改当前项目的业务代码。
@@ -126,7 +132,7 @@ $verification.warnings
 
 若使用维护者提供的绝对命令路径，PowerShell 调用形式为 `& '<CLI绝对路径>' --version`，其余参数保持相同。
 
-核对打印出的 `binding.sourceRoot` 是否对应实际项目根（有目录链接时以真实目录为准）。cat 验证会建立或恢复目标项目在 Brain 中的绑定，可能初始化项目记忆入口。空 Core 可以正常使用，不需要为安装凑写记忆。原有 Brain 数据和已配置的可选能力由维护者负责。
+核对打印出的 `binding.sourceRoot` 是否对应实际项目根（有目录链接时以真实目录为准）。cat 验证会建立或恢复目标项目在 Brain 中的绑定，可能初始化项目记忆入口。空 Project Core 可以正常使用，不需要为安装凑写项目记忆；这不代表 Global 方法记忆和读取入口已齐备，还需完成前述六份正文与 Global Core 核验。原有 Brain 数据和已配置的可选能力由维护者负责。
 
 ## 安装后的使用
 

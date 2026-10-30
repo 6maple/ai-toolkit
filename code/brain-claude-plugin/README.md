@@ -1,5 +1,7 @@
 # Brain Claude Code plugin
 
+Default complete setup includes the six formal brain-ai methods and their Global Core route. The shared Brain installer prepares them automatically; manual checkout setup uses the pack command below. Conflicts preserve existing content and must be resolved before completing an upgrade.
+
 Claude Code adapter for `../brain`. Brain owns cognition and tool behavior. This plugin provides the Brain processing entry before every user prompt and exposes Brain's remaining tools through MCP.
 
 ## Behavior
@@ -33,6 +35,8 @@ claude plugin validate . --strict
 Add the checkout as a local Claude Code marketplace and install the plugin:
 
 ```powershell
+pnpm --dir ../brain-cli install
+node ../brain-cli/index.mjs pack install brain-ai
 claude plugin marketplace add D:\Workspace\ai-projects\ai-toolkit\code\brain-claude-plugin
 claude plugin install brain-claude-plugin@ai-toolkit-local
 ```

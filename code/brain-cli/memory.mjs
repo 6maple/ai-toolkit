@@ -18,6 +18,7 @@ import {
 const ROLES = new Set(["decision", "knowledge", "intention", "skill"]);
 export const BRAIN_ROOT = process.env.BRAIN_CLI_ROOT ?? DEFAULT_BRAIN_HOME;
 const PACK_ROOT = fileURLToPath(new URL("./default-memories/skill/brain-ai/", import.meta.url));
+export const BRAIN_AI_FILES = ["core", "software", "agentic-software", "instructions", "user-facing-expression", "report-writing"];
 export const PACK_ROUTE = "- 立即读取 `@global/memories/skill/brain-ai/core.md` 的完整原文，按其中记忆读取方法和路线取得适用认知。";
 
 function isMissing(error) { return error?.code === "ENOENT"; }
@@ -130,20 +131,20 @@ async function writeExportFile(root, relative, bytes) {
   if (prior === undefined) await writeFile(target, bytes, { flag: "wx" });
 }
 
-async function coordinatedInstall(entries, route) {
-  await mkdir(BRAIN_ROOT, { recursive: true });
-  const lease = new FileGlobalSemanticLease(BRAIN_ROOT);
+async function coordinatedInstall(entries, route, brainRoot = BRAIN_ROOT) {
+  await mkdir(brainRoot, { recursive: true });
+  const lease = new FileGlobalSemanticLease(brainRoot);
   return lease.runExclusive(undefined, async () => {
     const planned = [];
     const same = [], conflicts = [];
     const all = new Map(entries);
-    const scopeBytes = await readMaybe(path.join(BRAIN_ROOT, "global", ".state", "scope.json"));
+    const scopeBytes = await readMaybe(path.join(brainRoot, "global", ".state", "scope.json"));
     const cycle = scopeBytes === undefined ? 0 : decodeScopeState(scopeBytes).cycle;
     if (route !== undefined) {
       const coreRelative = "global/core.md";
       const incoming = all.get(coreRelative);
       if (incoming !== undefined) throw new Error("记忆包输入不能自行包含 Global Core");
-      const current = await readMaybe(path.join(BRAIN_ROOT, "global", "core.md"));
+      const current = await readMaybe(path.join(brainRoot, "global", "core.md"));
       const original = current === undefined ? "" : decodeMarkdown(current);
       const hasRoute = original.split("\n").includes(route);
       if (!hasRoute && original.includes("@global/memories/skill/brain-ai/core.md")) {
@@ -163,7 +164,7 @@ async function coordinatedInstall(entries, route) {
             accessibility: { ageCycles: 0, anchorCycle: cycle, durability: INITIAL_DURABILITY, exposure: 0 },
           })
         : raw;
-      const target = path.join(BRAIN_ROOT, ...relative.split("/"));
+      const target = path.join(brainRoot, ...relative.split("/"));
       const stat = await lstat(target).catch((error) => { if (isMissing(error)) return undefined; throw error; });
       if (stat !== undefined && !stat.isFile()) { conflicts.push(relative + "（目标不是普通文件）"); continue; }
       const current = stat === undefined ? undefined : await readFile(target);
@@ -211,13 +212,13 @@ export async function importGlobal(input) {
   return coordinatedInstall(entries);
 }
 
-export async function installBrainAi() {
+export async function installBrainAi({ packRoot = PACK_ROOT, brainRoot = BRAIN_ROOT } = {}) {
   const entries = [];
-  for (const name of ["core", "software", "agentic-software", "instructions", "user-facing-expression", "report-writing"]) {
+  for (const name of BRAIN_AI_FILES) {
     const relative = `global/memories/skill/brain-ai/${name}.md`;
-    const bytes = await readFile(path.join(PACK_ROOT, `${name}.md`));
+    const bytes = await readFile(path.join(packRoot, `${name}.md`));
     validateDocument(relative, bytes);
     entries.push([relative, bytes]);
   }
-  return coordinatedInstall(entries, PACK_ROUTE);
+  return coordinatedInstall(entries, PACK_ROUTE, brainRoot);
 }

@@ -13,6 +13,8 @@
 
 公开路径、正则和 glob 使用引号。公开路径使用正斜杠。归档目录为 `<scope>/memories/{decision,knowledge,intention,skill}/`；Core 是 `<scope>/core.md`。`scope` 是 `@global`、`@project` 或已配置 `#alias`。Core、目录和具体归档文档按不同命令分别使用。
 
+完整工作方式需要维护者先准备正式 brain-ai 六份方法和 Global Core 入口。项目安装按 [接入引导](../../../code/brain-skill-toolkit-cli/INSTALL.md) 使用现有 cat 核验入口及六份正文；自定义 --brain-root 的准备与核验必须使用同一目录。缺少方法时报告就绪缺口，单项记忆操作保持其原有用途。
+
 ## 工作入口与读取
 
 ```powershell

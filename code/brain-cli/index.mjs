@@ -12,7 +12,7 @@ brain-cli install|update --agent codex|claude|dsh --source github --repository <
 brain-cli semantic-search install|update
 brain-cli memory export --output <目录>
 brain-cli memory import <目录>
-brain-cli pack install brain-ai
+brain-cli pack install brain-ai [--brain-root <数据目录>]
 
 只有 dsh 要求 --profile。Brain 数据根目录默认 ~/.brain-data；测试可通过 BRAIN_CLI_ROOT 指定。
 `;
@@ -24,7 +24,7 @@ function optionsFrom(args) {
     const value = args[i + 1];
     if (!key?.startsWith("--") || value === undefined || value.startsWith("--")) throw new Error(`参数需要值：${key}`);
     const name = key.slice(2);
-    if (!["agent", "source", "path", "repository", "ref", "profile", "output"].includes(name)) throw new Error(`未知参数：${key}`);
+    if (!["agent", "source", "path", "repository", "ref", "profile", "output", "brain-root"].includes(name)) throw new Error(`未知参数：${key}`);
     if (options[name] !== undefined) throw new Error(`重复参数：${key}`);
     options[name] = value;
   }
@@ -46,7 +46,9 @@ export async function main(args = process.argv.slice(2)) {
   }
   const [command, action, ...rest] = args;
   if (command === "install" || command === "update") {
-    display(await installAgent(command, optionsFrom(args.slice(1))));
+    const options = optionsFrom(args.slice(1));
+    if (options["brain-root"] !== undefined) throw new Error("--brain-root 仅用于 pack install；宿主使用默认 Brain 数据根");
+    display(await installAgent(command, options));
     return;
   }
   if (command === "semantic-search" && ["install", "update"].includes(action) && rest.length === 0) {
@@ -63,8 +65,10 @@ export async function main(args = process.argv.slice(2)) {
     displayInstall(await importGlobal(rest[0]));
     return;
   }
-  if (command === "pack" && action === "install" && rest.length === 1 && rest[0] === "brain-ai") {
-    displayInstall(await installBrainAi());
+  if (command === "pack" && action === "install" && rest[0] === "brain-ai") {
+    const options = optionsFrom(rest.slice(1));
+    if (Object.keys(options).some((key) => key !== "brain-root")) throw new Error("pack install 只接受 --brain-root <目录>");
+    displayInstall(await installBrainAi(options["brain-root"] === undefined ? {} : { brainRoot: resolve(options["brain-root"]) }));
     return;
   }
   throw new Error(`未知命令或参数。\n${HELP}`);

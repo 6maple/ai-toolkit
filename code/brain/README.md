@@ -204,7 +204,7 @@ Source root 通过 `projects/*/project.json` 映射到稳定 ProjectId；一个 
 
 ## Semantic Search
 
-Agent 的 Brain MCP 安装与更新、Global 记忆导入导出和可选 `brain-ai` 记忆包安装，见 [Brain CLI](../brain-cli/README.md)。
+Agent 的 Brain MCP 安装与更新、Global 记忆导入导出和默认配套的 `brain-ai` 方法记忆准备，见 [Brain CLI](../brain-cli/README.md)。
 
 Semantic Search 默认关闭。全局配置位于：
 

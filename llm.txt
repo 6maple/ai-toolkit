@@ -43,7 +43,7 @@ Brain 帮助 AI Agent 取回和维护长期记忆。本仓库为 ai-toolkit，Br
 
 ## 按需添加能力
 
-- `node code/brain-cli/index.mjs pack install brain-ai`：安装可选的 Global 方法记忆及 Core 入口，让 Agent 在适用任务中读取这些方法。
+默认完整工作方式包含六份正式 brain-ai 方法记忆及 Global Core 入口。宿主安装/更新已准备它们；CLI 本机准备或手动插件接入时执行 `node code/brain-cli/index.mjs pack install brain-ai`，指定数据根时追加 `--brain-root <目录>`。已有不同正文或入口时保留并报告冲突，需核对后继续；后续核验使用同一个数据根。
 - `node code/brain-cli/index.mjs semantic-search install`：准备语义搜索依赖。另需在 `~/.brain-data/config.json` 中启用 `semanticSearch.enabled` 并重启 Agent；没有启用时仍可用 Brain 的其他发现工具。
 
 若要确认实际参数、安装结果或冲突处理，先看 `node code/brain-cli/index.mjs --help` 和 `code/brain-cli/llm.txt`。

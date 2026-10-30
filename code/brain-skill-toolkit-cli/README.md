@@ -4,12 +4,17 @@
 
 目标项目接入现成 Brain 时，使用 [项目安装引导](INSTALL.md)，其中包含可直接交给项目 AI 的指令。该引导假定维护者已准备好命令和 skill，目标项目只安装项目级 skill 并验证公开 CLI。
 
+默认完整工作方式需要正式 brain-ai 六份方法记忆及 Global Core 读取入口。下面的 pack 命令使用默认数据根；另选数据环境时追加 `--brain-root <目录>`，并在后续 brain-skill 调用中传入同一目录。相同内容复用，不同内容报告冲突；这也包括与新包不同的官方旧正文，需先核对处理。
+
 以下为 Brain 维护者的准备说明。CLI 直接 import 相邻 `brain/src`，使用 unbuild stub 执行源码。
 
 在仓库中先安装 `code/brain` 的运行依赖，再安装本目录依赖并生成 stub：
 
 ```powershell
 pnpm --dir code/brain install
+pnpm --dir code/brain stub
+pnpm --dir code/brain-cli install
+node code/brain-cli/index.mjs pack install brain-ai
 pnpm --dir code/brain-skill-toolkit-cli install
 pnpm --dir code/brain-skill-toolkit-cli stub
 node code/brain-skill-toolkit-cli/dist/brain-skill.mjs --help

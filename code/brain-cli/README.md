@@ -11,12 +11,14 @@ brain-cli install --agent dsh --profile <名称> --source local --path <ai-toolk
 brain-cli semantic-search install|update
 brain-cli memory export --output <目录>
 brain-cli memory import <目录>
-brain-cli pack install brain-ai
+brain-cli pack install brain-ai [--brain-root <目录>]
 ```
 
-Agent 安装命令会复制指定来源中的 Brain 与对应宿主插件，构建可运行产物，再调用宿主 CLI 接入；结果列出所用本地目录或 Git 提交、安装位置和后续重启提示。需要对应宿主 CLI、Node 与 pnpm。失败时保留已准备的版本目录，并报告失败的具体步骤；宿主信任和启用提示由用户完成。
+Agent 安装和更新命令会复制指定来源中的 Brain、对应宿主插件及六份正式方法资源，构建产物，再将方法包和 Global Core 入口准备到默认 Brain 数据根，成功后才调用宿主 CLI 接入；结果列出所用本地目录或 Git 提交、安装位置和后续重启提示。需要对应宿主 CLI、Node 与 pnpm。失败时保留已准备的版本目录，并报告失败的具体步骤；宿主信任和启用提示由用户完成。
 
-记忆导出只处理 Global Core、Global archival 和记忆目录中的普通配套文件，保持 `global/...` 相对路径。有效且与正文匹配的争议状态随正文迁移，运行学习计数重置；状态损坏或失配时给出路径警告并继续。导入和包安装在 Brain 的 Global 协调锁内预检所有目标：相同内容跳过，冲突时整体停止；写入中断时报告完成和未完成路径。`brain-ai` 只提供 `pack install`，其六份正文（含 Agent 软件方法）位于 `default-memories/skill/brain-ai/`，安装时在 Global Core 增加一行入口。
+记忆导出只处理 Global Core、Global archival 和记忆目录中的普通配套文件，保持 `global/...` 相对路径。有效且与正文匹配的争议状态随正文迁移，运行学习计数重置；状态损坏或失配时给出路径警告并继续。导入和包安装在 Brain 的 Global 协调锁内预检所有目标：相同内容跳过，冲突时整体停止；写入中断时报告完成和未完成路径。默认完整 Brain 接入包含 `brain-ai` 方法包。单独准备 CLI 或手动接入时，使用 `pack install brain-ai`；此命令还可用 `--brain-root <目录>` 指定数据根。其六份正文（含 Agent 软件方法）位于 `default-memories/skill/brain-ai/`，安装时在 Global Core 增加一行入口。
+
+宿主 install/update 仅使用默认数据根；`BRAIN_CLI_ROOT` 是隔离验证使用的覆盖入口。CLI 指定其他数据根时，必须对那个根执行 pack 准备并核验。包安装沿用相同跳过、不同报冲突规则，不自动替换官方旧正文或用户修改。冲突在宿主接入变更前返回；方法写入后宿主调用失败时，错误报告已完成的准备步骤，不能视为接入成功。
 
 这六份记忆包含读取指导和专业Skill；思考流程位于Brain的`think-workflow/`资源，在记忆外。包安装保持记忆安装语义，流程选择使用`config.json`的`thinkWorkflowFile`，例如`@internal/think-workflow/brain-ai/index.md`。旧包有用户改动时继续保留冲突预检，不静默覆盖；迁移已安装的旧流程记忆前先保存原文，再更新为读取指导并保留专业记忆及有效入口。
 

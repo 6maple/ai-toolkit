@@ -17,7 +17,7 @@ pnpm --dir code/brain-cli install
 node code/brain-cli/index.mjs install --agent codex --source local --path .
 ```
 
-Claude Code 使用 `--agent claude`；DSH 使用 `--agent dsh --profile <名称>`。按安装结果重启宿主，完成信任或启用步骤。依赖与更新命令见[安装器 README](code/brain-cli/README.md)。
+Claude Code 使用 `--agent claude`；DSH 使用 `--agent dsh --profile <名称>`。安装和更新会先准备所选来源的六份正式 brain-ai 方法记忆及 Global Core 入口；已有不同内容时保留原文并报告冲突。按安装结果重启宿主，完成信任或启用步骤。依赖与更新命令见[安装器 README](code/brain-cli/README.md)。
 
 ### CLI + skill
 
@@ -25,12 +25,15 @@ Claude Code 使用 `--agent claude`；DSH 使用 `--agent dsh --profile <名称>
 
 ```sh
 pnpm --dir code/brain install
+pnpm --dir code/brain stub
+pnpm --dir code/brain-cli install
+node code/brain-cli/index.mjs pack install brain-ai
 pnpm --dir code/brain-skill-toolkit-cli install
 pnpm --dir code/brain-skill-toolkit-cli stub
 node code/brain-skill-toolkit-cli/dist/brain-skill.mjs --help
 ```
 
-按 [CLI README](code/brain-skill-toolkit-cli/README.md) 链接 `brain-skill`，再按[项目接入引导](code/brain-skill-toolkit-cli/INSTALL.md) 安装 skill。单独复制 skill 不会安装 CLI。完整 `think` / `step` 流程需要真实宿主会话标识；单项记忆命令可独立执行。参数见[命令参考](skills/brain/references/commands.md)。
+按 [CLI README](code/brain-skill-toolkit-cli/README.md) 链接 `brain-skill`，再按[项目接入引导](code/brain-skill-toolkit-cli/INSTALL.md) 安装 skill。单独复制 skill 不会安装 CLI 或 Global 方法记忆。指定其他数据根时，用 `node code/brain-cli/index.mjs pack install brain-ai --brain-root <目录>` 准备并核验同一个数据根。完整 `think` / `step` 流程需要真实宿主会话标识；单项记忆命令可独立执行。参数见[命令参考](skills/brain/references/commands.md)。
 
 Brain 数据默认保存在 `~/.brain-data`。配置、记忆语义与可选语义搜索见[运行 README](code/brain/README.md)。
 
