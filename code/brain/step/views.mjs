@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { noteKeys, phaseIds, decisions } from "./schema.mjs";
 
 const pack = new URL("./guidance/", import.meta.url);
@@ -21,6 +22,10 @@ const submit = JSON.parse(await read("submissions.json"));
 const stateUse = await read("state-use.md");
 const unavailable = await read("unavailable.md");
 const delivery = await read("delivery-rules.md");
+const deliveryPath = fileURLToPath(new URL("delivery-rules.md", pack));
+const deliveryPreparation = `准备最终回复或未完成交接前，先读取并严格执行下方交付指导：
+${deliveryPath}
+据此整理实际内容，再按当前允许的完成或交接分支提交相应核对。`;
 const names = {
   intent: "阶段1：持续深挖用户完整意图",
   essence: "阶段2：持续深挖事情本质",
@@ -113,14 +118,14 @@ export function deliveryView(state, notePath) {
   ];
   const understanding = notes(state, ["intent", "scope", "analysis", "research"]);
   const actual = notes(state, ["replyDraft", "result"]);
+  const hasTaskContent = state.tasks.some((task) => task.execution.result?.content);
   const remaining = state.tasks.filter(
-    (task) =>
-      task.scheduledFor === "future" || !["done", "cancelled"].includes(task.execution.status),
+    (task) => !["done", "cancelled"].includes(task.execution.status),
   );
   return `${intro}
 
 ${delivery}${understanding ? "\n\n本轮整体认识与依据：\n" + understanding : ""}${actual ? "\n\n本轮已整理的内容：\n" + actual : ""}
-${artifacts.length ? `\n正式成果位置：\n${artifacts.join("\n")}\n` : ""}${remaining.length ? `\n尚未完成及后续验收安排：\n${remaining.map(taskText).join("\n\n")}\n` : ""}${notePath ? `\n深度思考笔记实际位置：\n${notePath}` : ""}${pending(state)}`;
+${artifacts.length ? `\n正式成果位置：\n${artifacts.join("\n")}\n` : ""}${hasTaskContent ? "\n需要查看单项任务完整成果时，调用overview。\n" : ""}${remaining.length ? `\n尚未完成及后续验收安排：\n${remaining.map(taskText).join("\n\n")}\n` : ""}${notePath ? `\n深度思考笔记实际位置：\n${notePath}` : ""}${pending(state)}`;
 }
 export function currentView(state, notePath, receipt = "") {
   const phase = currentPhase(state);
@@ -143,7 +148,7 @@ export function currentView(state, notePath, receipt = "") {
 当前进展：${state.phases[phase].progress}
 ${receipt ? `\n本次处理：\n${receipt}\n` : ""}
 当前工作所需成果：
-${phase === "intent" ? "本轮用户原消息：\n" + state.message + "\n\n" : ""}${notes(state, keys) || "当前State尚未保存阶段成果，按本阶段方法取得实际内容。"}${currentTasks.length ? "\n\n本轮实际任务：\n" + currentTasks.map(taskText).join("\n\n") : ""}${pending(state)}
+${phase === "intent" ? "本轮用户原消息：\n" + state.message + "\n\n" : ""}${notes(state, keys) || "当前State尚未保存阶段成果，按本阶段方法取得实际内容。"}${state.notes.replyDraft != null ? "\n\n当前回复草稿：\n" + state.notes.replyDraft : ""}${currentTasks.length ? "\n\n本轮实际任务：\n" + currentTasks.map(taskText).join("\n\n") : ""}${pending(state)}
 ${phase === "work" ? `\n当前核对记录：\n${JSON.stringify(state.reviews, null, 2)}\n当前仍可执行的真实任务ID：${runnable.length ? runnable.join("、") : "当前未列出；按实际前提核对，不据此认定无工作。"}\n` : ""}
 ${stateUse}
 
@@ -151,7 +156,9 @@ ${stateUse}
 ${methods[phase]}
 
 继续方式：
-${submit[phase]}`;
+${submit[phase]}
+
+${deliveryPreparation}`;
 }
 export function overviewView(state, notePath) {
   return `当前整体意图与本轮边界：
@@ -164,9 +171,10 @@ ${notes(state, ["analysis", "research"])}
 ${notes(state, ["method", "acceptance"])}${state.tasks.length ? "\n\n" + plans(state) : ""}
 
 实际结果与未完：
-${notes(state, ["result"])}${pending(state)}
+${notes(state, ["result"])}${state.notes.replyDraft != null ? "\n\n已保存回复草稿；用status读取完整文本。" : ""}${pending(state)}
 
 当前位置：${currentPhase(state) ?? "本轮流程已完成"}
+${state.handoffReason ? `原阶段尚未完成；本次交接原因：\n${state.handoffReason}\n` : ""}
 核对当前工作与上述整体的关系；发现实际变化，用update修订受影响内容并报告重要impact。
 ${currentPhase(state) === null || state.handoffReason ? "\n" + delivery + (notePath ? "\n\n深度思考笔记实际位置：\n" + notePath : "") : ""}`;
 }

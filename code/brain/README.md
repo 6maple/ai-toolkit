@@ -255,4 +255,6 @@ pnpm run stub
 
 `stub` 与 production 都使用 `dist/index.mjs` 入口。源码更新后，已经运行的 MCP / host process需要重启以加载新runtime；think-workflow配置更新下一次读取 B 时生效，正文通过实际文件读取。发布包包含 workflow 资源。
 
+`brain_step` 的当前完整指导会提供随包交付的 `step/guidance/delivery-rules.md` 实际绝对路径，模型在准备最终回复或未完成交接、核验实际交付内容前读取并执行。交付要求规定所需内容，示例轻度引导表达，具体组织与呈现按任务选择。`status` 可恢复已保存的回复草稿；单项任务的完整成果与交接原因可通过 `overview` 查看。普通更新不重复整篇交付指导。
+
 不同 host 的接线见 [MCP_HOSTS.md](MCP_HOSTS.md)。DSH AutoThink 由独立 `brain-dsh-plugin` 提供；Codex 的 thread/session binding 由 `brain-codex-plugin` 持有；Claude Code 的 turn-start restore 与 MCP 接线由 `brain-claude-plugin` 提供。这些 host adapter 不改变 Brain cognition scope。

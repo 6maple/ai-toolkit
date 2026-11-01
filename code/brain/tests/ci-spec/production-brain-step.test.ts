@@ -19,6 +19,13 @@ import {
 } from "../../step/index.mjs";
 
 const passed = (assessment: string) => ({ outcome: "passed", assessment });
+const deliveryPreparation = "准备最终回复或未完成交接前，先读取并严格执行下方交付指导：\n";
+
+function guidance(result: unknown) {
+  const response = result as { isError?: boolean; structuredContent: { guidance: string } };
+  expect(response.isError).not.toBe(true);
+  return response.structuredContent.guidance;
+}
 
 async function fixture(options: { fileSystem?: BrainStepFileSystem } = {}) {
   const sourceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "brain-step-"));
@@ -58,7 +65,10 @@ async function fixture(options: { fileSystem?: BrainStepFileSystem } = {}) {
   };
 }
 
-async function ready(f: Awaited<ReturnType<typeof fixture>>) {
+async function ready(
+  f: Awaited<ReturnType<typeof fixture>>,
+  phase: "intent" | "essence" | "work" = "work",
+) {
   await f.call({ action: "start", message: "合成契约检查；不执行真实业务。" });
   await f.call({
     action: "update",
@@ -73,12 +83,14 @@ async function ready(f: Awaited<ReturnType<typeof fixture>>) {
       replyDraft: "草稿A",
     },
   });
+  if (phase === "intent") return;
   await f.call({
     action: "submit",
     phase: "intent",
     decision: "advance",
     assessment: "合成意图范围已核对",
   });
+  if (phase === "essence") return;
   await f.call({
     action: "submit",
     phase: "essence",
@@ -88,6 +100,196 @@ async function ready(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe("brain_step native MCP and persisted state", () => {
+  it.each(["intent", "essence", "work"] as const)(
+    "provides readable delivery guidance and restores drafts before finishing %s",
+    async (phase) => {
+      const f = await fixture();
+      try {
+        const started = await f.call({
+          action: "start",
+          message: "合成契约检查；不执行真实业务。",
+        });
+        expect(guidance(started)).toContain(deliveryPreparation);
+        await ready(f, phase);
+        const before = await f.raw();
+        const status = await f.call({ action: "status" });
+        expect(status.structuredContent).toMatchObject({ currentPhase: phase });
+        const current = guidance(status);
+        expect(current).toContain("草稿A");
+        const resourcePath = current.split(deliveryPreparation)[1]?.split("\n")[0];
+        expect(path.isAbsolute(resourcePath)).toBe(true);
+        expect(await fs.readFile(resourcePath, "utf8")).toBe(
+          await fs.readFile(
+            new URL("../../step/guidance/delivery-rules.md", import.meta.url),
+            "utf8",
+          ),
+        );
+        const overview = guidance(await f.call({ action: "overview" }));
+        expect(overview).toContain("用status读取完整文本");
+        expect(overview).not.toContain("草稿A");
+        expect(await f.raw()).toBe(before);
+        const updated = guidance(await f.call({ action: "update", progress: "读取路径已核对" }));
+        expect(updated).not.toContain(deliveryPreparation);
+        expect(updated).not.toContain("# 本轮交付");
+        await f.call({ action: "update", updates: { replyDraft: null } });
+        expect(guidance(await f.call({ action: "status" }))).not.toContain("当前回复草稿：");
+        expect(guidance(await f.call({ action: "overview" }))).not.toContain(
+          "用status读取完整文本",
+        );
+      } finally {
+        await f.close();
+      }
+    },
+  );
+
+  it.each(["intent", "essence", "work"] as const)(
+    "restores the unfinished phase and its actual handoff reason in %s",
+    async (phase) => {
+      const f = await fixture();
+      try {
+        await ready(f, phase);
+        const reason = "当前授权范围内的调查已完成，缺少用户才能提供的原始资料，取得后继续核对。";
+        guidance(
+          await f.call({
+            action: "submit",
+            phase,
+            decision: "handoff",
+            assessment: reason,
+            workflow: passed("已核对当前应执行流程和无法继续的具体前提"),
+          }),
+        );
+        const before = await f.raw();
+        const overview = await f.call({ action: "overview" });
+        expect(overview.structuredContent).toMatchObject({ currentPhase: phase });
+        expect(guidance(overview)).toContain("原阶段尚未完成");
+        expect(guidance(overview)).toContain(reason);
+        const status = guidance(await f.call({ action: "status" }));
+        expect(status).toContain(reason);
+        expect(status).toContain("草稿A");
+        expect(await f.raw()).toBe(before);
+        const current = await f.state();
+        expect(current.phases[phase].status).toBe("active");
+        expect(current.reviews.completion).toBeNull();
+      } finally {
+        await f.close();
+      }
+    },
+  );
+
+  it("points to overview for completed task content without a separate artifact", async () => {
+    const f = await fixture();
+    try {
+      await ready(f);
+      guidance(
+        await f.call({
+          action: "update",
+          updates: {
+            taskChanges: [
+              { kind: "add", scheduledFor: "current_round", description: "交付已核对的文字结论" },
+            ],
+          },
+        }),
+      );
+      const taskId = (await f.state()).tasks[0].id as string;
+      const content = "任务成品正文：核对依据支持的结论与未测范围。";
+      guidance(
+        await f.call({
+          action: "update",
+          updates: {
+            taskChanges: [{ kind: "complete", taskId, result: { content, artifacts: [] } }],
+          },
+        }),
+      );
+      const finished = await f.call({
+        action: "submit",
+        phase: "work",
+        decision: "finish",
+        completion: passed("已核对实际文字成品及交付范围"),
+        workflow: passed("已核对本轮实际流程"),
+      });
+      expect(finished.structuredContent).toMatchObject({ currentPhase: null });
+      expect(guidance(finished)).toContain("调用overview");
+      expect(guidance(finished)).not.toContain(content);
+      const before = await f.raw();
+      expect(guidance(await f.call({ action: "overview" }))).toContain(content);
+      expect(guidance(await f.call({ action: "status" }))).toContain("调用overview");
+      expect(await f.raw()).toBe(before);
+    } finally {
+      await f.close();
+    }
+  });
+
+  it.each(["current_round", "future"] as const)(
+    "lists only actual unfinished work for %s without changing task status",
+    async (scheduledFor) => {
+      const f = await fixture();
+      const statuses = ["todo", "doing", "blocked", "deferred", "done", "cancelled"] as const;
+      try {
+        await ready(f);
+        guidance(
+          await f.call({
+            action: "update",
+            updates: {
+              taskChanges: statuses.map((status) => ({
+                kind: "add",
+                scheduledFor,
+                description: `fixture-${scheduledFor}-${status}`,
+              })),
+            },
+          }),
+        );
+        const tasks = (await f.state()).tasks as Array<{ id: string; description: string }>;
+        const taskChanges: Array<Record<string, unknown>> = [];
+        for (const [index, status] of statuses.entries()) {
+          const taskId = tasks[index].id;
+          if (status === "doing")
+            taskChanges.push({ kind: "progress", taskId, progress: "已取得部分进展" });
+          else if (status === "done")
+            taskChanges.push({
+              kind: "complete",
+              taskId,
+              result: { content: "实际结果已核对", artifacts: [] },
+            });
+          else if (status !== "todo")
+            taskChanges.push({
+              kind: { blocked: "block", deferred: "defer", cancelled: "cancel" }[status],
+              taskId,
+              reason: "按当前实际前提和决定保存状态",
+            });
+        }
+        guidance(await f.call({ action: "update", updates: { taskChanges } }));
+        const handoff = guidance(
+          await f.call({
+            action: "submit",
+            phase: "work",
+            decision: "handoff",
+            assessment: "本次仅获准核对任务展示，未获准执行业务任务；展示核对后交接现状。",
+            workflow: passed("已核对实际权限和未完状态"),
+          }),
+        );
+        const remaining = handoff
+          .split("尚未完成及后续验收安排：\n")[1]
+          ?.split("深度思考笔记实际位置：\n")[0];
+        expect(remaining).toBeDefined();
+        for (const status of statuses)
+          if (["done", "cancelled"].includes(status))
+            expect(remaining).not.toContain(`fixture-${scheduledFor}-${status}`);
+          else expect(remaining).toContain(`fixture-${scheduledFor}-${status}`);
+        const before = await f.raw();
+        const overview = guidance(await f.call({ action: "overview" }));
+        expect(overview).toContain(`fixture-${scheduledFor}-done`);
+        expect(overview).toContain(`fixture-${scheduledFor}-cancelled`);
+        const after = await f.state();
+        expect(
+          after.tasks.map((task: { execution: { status: string } }) => task.execution.status),
+        ).toEqual(statuses);
+        expect(await f.raw()).toBe(before);
+      } finally {
+        await f.close();
+      }
+    },
+  );
+
   it("uses the common Brain registry with trusted per-call host identity and rejects absent identity", async () => {
     const sourceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "brain-step-common-"));
     const services = { sourceRoot } as BrainApplicationServices;
