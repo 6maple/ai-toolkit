@@ -47,3 +47,7 @@ Brain 帮助 AI Agent 取回和维护长期记忆。本仓库为 ai-toolkit，Br
 - `node code/brain-cli/index.mjs semantic-search install`：准备语义搜索依赖。另需在 `~/.brain-data/config.json` 中启用 `semanticSearch.enabled` 并重启 Agent；没有启用时仍可用 Brain 的其他发现工具。
 
 若要确认实际参数、安装结果或冲突处理，先看 `node code/brain-cli/index.mjs --help` 和 `code/brain-cli/llm.txt`。
+
+## lsh：仅显式调用的私有 Skill 入口
+
+`skills/lsh/` 是独立于 Brain 的私有 Skill 查找和管理组件，使用前先读 `skills/lsh/INSTALL.md` 与脚本 `node skills/lsh/scripts/lsh.mjs --help`。安装时用户明确指定私有 Skill 库的路径，安装器将绝对路径固化到用户级或项目级的 `.agents/lsh.json`，并只在宿主发现目录中链接 `lsh`。用户之后可明确调用 `/lsh`（Claude）或 `$lsh`（Codex）；私有库中普通 Skill 的名称、描述及正文只有在本次用户主动调用后才按需加载。用户初始背景和已确认的范围见 `skills/lsh/BASE.md`。

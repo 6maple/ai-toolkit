@@ -1,0 +1,6 @@
+interface:
+  display_name: "lsh"
+  short_description: "ban"
+  default_prompt: "使用 $lsh 处理我本次明确调用的私有 Skill 查找、使用或管理任务。"
+policy:
+  allow_implicit_invocation: false
