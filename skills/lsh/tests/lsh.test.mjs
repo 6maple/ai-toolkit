@@ -21,18 +21,20 @@ function fixture(){
  const clean=()=>fs.rmSync(root,{recursive:true,force:true});
  return {root,lib,skill,run,clean};
 }
-test('read-only index, find and declared dependencies work',()=>{
+test('live paths, bounded results and declared dependencies work without an index file',()=>{
  const f=fixture();try{
   f.skill('lark-shared','Shared permissions');
   f.skill('lark-doc','读取飞书文档','metadata:\n  requires:\n    skills: ["lark-shared"]\n');
-  assert.equal(f.run('list').data.count,2);
-  assert.equal(f.run('find','飞书文档').data.candidates[0].dir,'lark-doc');
+  const paths=f.run('list').data;
+  assert.equal(paths.count,2);
+  assert.deepEqual(paths.paths,['lark-doc/SKILL.md','lark-shared/SKILL.md']);
+  const match=f.run('find','飞书文档').data.candidates[0];
+  assert.equal(match.path,'lark-doc/SKILL.md');
+  assert.deepEqual(Object.keys(match).sort(),['path','reason']);
   assert.deepEqual(f.run('inspect','lark-doc').data.dependencies,['lark-shared']);
-  assert.equal(f.run('inspect','lark-shared').data.incoming[0].name,'lark-doc');
-  assert.equal(f.run('index','--check').data.current,false);
-  assert.equal(f.run('index','--write').data.changed,true);
-  assert.equal(f.run('index','--check').data.current,true);
-  assert.equal(f.run('index','--write').data.changed,false);
+  assert.equal(f.run('inspect','lark-shared').data.incoming[0].path,'lark-doc/SKILL.md');
+  assert.equal(fs.existsSync(path.join(f.lib,'llm.txt')),false);
+  assert.equal(f.run('index').exit,1);
  }finally{f.clean();}
 });
 test('supporting references are discovered and cited by source file; removal requires approval',()=>{
@@ -41,8 +43,9 @@ test('supporting references are discovered and cited by source file; removal req
   fs.mkdirSync(path.join(consumer,'references'));
   fs.writeFileSync(path.join(consumer,'references','manual.md'),'See ../../target/SKILL.md');
   const rel=f.run('inspect','target');
-  assert.equal(rel.data.incoming[0].name,'consumer');
-  assert.deepEqual(rel.data.incoming[0].files,['consumer/references/manual.md']);
+  assert.equal(rel.data.incoming[0].path,'consumer/SKILL.md');
+  const details=f.run('audit','target').data.reports[0];
+  assert.deepEqual(details.incoming[0].files,['consumer/references/manual.md']);
   assert.equal(f.run('remove','target').data.coupling.length,1);
   assert.equal(f.run('remove','target','--apply').exit,1);
   assert.ok(fs.existsSync(path.join(f.lib,'target','SKILL.md')));
@@ -83,44 +86,50 @@ test('YAML folded text and block list dependencies are complete',()=>{
   assert.equal(f.run('inspect','other').data.incoming[0].kind,'declared dependency');
  }finally{f.clean();}
 });
-test('read-only index failure rolls back create and keeps original index',()=>{
+test('search returns at most five brief paths and finds bilingual Skill names',()=>{
  const f=fixture();try{
-  f.skill('one');f.run('index','--write');
-  const index=path.join(f.lib,'llm.txt');
-  fs.chmodSync(index,0o444);
-  const operation=f.run('create','child','--description','child','--apply');
-  assert.equal(operation.exit,1);
-  assert.equal(fs.existsSync(path.join(f.lib,'child')),false);
-  assert.equal(f.run('index','--check').data.current,true);
-  fs.chmodSync(index,0o666);
+  f.skill('lark-doc','在线云文档的读写与权限');
+  f.skill('lark-drive','云盘文件的上传与管理');
+  for(let i=0;i<7;i++)f.skill('lark-other'+i,'飞书其他能力');
+  const out=f.run('find','飞书文档').data;
+  assert.equal(out.candidates[0].path,'lark-doc/SKILL.md');
+  assert.equal(out.count,1);
+  assert.equal(out.more,false);
+  assert.deepEqual(out.candidates.map(c=>c.path),['lark-doc/SKILL.md']);
+  const broad=f.run('find','飞书').data;
+  assert.ok(broad.count>5);
+  assert.equal(broad.candidates.length,5);
+  assert.equal(broad.more,true);
+  for(const c of broad.candidates)assert.deepEqual(Object.keys(c).sort(),['path','reason']);
+  assert.ok(JSON.stringify(broad).length<1000);
  }finally{f.clean();}
 });
-test('read-only index failure rolls back rename and remove',()=>{
+test('legacy llm.txt is untouched by install and private library mutations',()=>{
  const f=fixture();try{
-  f.skill('one');f.run('index','--write');
-  const index=path.join(f.lib,'llm.txt');fs.chmodSync(index,0o444);
-  assert.equal(f.run('rename','one','two','--apply').exit,1);
-  assert.equal(fs.existsSync(path.join(f.lib,'two')),false);
-  assert.ok(fs.existsSync(path.join(f.lib,'one','SKILL.md')));
-  assert.equal(f.run('remove','one','--apply').exit,1);
-  assert.ok(fs.existsSync(path.join(f.lib,'one','SKILL.md')));
-  assert.equal(f.run('index','--check').data.current,true);
-  fs.chmodSync(index,0o666);
- }finally{f.clean();}
-});
-test('read-only index failure rolls back update; successful update archives previous version',()=>{
- const f=fixture();try{
-  f.skill('one');f.run('index','--write');
+  const old=path.join(f.lib,'llm.txt'),text='personal notes, never overwrite';
+  fs.writeFileSync(old,text);
+  f.skill('one');
+  assert.equal(f.run('create','child','--description','child','--apply').exit,0);
+  assert.equal(f.run('rename','child','kid','--apply').exit,0);
+  const removed=f.run('remove','kid','--apply');
+  assert.equal(removed.exit,0);
+  assert.ok(fs.existsSync(path.join(removed.data.archive,'SKILL.md')));
+  assert.equal(fs.readFileSync(old,'utf8'),text);
   const src=path.join(f.root,'version');fs.mkdirSync(src);
   fs.writeFileSync(path.join(src,'SKILL.md'),'---\nname: one\ndescription: version two\n---\n');
-  const index=path.join(f.lib,'llm.txt');fs.chmodSync(index,0o444);
-  assert.equal(f.run('update','one','--from',src,'--apply').exit,1);
-  assert.ok(!fs.readFileSync(path.join(f.lib,'one','SKILL.md'),'utf8').includes('version two'));
-  assert.equal(f.run('index','--check').data.current,true);
-  fs.chmodSync(index,0o666);
   const out=f.run('update','one','--from',src,'--apply');
   assert.equal(out.exit,0);
   assert.equal(fs.existsSync(path.join(out.data.archived,'SKILL.md')),true);
+  assert.equal(fs.readFileSync(old,'utf8'),text);
+ }finally{f.clean();}
+});
+test('no index file is created while managing Skills',()=>{
+ const f=fixture();try{
+  f.skill('one');
+  assert.equal(f.run('create','two','--description','test','--apply').exit,0);
+  assert.equal(f.run('rename','two','three','--apply').exit,0);
+  assert.equal(f.run('remove','three','--apply').exit,0);
+  assert.equal(fs.existsSync(path.join(f.lib,'llm.txt')),false);
  }finally{f.clean();}
 });
 test('create/add remain opt in and avoid overwriting existing skill',()=>{
@@ -159,7 +168,7 @@ test('install requires library and links only lsh, stores fixed absolute scope c
   assert.equal(ok.exit,0);
   assert.equal(ok.data.after.configured.library,f.lib);
   assert.equal(invoke('status','--project',project).data.links.agents.state,'linked');
-  assert.equal(invoke('index','--check','--project',project).data.current,true);
+  assert.equal(fs.existsSync(path.join(f.lib,'llm.txt')),false);
   assert.equal(fs.existsSync(path.join(project,'.agents','skills','one')),false);
   const other=path.join(f.root,'other');fs.mkdirSync(other);
   assert.equal(invoke('install','--project',project,'--library',other,'--apply').exit,1);
@@ -180,7 +189,7 @@ test('two project installs have independent fixed scope configuration and uninst
   assert.equal(call('install','--project',second,'--library',f.lib,'--apply').exit,0);
   assert.equal(call('uninstall','--project',first,'--apply').exit,0);
   assert.equal(call('status','--project',second).data.links.agents.state,'linked');
-  assert.equal(call('index','--check','--project',second).data.current,true);
+  assert.equal(fs.existsSync(path.join(f.lib,'llm.txt')),false);
  }finally{f.clean();}
 });
 test('install refuses occupied target and preserves foreign data',()=>{
@@ -192,4 +201,16 @@ test('install refuses occupied target and preserves foreign data',()=>{
   assert.equal(p.status,1);
   assert.equal(fs.existsSync(occupied),true);
  }finally{f.clean();}
+});
+
+test('skill router references task-specific guides without embedding management steps',()=>{
+ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+ const entry=fs.readFileSync(path.join(root,'SKILL.md'),'utf8');
+ const use=fs.readFileSync(path.join(root,'references','use.md'),'utf8');
+ const manage=fs.readFileSync(path.join(root,'references','manage.md'),'utf8');
+ assert.match(entry,/references\/use\.md/);
+ assert.match(entry,/references\/manage\.md/);
+ assert.doesNotMatch(entry,/--apply|--ack-coupling|index --check|llm\.txt/);
+ assert.doesNotMatch(use,/--apply|--ack-coupling|index --check|llm\.txt/);
+ assert.match(manage,/--ack-coupling/);
 });
