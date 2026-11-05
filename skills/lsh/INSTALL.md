@@ -6,7 +6,7 @@
 
 ## 安装前确定两件事
 
-1. **私有 Skill 库**：用户自己的目录，里面直接包含 `<技能名>/SKILL.md`，可含 `link-skills.mjs` 和其它文件。例：`D:\Workspace\ai-mds\skills`。此目录不能本身位于宿主会自动扫描 Skill 的目录下。
+1. **私有 Skill 库**：用户自己的目录，里面直接包含 `<技能名>/SKILL.md`，可以有其它独立资料。例如可使用一个独立的 `<私有Skill库目录>`。此目录不能本身位于宿主会自动扫描 Skill 的目录下。普通 Skill 的链接工具随 `lsh` 安装在 `scripts/link-skills.mjs`，无需私有库额外提供。
 2. **作用范围**：通常选**用户级**，这样无论在哪个项目里都可以显式调用；只在单个项目可用时选**项目级**，并提供项目根目录。两个作用范围是独立的，每个都保存自己的库路径。
 
 ## 安装命令
@@ -39,10 +39,11 @@ Unix / macOS 使用同一 Node CLI，把路径替换成对应的 POSIX 路径即
 
 执行 `install --apply` 时：
 
-- **固定路径**：把规范化的私有库绝对路径写入所选范围的 `.agents/lsh.json`，例如 `{"version":1,"library":"D:\\Workspace\\ai-mds\\skills"}`。以后 `list/find/inspect/audit/create/...` 从该文件读取库路径，源码不内置任何安装者的机器路径；必须显式用 `--library` 才会临时覆盖当前命令的选择。
+- **固定路径**：把规范化的私有库绝对路径写入所选范围的 `.agents/lsh.json`，例如 `{"version":1,"library":"C:\\path\\to\\private-skills"}`。以后 `list/find/inspect/audit/create/...` 从该文件读取库路径，源码不内置任何安装者的机器路径；必须显式用 `--library` 才会临时覆盖当前命令的选择。
 - **用户级链接**：`~/.agents/skills/lsh` 指向 `ai-toolkit/skills/lsh` 的原始源码目录，`~/.claude/skills/lsh` 再链接至前者。
 - **项目级链接**：在 `<项目根>/.agents/skills/lsh` 和 `<项目根>/.claude/skills/lsh` 做相同的链接，配置位于 `<项目根>/.agents/lsh.json`。该配置含本机绝对路径，通常应加入目标项目的 `.gitignore`，以免误提交个人安装路径；安装器不会擅自修改项目的 Git 配置。
 - **实时发现**：脚本在查找或管理时读取私有库原始 Skill；安装不创建目录索引文件，也不会把普通 Skill 安装到客户端可发现目录。
+- **链接工具随包交付**：`scripts/link-skills.mjs` 用于用户明确要求的普通 Skill 链接操作；调用时必须提供 `--source <私有Skill库>`、`--target <客户端实际Skill发现目录>`，先执行 `--dry-run`。使用说明见 [LINK-SKILLS.md](LINK-SKILLS.md)。
 - **保护已有内容**：真实文件夹、外来源链接、不同路径的已有配置都报冲突并保留原样。Windows 建立目录 junction，其它系统建立目录符号链接。
 
 源码正式维护于 `ai-toolkit/skills/lsh`。如果希望像 Brain 一样在私有库也能通过 `lsh` 目录访问其源码，可以**单独**在库中创建指向此源码的链接；这个私有库链接不参与 Agent 默认发现，也不由用户/项目安装卸载命令管理。
@@ -52,8 +53,8 @@ Unix / macOS 使用同一 Node CLI，把路径替换成对应的 POSIX 路径即
 确认安装完成后，开启新的 Codex/Claude 会话，显式调用：
 
 ```text
-/lsh 帮我找到适合读取这份飞书文档的私有 Skill，然后按其指引处理
-$lsh 帮我检查本地 Skills 中 lark-doc 与 lark-drive 的职责边界与依赖
+/lsh 帮我找到适合处理这份文档的私有 Skill，然后按其指引处理
+$lsh 帮我检查私有库中两个指定 Skill 的职责边界与依赖
 ```
 
 调用后 `lsh` 按本次任务加载 [使用指引](references/use.md) 或 [管理指引](references/manage.md)。脚本只返回少量候选路径，再按需读取选中 Skill 的原始文件和相关资料，并分析具体耦合。用户**明确调用后**本次读取内容保留在当前会话上下文是正常现象；保证的是普通 Skill 元数据不会因安装 `lsh` 就默认加载。Codex 的 `agents/openai.yaml` 关闭隐式调用，Claude 的 `SKILL.md` 设置 `disable-model-invocation: true`；实际 CLI 版本的选择和上下文行为以宿主为准，需在新的会话里确认。
@@ -62,7 +63,7 @@ $lsh 帮我检查本地 Skills 中 lark-doc 与 lark-drive 的职责边界与依
 
 ## 更换路径、升级与卸载
 
-- 更换私有库：先处理当前范围的安装（按下方命令卸载），再用新的 `--library` 路径重新安装；操作不会删除库里的普通 Skills。
+- 更换私有库：先处理当前范围的安装（按下方命令卸载），再用新的 `--library` 路径重新安装；操作不会删除库里的普通 Skills。即使旧私有库已搬迁或不存在，`status` 仍会显示原绑定路径及 `libraryState: "unavailable"`，在两个 `lsh` 入口链接均能核实为本源码时仍可卸载；若链接被替换或失效，须先人工核实，卸载不会删除未知目标。
 - 源码搬家：原链接以旧绝对路径为目标，需要先核对和重建作用范围内的链接。不要直接覆盖冲突目录；保留 `.agents/lsh.json` 的库路径，按安装预览识别和处理旧链接。
 - 卸载入口（先预览）：
 

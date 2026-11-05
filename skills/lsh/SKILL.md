@@ -11,8 +11,8 @@ disable-model-invocation: true
 根据这次任务，**只读取需要的指引**：
 
 - **查找、阅读、使用**私有 Skill 完成任务：读取 [references/use.md](references/use.md)。
-- **创建、导入、修改、更新、重命名、归档**私有 Skill，或审查管理影响：读取 [references/manage.md](references/manage.md)。
-- **安装、卸载或更换私有库绑定**：读取 [INSTALL.md](INSTALL.md)。
+- **创建、导入、修改、更新、重命名、归档**私有 Skill，**把普通 Skill 链接到宿主或解除链接**，或审查管理影响：读取 [references/manage.md](references/manage.md)。
+- **安装、卸载 `lsh` 自身入口或更换其私有库绑定**：读取 [INSTALL.md](INSTALL.md)。
 
 任务随后涉及另一类操作时，再读取该类指引。不要预读其他指引、[BASE.md](BASE.md) 或全部私有 Skill。
 

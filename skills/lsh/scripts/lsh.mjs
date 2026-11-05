@@ -33,7 +33,8 @@ const HELP=[
  'All changes preview until --apply. Skills are discovered directly from the private library.',
  '--library overrides the installed library on read/manage commands only if specified.',
  'Only lsh is exposed to host discovery; normal Skills remain in the private library.',
- 'Read INSTALL.md for full human/AI instructions.'
+ 'Extra: scripts/link-skills.mjs install|update|uninstall|status --source <private-library> --target <host-skill-dir>',
+ 'Read INSTALL.md and LINK-SKILLS.md for full human/AI instructions.'
 ].join('\n');
 function parseArgs(argv) {
  const o={positional:[]},keys=new Set(['--library','--from','--description','--project']);
@@ -188,11 +189,6 @@ function searchTerms(query){
   if(/^\p{Script=Han}+$/u.test(chunk)&&chunk.length>2)
    for(let i=0;i<chunk.length-1;i++)out.add(chunk.slice(i,i+2));
  }
- // Common bilingual terms in this library. The script handles them without
- // sending the entire Skill catalog to the model.
- for(const group of [['飞书','lark','feishu'],['文档','doc','document']]){
-  if(group.some(word=>input.includes(word)))for(const word of group)out.add(word);
- }
  return [...out].filter(word=>word.length>1);
 }
 function briefInspect(skills,name){
@@ -223,7 +219,7 @@ function original(root,name){
  const d=skillPath(root,name);
  if(!isSkill(d))throw Error('Skill missing: '+name);
  if(stat(d).isSymbolicLink())
-  throw Error('Skill is a managed or external link: '+d+'. Use link-skills.mjs to maintain its junction; update the original source directly.');
+  throw Error('Skill is a linked directory: '+d+'. For links recorded in .skill-links.json, use the bundled scripts/link-skills.mjs with explicit --source and --target; otherwise use the original link manager. Edit Skill content at its source.');
  return d;
 }
 function sourceFolder(from,dest,name){
@@ -332,7 +328,7 @@ function getConfig(o){
  const f=cfgPath(o);if(!stat(f))return null;
  if(stat(f).isSymbolicLink())throw Error('Config must be regular file: '+f);
  const c=JSON.parse(fs.readFileSync(f,'utf8'));
- if(c.version!==1||!path.isAbsolute(c.library)||!isDir(c.library))
+ if(c?.version!==1||typeof c.library!=='string'||!path.isAbsolute(c.library))
   throw Error('Invalid lsh installation config: '+f);
  return c;
 }
@@ -340,6 +336,7 @@ function resolveLibrary(o){
  if(o.library)return o.library;
  const c=getConfig(o);
  if(!c)throw Error('lsh is not installed for this scope. Run install --library <private-folder> --user --apply');
+ if(!isDir(c.library))throw Error('Private library missing or not a directory: '+c.library);
  return c.library;
 }
 function linkStatus(file){
@@ -355,8 +352,9 @@ function targets(o){
  return {agents:path.join(root,'.agents','skills','lsh'),claude:path.join(root,'.claude','skills','lsh')};
 }
 function installState(o){
- const links=targets(o);
- return {configPath:cfgPath(o),configured:getConfig(o),targets:links,
+ const links=targets(o),configured=getConfig(o);
+ return {configPath:cfgPath(o),configured,
+  libraryState:configured?(isDir(configured.library)?'available':'unavailable'):'unconfigured',targets:links,
   links:{agents:linkStatus(links.agents),claude:linkStatus(links.claude)}};
 }
 function install(o){
@@ -421,12 +419,6 @@ function run(o){
   const ranked=skills.map(s=>{
    const name=s.dir.toLowerCase(),description=s.description.toLowerCase(),raw=q.toLowerCase();
    let score=(name.includes(raw)?40:0)+(description.includes(raw)?24:0);
-   const concepts=[['飞书','lark','feishu'],['文档','doc','document']].filter(group=>group.some(t=>raw.includes(t)));
-   if(concepts.length>1){
-    if(!concepts.every(group=>group.some(t=>name.includes(t)||description.includes(t))))
-     return {path:s.dir+'/SKILL.md',score:0,reason:''};
-    if(concepts.every(group=>group.some(t=>name.includes(t))))score+=60;
-   }
    let pathMatch=false,descriptionMatch=false;
    for(const t of terms){
     if(name.includes(t)){score+=7+Math.min(t.length,5);pathMatch=true;}

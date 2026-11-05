@@ -50,7 +50,7 @@ Brain data defaults to `~/.brain-data`. Configuration, memory semantics, and opt
 | [code/brain-web](code/brain-web/README.md) | Local browser for Brain data. |
 | [code/custom-dsh-plugin](code/custom-dsh-plugin/README.md) | DSH approval review plugin. |
 | [code/router-creator](code/router-creator/README.md) | DSH creator-mode agent preset and supporting tools. |
-| [skills/lsh](skills/lsh/README.md) | Explicit-only local Skill discovery and management, private-library index and dependency checks; [install guide](skills/lsh/INSTALL.md) and [original background and goals](skills/lsh/BASE.md). |
+| [skills/lsh](skills/lsh/README.md) | Explicit-only local Skill discovery, use, management and on-demand dependency checks; [install guide](skills/lsh/INSTALL.md), [bundled Skill link manager](skills/lsh/LINK-SKILLS.md), and [original background and goals](skills/lsh/BASE.md). |
 
 ## Documentation and development
 

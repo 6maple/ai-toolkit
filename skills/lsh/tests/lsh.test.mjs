@@ -23,16 +23,16 @@ function fixture(){
 }
 test('live paths, bounded results and declared dependencies work without an index file',()=>{
  const f=fixture();try{
-  f.skill('lark-shared','Shared permissions');
-  f.skill('lark-doc','读取飞书文档','metadata:\n  requires:\n    skills: ["lark-shared"]\n');
+  f.skill('doc-core','Shared document permissions');
+  f.skill('doc-reader','读取在线文档','metadata:\n  requires:\n    skills: ["doc-core"]\n');
   const paths=f.run('list').data;
   assert.equal(paths.count,2);
-  assert.deepEqual(paths.paths,['lark-doc/SKILL.md','lark-shared/SKILL.md']);
-  const match=f.run('find','飞书文档').data.candidates[0];
-  assert.equal(match.path,'lark-doc/SKILL.md');
+  assert.deepEqual(paths.paths,['doc-core/SKILL.md','doc-reader/SKILL.md']);
+  const match=f.run('find','在线文档').data.candidates[0];
+  assert.equal(match.path,'doc-reader/SKILL.md');
   assert.deepEqual(Object.keys(match).sort(),['path','reason']);
-  assert.deepEqual(f.run('inspect','lark-doc').data.dependencies,['lark-shared']);
-  assert.equal(f.run('inspect','lark-shared').data.incoming[0].path,'lark-doc/SKILL.md');
+  assert.deepEqual(f.run('inspect','doc-reader').data.dependencies,['doc-core']);
+  assert.equal(f.run('inspect','doc-core').data.incoming[0].path,'doc-reader/SKILL.md');
   assert.equal(fs.existsSync(path.join(f.lib,'llm.txt')),false);
   assert.equal(f.run('index').exit,1);
  }finally{f.clean();}
@@ -86,18 +86,20 @@ test('YAML folded text and block list dependencies are complete',()=>{
   assert.equal(f.run('inspect','other').data.incoming[0].kind,'declared dependency');
  }finally{f.clean();}
 });
-test('search returns at most five brief paths and finds bilingual Skill names',()=>{
+test('search uses library metadata and limits generic text matches to five brief paths',()=>{
  const f=fixture();try{
-  f.skill('lark-doc','在线云文档的读写与权限');
-  f.skill('lark-drive','云盘文件的上传与管理');
-  for(let i=0;i<7;i++)f.skill('lark-other'+i,'飞书其他能力');
-  const out=f.run('find','飞书文档').data;
-  assert.equal(out.candidates[0].path,'lark-doc/SKILL.md');
-  assert.equal(out.count,1);
-  assert.equal(out.more,false);
-  assert.deepEqual(out.candidates.map(c=>c.path),['lark-doc/SKILL.md']);
-  const broad=f.run('find','飞书').data;
-  assert.ok(broad.count>5);
+  f.skill('doc-reader','文档读取与访问权限配置');
+  f.skill('asset-manager','素材文件上传与管理');
+  f.skill('diagram-editor','Draw technical diagrams');
+  for(let i=0;i<7;i++)f.skill('conversion-tool'+i,'文档格式转换工具');
+  const specific=f.run('find','访问权限').data;
+  assert.deepEqual(specific.candidates.map(c=>c.path),['doc-reader/SKILL.md']);
+  assert.equal(specific.count,1);
+  assert.equal(specific.more,false);
+  const english=f.run('find','diagram').data;
+  assert.deepEqual(english.candidates.map(c=>c.path),['diagram-editor/SKILL.md']);
+  const broad=f.run('find','文档').data;
+  assert.equal(broad.count,8);
   assert.equal(broad.candidates.length,5);
   assert.equal(broad.more,true);
   for(const c of broad.candidates)assert.deepEqual(Object.keys(c).sort(),['path','reason']);
@@ -167,7 +169,10 @@ test('install requires library and links only lsh, stores fixed absolute scope c
   const ok=invoke('install','--project',project,'--library',f.lib,'--apply');
   assert.equal(ok.exit,0);
   assert.equal(ok.data.after.configured.library,f.lib);
+  assert.equal(ok.data.after.libraryState,'available');
   assert.equal(invoke('status','--project',project).data.links.agents.state,'linked');
+  assert.equal(fs.existsSync(path.join(project,'.agents','skills','lsh','scripts','link-skills.mjs')),true);
+  assert.equal(fs.existsSync(path.join(project,'.claude','skills','lsh','scripts','link-skills.mjs')),true);
   assert.equal(fs.existsSync(path.join(f.lib,'llm.txt')),false);
   assert.equal(fs.existsSync(path.join(project,'.agents','skills','one')),false);
   const other=path.join(f.root,'other');fs.mkdirSync(other);
@@ -176,6 +181,66 @@ test('install requires library and links only lsh, stores fixed absolute scope c
   assert.equal(fs.existsSync(path.join(project,'.agents','skills','lsh')),false);
  }finally{f.clean();}
 });
+test('missing private library remains inspectable and can be safely uninstalled',()=>{
+ const f=fixture();try{
+  const project=path.join(f.root,'project'),changed=path.join(f.root,'changed');
+  fs.mkdirSync(project);fs.mkdirSync(changed);
+  const call=(scope,...args)=>{
+   const p=spawnSync(process.execPath,[cli,...args,'--project',scope],{encoding:'utf8'});
+   return {exit:p.status,data:JSON.parse(p.status===0?p.stdout:p.stderr)};
+  };
+  assert.equal(call(project,'install','--library',f.lib,'--apply').exit,0);
+  assert.equal(call(changed,'install','--library',f.lib,'--apply').exit,0);
+  const moved=path.join(f.root,'moved-library');
+  fs.renameSync(f.lib,moved);
+  const status=call(project,'status');
+  assert.equal(status.exit,0);
+  assert.equal(status.data.configured.library,f.lib);
+  assert.equal(status.data.libraryState,'unavailable');
+  assert.equal(status.data.links.agents.state,'linked');
+  assert.equal(status.data.links.claude.state,'linked');
+  const unavailable=call(project,'list');
+  assert.equal(unavailable.exit,1);
+  assert.match(unavailable.data.error,/Private library missing/);
+  assert.equal(call(project,'install','--library',moved,'--apply').exit,1);
+
+  const preview=call(project,'uninstall');
+  assert.equal(preview.exit,0);
+  assert.equal(preview.data.applied,false);
+  assert.ok(fs.existsSync(path.join(project,'.agents','lsh.json')));
+
+  const foreign=path.join(changed,'.claude','skills','lsh');
+  fs.unlinkSync(foreign);
+  fs.symlinkSync(moved,foreign,process.platform==='win32'?'junction':'dir');
+  const refused=call(changed,'uninstall','--apply');
+  assert.equal(refused.exit,1);
+  assert.match(refused.data.error,/Changed or missing link/);
+  assert.equal(fs.realpathSync(foreign),fs.realpathSync(moved));
+  assert.ok(fs.existsSync(path.join(changed,'.agents','lsh.json')));
+
+  assert.equal(call(project,'uninstall','--apply').exit,0);
+  assert.ok(!fs.existsSync(path.join(project,'.agents','lsh.json')));
+  assert.ok(!fs.existsSync(path.join(project,'.agents','skills','lsh')));
+  assert.ok(!fs.existsSync(path.join(project,'.claude','skills','lsh')));
+  assert.ok(fs.existsSync(moved));
+ }finally{f.clean();}
+});
+
+test('malformed lsh installation config still blocks status and uninstall',()=>{
+ const f=fixture();try{
+  const project=path.join(f.root,'project'),agents=path.join(project,'.agents');
+  fs.mkdirSync(agents,{recursive:true});
+  const config=path.join(agents,'lsh.json');
+  fs.writeFileSync(config,JSON.stringify({version:1,library:42}));
+  for(const command of ['status','uninstall']){
+   const p=spawnSync(process.execPath,[cli,command,'--project',project,'--apply'],{encoding:'utf8'});
+   assert.equal(p.status,1);
+   assert.match(JSON.parse(p.stderr).error,/Invalid lsh installation config/);
+  }
+  assert.ok(fs.existsSync(config));
+ }finally{f.clean();}
+});
+
 test('two project installs have independent fixed scope configuration and uninstall',()=>{
  const f=fixture();try{
   f.skill('one');
@@ -210,7 +275,34 @@ test('skill router references task-specific guides without embedding management 
  const manage=fs.readFileSync(path.join(root,'references','manage.md'),'utf8');
  assert.match(entry,/references\/use\.md/);
  assert.match(entry,/references\/manage\.md/);
+ assert.match(entry,/把普通 Skill 链接到宿主或解除链接/);
+ assert.match(entry,/安装、卸载 `lsh` 自身入口/);
  assert.doesNotMatch(entry,/--apply|--ack-coupling|index --check|llm\.txt/);
  assert.doesNotMatch(use,/--apply|--ack-coupling|index --check|llm\.txt/);
  assert.match(manage,/--ack-coupling/);
+ assert.match(manage,/scripts\/link-skills\.mjs/);
+ assert.match(manage,/--source/);
+});
+
+test('bundled link manager is self-contained and requires the configured source',()=>{
+ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+ const script=path.join(root,'scripts','link-skills.mjs');
+ const guide=path.join(root,'LINK-SKILLS.md');
+ assert.ok(fs.statSync(script).isFile());
+ assert.ok(fs.statSync(guide).isFile());
+ const f=fixture();try{
+  f.skill('sample','sample fixture');
+  const target=path.join(f.root,'host','skills');
+  const run=(...args)=>spawnSync(process.execPath,[script,...args],{encoding:'utf8'});
+  const help=run('--help');
+  assert.equal(help.status,0);
+  assert.match(help.stdout,/--source/);
+  const missing=run('install','--target',target,'--skill','sample','--dry-run');
+  assert.equal(missing.status,1);
+  assert.ok(!fs.existsSync(target));
+  const preview=run('install','--source',f.lib,'--target',target,'--skill','sample','--dry-run');
+  assert.equal(preview.status,0,preview.stderr);
+  assert.match(preview.stdout,/dry-run create/);
+  assert.ok(!fs.existsSync(target));
+ }finally{f.clean();}
 });

@@ -1,16 +1,16 @@
 # lsh — Base（初始背景与目的）
 
-> 本文件记录创建这一能力时用户明确提出的背景、原始目的和不可丢失的约束。后续实现、工具和目录可演进，但不得用新的方案描述覆盖这些初始要求。功能细节与使用方式见 [README.md](README.md)。
+> 本文件公开记录创建这一能力时的需求背景、原始目的和不可丢失的约束。涉及个人目录、个人 Skill 名称和私人使用案例的原始材料改为概述；后续实现可演进，但应保留初始要求的实质。功能细节与使用方式见 [README.md](README.md)。
 
-## 最初提出的问题（保留原话）
+## 最初需求（公开版概述）
 
-> 我本地专门放 D:\Workspace\ai-mds\skills 的在这里，因为我不希望skill默认进入上下文（名字、摘要都不进）。我希望在 llm.txt 维护一下 skills 里边 skill 的索引，便于agent找对应的skill。为了便于使用、更新和维护，我需要你在 .agents/skills 下增加一个 skill （local-skill-helper）用于找和管理我的skills（需要链接到 .calude/skills/xxx）。这样我可以在 codex/claude中 `/local-skill-helper` 让ai帮我读飞书文档（举例，不止飞书的skill），也能让ai帮我添加、管理skill。（对于边界有耦合的，在新增、管理、找skill时都要让AI主动说明有耦合，并提供建议）。local-skill-helper应该需要写个js脚本来辅助。你先讲讲你的理解
+用户希望将普通 Skill 保存在独立的私人资料库中，避免所有 Skill 的名称、摘要和正文默认进入 Agent 上下文；需要一个能手动调用的 Skill 入口，按需查找、阅读和管理自己的 Skills，并主动识别依赖与职责边界耦合。最初曾考虑为库维护索引文件，后续已取消这一方案。
 
-后续补充：用户要求 `local-skill-helper` 只能手动调用，`description` 直接设置 `ban`；在比较现成 Skills Manager 后明确选择自研，并要求像 Brain 一样放进 ai-toolkit，记录初始背景和目的。原话中的 `.calude` 在实施路径中按 `.claude` 处理。
+用户进一步要求入口只能手动调用，设置 `description: ban`，并选择自研方式，将正式源码放在 `ai-toolkit`。实现中统一使用 `.claude` 作为 Claude 的 Skill 目录名。本节是为公共仓库整理的需求概述，未逐字收录私人原话和路径。
 
 ## 初始背景
 
-用户有自己的 Skill 资料库：`D:\Workspace\ai-mds\skills`。这是专门存放普通 Skill 的本地目录，已有飞书相关 Skill、共享依赖以及其它领域 Skill。某些 Skill 通过目录链接指向别处的正式源码，例如 `brain` 的源码在 `ai-toolkit/skills/brain`。
+使用者可以有自己的 Skill 资料库，与 Agent 的默认 Skill 发现目录独立。资料库里可以包含多个领域的 Skills、共享依赖以及指向其他正式源码的目录链接。
 
 Codex、Claude 等 Agent 会在各自的 Skill 发现目录中读取 Skill 元信息。如果将整套本地 Skill 都部署或链接进去，即使不读取正文，普通 Skill 的 **名字和摘要** 仍可能默认进入模型上下文。用户明确要求消除这种开销和默认暴露。
 
@@ -18,7 +18,7 @@ Codex、Claude 等 Agent 会在各自的 Skill 发现目录中读取 Skill 元�
 
 ## 最初目的
 
-让用户在 Codex 或 Claude 中**明确调用 `local-skill-helper`**，用自然语言完成本地 Skill 的查找、使用和维护。例如：让 AI 帮忙读取飞书文档时，能找到合适的 `lark-*` Skill，读取其 `SKILL.md` 和必要共享依赖，按其中的操作指导处理请求。飞书只是例子，入口需要适用于整个私有 Skill 库。
+让用户在 Codex 或 Claude 中**明确调用 `local-skill-helper`**，用自然语言完成私有 Skill 的查找、使用和维护。例如：需要处理某类文档时，查找对应的 Skill，读取它的 `SKILL.md` 和必要共享依赖，再按其操作指导完成任务。入口应适用于任意合法的私有 Skill 库。
 
 还要支持新增、修改、更新、重命名、删除或归档 Skill，以及维护其索引和相关的链接。在**发现、创建和管理**三个环节中，只要遇到职责边界重叠、共享依赖、跨 Skill 引用、替换或删除影响等耦合，AI 必须**主动说明具体关系并提出建议**。
 
@@ -30,7 +30,7 @@ Codex、Claude 等 Agent 会在各自的 Skill 发现目录中读取 Skill 元�
 - **AI 主动检查耦合**：脚本负责可确定的引用、依赖与文件操作检查；模型需读实际内容并判断功能边界，说明耦合和建议。静态脚本的同名或关键词匹配不可冒充语义结论。
 - **安全维护**：不覆盖用户已有文件、真实目录或外部链接；新增和危险变更可预览，执行前核对范围及耦合；保留可恢复的原始内容。
 - **跨客户端复用**：Helper 作为唯一需要放进 `.agents/skills` 的 Skill，同时链接到 `.claude/skills/lsh`（Codex `.agents/skills/lsh`），适用于 Codex 和 Claude。
-- **正式源码放在 ai-toolkit**：用户后来明确决定自行实现，并要求像 Brain 一样在 `D:\Workspace\ai-projects\ai-toolkit` 中维护源码。私有 Skill 库可通过 Windows junction 引用该源码。
+- **正式源码放在 ai-toolkit**：用户后来明确决定自行实现，并要求在 `ai-toolkit` 中维护源码。私有 Skill 库可通过 Windows junction 引用该源码。
 - **保存 Base**：用户明确要求记录“初始背景 + 目的”，便于后续审查新功能是否仍符合原始目标。
 
 ## 目标使用过程
@@ -67,6 +67,6 @@ Codex、Claude 等 Agent 会在各自的 Skill 发现目录中读取 Skill 元�
 
 现行要求：不再维护私有库根目录的 `llm.txt`；脚本直接从真实 Skill 目录构建路径清单，完成元数据查找、依赖和引用检查等确定性工作。模型只接收有限候选，确定使用目标后才读原始 Skill 正文。入口 `SKILL.md` 仅保留手动调用和用途分流，查找使用与新增修改管理等详细规则分别按需读取；开放语义中的职责重叠和建议仍由模型结合实际文件分析。
 
-前文关于 `llm.txt` 的文字保留为**历史初始方案**，不再代表现行架构。原始需求与旧名称保留在上文，实际使用以当前 [SKILL.md](SKILL.md)、[INSTALL.md](INSTALL.md) 与 [README.md](README.md) 为准。
+前文关于 `llm.txt` 的文字保留为**历史初始方案**，不再代表现行架构。初始需求的公开概述与旧名称保留在上文，实际使用以当前 [SKILL.md](SKILL.md)、[INSTALL.md](INSTALL.md) 与 [README.md](README.md) 为准。
 
-以上是用户原始背景与更新后的决定；项目中的详细实现方式、命令接口、安装状态和测试结果由对应 README/代码维护，本文件不将未验证的工程猜测写成用户决定。
+以上为原始需求的公开版概述与更新后的决定；项目中的详细实现方式、命令接口、安装状态和测试结果由对应 README/代码维护，本文件不将未验证的工程猜测写成用户决定。
