@@ -349,11 +349,8 @@ function handlerFor(
             sourceRoot: invocationServices.sourceRoot ?? "",
           };
           const runtime = await createFileRuntime({ resolveHost: () => host })(extra);
-          const output = await runtime.execute(rawArgs);
-          return {
-            structuredContent: { ...output },
-            content: [{ type: "text", text: JSON.stringify(output) }],
-          };
+          const markdown = await runtime.execute(rawArgs);
+          return { content: [{ type: "text", text: markdown }] };
         }
         case "brain_think": {
           const result =

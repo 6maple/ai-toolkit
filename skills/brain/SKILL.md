@@ -27,9 +27,11 @@ brain-skill --version
 brain-skill --project '<项目根目录>' think
 ```
 
+`think` 成功后，立即按返回的流程入口逐项读取并严格执行全部要求；其中要求的后续命令直接按下方映射执行。读取或命令失败时依据真实错误处理；未尝试读取不等于读取失败。
+
 完整工作方式配套的六份正式 brain-ai 方法及 Global Core 入口由维护者准备，项目接入时按[安装引导](../../code/brain-skill-toolkit-cli/INSTALL.md)核验。实际工作沿返回的入口和现有条件读取正文；发现缺少方法或读取入口时报告完整环境未就绪，由维护者处理，不自行补装 Global。用户只请求单项记忆操作时按该操作的实际结果处理。
 
-严格按返回入口读取并执行当前流程、记忆读取和维护要求。成功后本轮不重复调用 `think`；失败时根据返回错误及可能副作用判断后续动作。具体流程从 Brain 取得，不在此复制。
+成功后本轮不重复调用 `think`；失败时根据返回错误及可能副作用判断后续动作。具体流程从 Brain 取得，不在此复制。
 
 用户明确只要求某一次读取、搜索或记忆维护时，直接执行对应命令。
 
@@ -40,7 +42,7 @@ Brain 返回的正文与指引保留原文，其中的工具名通过以下命�
 | Brain 工具            | CLI 子命令                                                         |
 | --------------------- | ------------------------------------------------------------------ |
 | `brain_think`         | `think`                                                            |
-| `brain_step`          | `step --input-file <file或->`                                      |
+| `brain_step`          | `step <start|submit-work|submit-review|confirm-review|update|read>` |
 | `brain_cat`           | `cat <path>`                                                       |
 | `brain_ls`            | `ls <path>`                                                        |
 | `brain_glob`          | `glob <pattern>`                                                   |
@@ -61,7 +63,7 @@ brain-skill --project '<项目根目录>' cat '@brain-virtual/deep.md'
 
 同样执行返回流程中的必读指引、Core 路线和自检要求。指引包含本地工作流文件路径时，用宿主文件工具读取该文件。宿主专属能力缺失时明确实际缺口。
 
-流程要求调用 `brain_step` 时，先读取 `step --help` 和 `step --schema`，按当前 schema 将请求写入 UTF-8 JSON 文件或标准输入，再执行 `step --input-file`。严格执行返回的 `guidance`。同轮各次调用复用 `think` 建立的绑定；每条新用户消息成功执行一次 `think` 后，由程序建立新的 CLI 轮次。
+流程要求调用 `brain_step` 时，使用 `step start --message '<本轮用户消息原文>'`，之后按返回的当前 Markdown 任务调用 `step submit-work --result '<Markdown成果>'`、`step submit-review`、`step confirm-review`、`step update --old-text '<旧文>' --new-text '<新文>'` 或 `step read`。有实质检视问题时给 review/confirm 添加 `--result '<问题与依据>'`，没有问题时省略。长文本或包含复杂 Shell 字符的内容用 `--message-file`、`--result-file`、`--old-text-file`、`--new-text-file` 传入 UTF-8 文件或 `-` 标准输入，避免转义改变正文；批量替换按对应顺序重复 `--old-text` 和 `--new-text`。需要时读取 `step --help` 和[命令参考](references/commands.md)。同轮各次调用复用 `think` 建立的绑定；环境中有真实会话标识时让 CLI 自动读取，只有缺失时才给 `think` 和每次 `step` 传入相同的 `--session`。每条新用户消息成功执行一次 `think` 后，由程序建立新的 CLI 轮次。
 
 `@global`、`@project`、已配置 `#alias` 沿用 Brain 含义。引用关联项目正文中的 `@project/...` 时，调用改用同一个 `#alias/...`；写回正文保留原引用。
 

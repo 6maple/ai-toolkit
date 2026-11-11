@@ -54,6 +54,7 @@ export function renderDeepFlow(workflowPath: string): string {
 
 3. 立即读取并严格执行「深度思考步骤」：
   \`${workflowPath}\`。
+   读取后立即按其中要求调用 brain_step 的 start，随后按每次返回的当前任务持续执行和提交，直到最终确认完成。
 
 4. 自检是否严格按照「记忆读取与维护要求」和「深度思考步骤」执行。
    如果未严格执行，则进行纠正；

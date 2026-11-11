@@ -1,186 +1,118 @@
-import { readFile } from "node:fs/promises";
+// The model receives one focused Markdown task at a time.
+// The stored State content is returned unchanged by read().
 import { fileURLToPath } from "node:url";
-import { noteKeys, phaseIds, decisions } from "./schema.mjs";
+const deliveryRules = fileURLToPath(new URL("./guidance/delivery-rules.md", import.meta.url));
+const purpose = `# Brain 的背景与目的
 
-const pack = new URL("./guidance/", import.meta.url);
-const read = async (name) =>
-  (await readFile(new URL(name, pack), "utf8")).replace(/^\uFEFF/, "").trim();
-const methods = {
-  intent: await read("methods/intent.md"),
-  essence: await read("methods/essence.md"),
-  work: await read("methods/work.md"),
+用户向模型发消息，期望模型抓住事情本质，真正理解用户的目标、取舍与约束，得到不少、不多、不偏、质量符合的结果，并尽量自主、省事。
+
+用户的消息只是意图经过语言表达后的内容，可能省略背景，也可能只提出想到的办法。模型应结合事实、上下文与有效记忆主动查证、持续修正理解。模型是理解、判断和实际工作的主体；Brain 支持思考与持续记忆，程序只承担能确定的推进、保存和恢复职责。
+
+在每项工作中，先明确本次目标和结果质量，再使用必要的方法。模型擅长处理聚焦的工作，但容易过早收敛或忘记整体，因此在重要认识和成果成熟时必须客观地回到完整目标检视。检视只指出有实际依据的问题。`;
+
+const investigation = `主动取得实际需要的依据，包括已有对话、项目资料、真实工具结果及适用的外部资料。外部资料可能改变判断时主动查证；决定不查时先明确适合当前工作的具体理由。区分已知事实、用户决定、模型推断及未证假设。当前上下文不足时按需使用 Brain 记忆和 read 取得有效认识，必要的中间过程可保存在普通工作文件中。`;
+
+const tasks = {
+  intent: {
+    name: "查清用户的完整意图",
+    body: `结合用户当前消息、已有背景与现实资料，从一开始就追查用户为什么在这个时候提出要求、实际处境和活动是什么、现实与期望的差距是什么、真正希望取得什么结果、必须保留哪些条件，以及本次希望模型承担什么。
+
+从事实形成的影响追查用户意图，再检查用户怎样将意图具体化为本次消息。区分用户真正的目标、对原因的认识、提出的办法和实际委托；用户的解释可以查证修正，用户已经明确的决定按其有效范围使用。需要调查事实才能查清意图时，直接在当前工作中调查。
+
+不断核对省略、歧义、竞争解释和重要未知；能够自行取得的依据先取得。只有确实还需用户提供重要事实或决定时，才提出具体问题。把结果、依据、成立条件和未解疑点保留下来，保证后续能够据此判断与执行。
+
+${investigation}`,
+    submit:
+      "提交已查清的完整意图认识：真正的目标、用户本次委托、关键约束、成立依据、适用范围及仍会影响判断的未知。实际完成当前调查后，调用 submit_work(result) 提交完整 Markdown 成果。",
+  },
+  essence: {
+    name: "查清决定结果的事实本质",
+    body: `以已有完整意图与当前有效证据为依据，调查实际决定结果的形成条件、机制和各关键关系，查明真实问题为何形成、哪些上游条件改变会影响用户要的结果。
+
+从具体事实向深处追查：对于重要关系，取得直接上游及中间形成关系的依据；核查竞争解释、反例、不同分支之间的作用。证据只支持特定条件时，保留条件；尚无资料不能假定已经找到根因。
+
+回到用户的完整意图，检查是否追查了会改变目标、判断、后续专业方法或关键风险的关系。当实际查明已无可继续追溯的上游，或实际补查直接上一层及两层关系并证实它们不再实质改变整体目标、判断、方法、风险和验收时，才停止相应追查。资料暂缺应保留未知及影响；仍有重要且可取得的依据就继续。新证据改变了先前 State 的认识时，在当前 work 中使用 update 准确修改受影响部分。
+
+${investigation}`,
+    submit:
+      "提交事实形成机制、关键关系和证据、竞争解释的处理、成立条件、仍有影响的未知及停止追查的依据。完成后调用 submit_work(result)。",
+  },
+  work: {
+    name: "依据完整意图与事实本质完成用户工作",
+    body: `结合当前有效的用户目标、事实形成机制与约束，研究适用的专业实践，选择有据的方法，实际开展本轮获准工作，并用真实结果检验质量。复杂工作从整体到局部逐层处理：明确当前层目标、所需结果和关键依赖，在确实影响上层结果时展开下层，完成局部后回到整体核对。
+
+主动取得专业实践与实际执行所需资料，形成可执行安排和相应验收方式；实际调用可用工具、修改获准文件或形成用户需要的成果，核对真实产物、来源与有效范围。用户未授权的重要取舍由用户决定；普通专业判断由模型承担。
+
+新证据影响 State 中已提交的意图、事实或方案时，使用 update 修改实际受影响的正文，并在当前工作内调整方案和执行。中间工作记录可保存在普通文件；State 只保存后续确需使用的有效成果。准备交付时，读取并严格执行交付指导：${deliveryRules}
+
+核对用户完整目标、相关结果的组合效果、已经完成与仍未完成的部分，并使实际回复与验证范围一致。
+
+${investigation}`,
+    submit:
+      "提交本轮实际工作成果与验收：做了什么、结果及真实位置、关键依据和核验范围、用户目标满足到哪里、仍受限或未完成的事项，以及准备交付给用户的实际内容。只有真实完成本次可执行工作并核对后，才调用 submit_work(result)。",
+  },
 };
-// One code-owned fragment, inserted at the current phase's investigation point.
-const investigation = `围绕 {待查关系} 和当前认知缺口，主动取得能够直接说明它们的信息（网络资料必须是查询途径之一）。
-不能仅凭已有知识、本地资料或信心跳过外部调查；决定不查时先说明具体理由，拿不准外部资料是否会改变判断或做法时，先查再判断。`;
-for (const phase of phaseIds) {
-  const paragraphs = methods[phase].split(/\r?\n\r?\n/);
-  paragraphs.splice(phase === "work" ? 1 : 2, 0, investigation);
-  methods[phase] = paragraphs.join("\n\n");
-}
-const submit = JSON.parse(await read("submissions.json"));
-const stateUse = await read("state-use.md");
-const unavailable = await read("unavailable.md");
-const delivery = await read("delivery-rules.md");
-const deliveryPath = fileURLToPath(new URL("delivery-rules.md", pack));
-const deliveryPreparation = `准备最终回复或未完成交接前，先读取并严格执行下方交付指导：
-${deliveryPath}
-据此整理实际内容，再按当前允许的完成或交接分支提交相应核对。`;
-const names = {
-  intent: "阶段1：持续深挖用户完整意图",
-  essence: "阶段2：持续深挖事情本质",
-  work: "阶段3：完成本轮工作",
+
+const reviewText = {
+  intent:
+    "核对已有完整意图认识是否真正解释用户为什么提出本次要求；目标、办法与原因是否区分；重要条件、证据及未知边界是否可靠，是否足以指导接下来的事实调查。下一项调查本应解决的未知不自动算作本项错误。",
+  essence:
+    "以最新完整意图与全部有效 State 为准，核对关键事实形成关系、上游依据、竞争解释、适用条件、影响整体判断的遗漏和停止追查的依据；如果新事实改变了先前意图，也要指出实际影响。",
+  work: "结合最新完整意图、事实本质与已形成的实际成果，从整体核对专业方法的适用性、用户授权与约束、真实执行和验收依据、关键关联影响、最终回复的事实与边界，以及尚未完成和需要交接的部分。实际产物和可验证事实要以真实来源核对。",
 };
-export function currentPhase(state) {
-  const active = phaseIds.filter((id) => state.phases[id].status === "active");
-  if (active.length > 1) throw new Error("State有多个active阶段，尚未进行本次修改。");
-  return active[0] ?? null;
+const slotTitle = { intent: "完整意图", essence: "事实本质", work: "实际工作与交付" };
+
+export function sectionTitle(phase) {
+  return slotTitle[phase];
 }
-export function submissionHelp(phase) {
-  if (phase === null)
-    return "本轮已可交付；用status取得实际交付内容。发现真实变化时用update保存实际修订及重要impact。";
-  return `${submit[phase]}\n本阶段允许decision：${decisions[phase].join(" / ")}。`;
+
+export function taskView(state) {
+  const { phase, mode } = state;
+  if (mode === "done") {
+    return "本轮工作及一次最终确认已完成。依据当前实际成果向用户交付，说明真实结果、证据和仍有限制的部分。";
+  }
+  if (mode === "review")
+    return `# 当前任务：${slotTitle[phase]}的完整客观检视
+
+## Brain 的背景与目的
+
+对照本轮首次任务中已经给出的「Brain 的背景与目的」，以用户的真正目标、结果质量以及自主省事为准检视当前成果。
+
+## 本次检视要求
+
+${reviewText[phase]}
+
+以最新有效 State、实际资料与当前工作结果为依据，完整完成本次整体检视后再提交。需要取得的事实先查证；不凭猜测寻找问题，也不因局部符合要求就忽视整体。实际存在、证据支持、会改变判断或结果的缺口才作为待修正问题。
+
+## 本次提交
+
+完整检视结束后，没有发现实质问题则调用 submit_review()；发现实质问题则调用 submit_review(result)，在 Markdown 中写明具体问题、证据、影响和修正要求。程序将据此进入一次简短确认或派发修正工作。`;
+  if (mode === "confirm")
+    return `# 当前任务：对上次完整检视做一次简短确认
+
+准确对照上一项完整检视中「Brain 的背景与目的」和「本次检视要求」两节，以及最新有效认识，确认该检视没有遗漏会改变当前结论的实质问题。只做这一次确认。
+
+## 本次提交
+
+没有实质问题就调用 confirm_review()，程序进入已定后继；确实发现有据问题才调用 confirm_review(result)，写明问题、依据和实际影响，由程序返回修正 work。`;
+  if (mode === "fix")
+    return `# 当前任务：修正${slotTitle[phase]}的实际问题
+
+上一次已经完成的客观检视发现：
+
+${state.issue}
+
+结合最新依据修正 State 中真实受影响的已有认识和成果，保留仍然有效的内容。可以直接开展调查和必要的专业工作；对已保存的正文使用 update(edits) 定位并修改。修改后检查相关成果是否一致。
+
+## 本次提交
+
+实际修正并保存后，调用 submit_work()。程序随后安排**新的一次完整客观检视**，从最新 State 全面核查，不继续上一轮未完的检视。`;
+  const current = tasks[phase];
+  return `${phase === "intent" ? purpose + "\n" : ""}# 当前任务：${current.name}
+
+${current.body}
+
+## 本次提交
+
+${current.submit}`;
 }
-function notes(state, keys) {
-  return keys
-    .filter((key) => state.notes[key] != null)
-    .map((key) => `${key}:\n${state.notes[key]}`)
-    .join("\n\n");
-}
-function taskText(task) {
-  return JSON.stringify(task, null, 2);
-}
-function pending(state) {
-  return state.pendingUserInput.length
-    ? `\n\n用户待决事项：\n${JSON.stringify(state.pendingUserInput, null, 2)}\n\n${unavailable}`
-    : "";
-}
-function plans(state) {
-  return state.tasks.length ? state.tasks.map(taskText).join("\n\n") : "";
-}
-export function executionView(state, receipt) {
-  const selected = new Set(state.reviews.execution.runnableTaskIds);
-  const tasks = state.tasks.filter(
-    (task) =>
-      selected.has(task.id) &&
-      task.scheduledFor === "current_round" &&
-      ["todo", "doing"].includes(task.execution.status),
-  );
-  const intro = receipt || "执行核对已记录，当前仍在阶段3。";
-  const context = notes(state, ["intent", "scope", "analysis", "method", "acceptance"]);
-  if (!tasks.length)
-    return `${intro}
-
-本次没有列出可执行任务。
-
-当前具体缺口及已有进展：
-${state.reviews.execution.assessment}
-${context ? "\n当前工作所需的整体目的与约束：\n" + context : ""}${pending(state)}
-
-仍有可自行查明或纠正的内容，继续按阶段3方法处理并更新State。
-当前确无可继续的获准工作时，核对实际流程后提交handoff，交付已有进展和具体缺口。`;
-  return `${intro}
-
-现在处理以下已核对通过、独立且已获准的工作：
-${tasks.map(taskText).join("\n\n")}
-
-当前工作所需的整体目的与约束：
-${context}${pending(state)}
-
-工作及验收结果及时用update保存；影响已有认识或计划时，同时提交实际impact。`;
-}
-export function newTaskReviewView(state, receipt) {
-  if (currentPhase(state) !== "work" || state.handoffReason) return null;
-  const covered = new Set(state.reviews.execution?.runnableTaskIds ?? []);
-  const tasks = state.tasks.filter(
-    (task) =>
-      task.scheduledFor === "current_round" &&
-      ["todo", "doing"].includes(task.execution.status) &&
-      !covered.has(task.id),
-  );
-  if (!tasks.length) return null;
-  return `${receipt}
-
-本轮这些任务尚未完成执行核对：
-${tasks.map(taskText).join("\n\n")}
-
-现在按当前意图、事实与方法核对这些任务的范围、前提、依赖和验收目标；
-使用submit，phase="work"、decision="review_execution"提交实际核对和可执行任务ID。
-再按返回执行，并持续更新实际进展及验收结果。`;
-}
-export function deliveryView(state, notePath) {
-  const phase = currentPhase(state);
-  const intro = state.handoffReason
-    ? `当前阶段${names[phase]}尚未完成。\n\n本轮当前没有可继续的获准工作，原因是：\n${state.handoffReason}`
-    : "本轮成果验收与流程检查的通过判断已记录。";
-  const artifacts = [
-    ...new Set(state.tasks.flatMap((task) => task.execution.result?.artifacts ?? [])),
-  ];
-  const understanding = notes(state, ["intent", "scope", "analysis", "research"]);
-  const actual = notes(state, ["replyDraft", "result"]);
-  const hasTaskContent = state.tasks.some((task) => task.execution.result?.content);
-  const remaining = state.tasks.filter(
-    (task) => !["done", "cancelled"].includes(task.execution.status),
-  );
-  return `${intro}
-
-${delivery}${understanding ? "\n\n本轮整体认识与依据：\n" + understanding : ""}${actual ? "\n\n本轮已整理的内容：\n" + actual : ""}
-${artifacts.length ? `\n正式成果位置：\n${artifacts.join("\n")}\n` : ""}${hasTaskContent ? "\n需要查看单项任务完整成果时，调用overview。\n" : ""}${remaining.length ? `\n尚未完成及后续验收安排：\n${remaining.map(taskText).join("\n\n")}\n` : ""}${notePath ? `\n深度思考笔记实际位置：\n${notePath}` : ""}${pending(state)}`;
-}
-export function currentView(state, notePath, receipt = "") {
-  const phase = currentPhase(state);
-  if (phase === null || state.handoffReason)
-    return `${receipt ? receipt + "\n\n" : ""}${deliveryView(state, notePath)}`;
-  const keys =
-    phase === "intent"
-      ? ["background", "intent", "scope", "research"]
-      : phase === "essence"
-        ? ["intent", "scope", "analysis", "research"]
-        : ["intent", "scope", "analysis", "method", "acceptance", "result"];
-  const currentTasks = state.tasks.filter((task) => task.scheduledFor === "current_round");
-  const runnable =
-    state.reviews.execution?.runnableTaskIds.filter((id) =>
-      currentTasks.some(
-        (task) => task.id === id && ["todo", "doing"].includes(task.execution.status),
-      ),
-    ) ?? [];
-  return `当前阶段：${names[phase]}（phase=${phase}）
-当前进展：${state.phases[phase].progress}
-${receipt ? `\n本次处理：\n${receipt}\n` : ""}
-当前工作所需成果：
-${phase === "intent" ? "本轮用户原消息：\n" + state.message + "\n\n" : ""}${notes(state, keys) || "当前State尚未保存阶段成果，按本阶段方法取得实际内容。"}${state.notes.replyDraft != null ? "\n\n当前回复草稿：\n" + state.notes.replyDraft : ""}${currentTasks.length ? "\n\n本轮实际任务：\n" + currentTasks.map(taskText).join("\n\n") : ""}${pending(state)}
-${phase === "work" ? `\n当前核对记录：\n${JSON.stringify(state.reviews, null, 2)}\n当前仍可执行的真实任务ID：${runnable.length ? runnable.join("、") : "当前未列出；按实际前提核对，不据此认定无工作。"}\n` : ""}
-${stateUse}
-
-当前阶段方法：
-${methods[phase]}
-
-继续方式：
-${submit[phase]}
-
-${deliveryPreparation}`;
-}
-export function overviewView(state, notePath) {
-  return `当前整体意图与本轮边界：
-${notes(state, ["background", "intent", "scope"])}
-
-事实关系、专业依据与未知：
-${notes(state, ["analysis", "research"])}
-
-方法、验收目标及计划：
-${notes(state, ["method", "acceptance"])}${state.tasks.length ? "\n\n" + plans(state) : ""}
-
-实际结果与未完：
-${notes(state, ["result"])}${state.notes.replyDraft != null ? "\n\n已保存回复草稿；用status读取完整文本。" : ""}${pending(state)}
-
-当前位置：${currentPhase(state) ?? "本轮流程已完成"}
-${state.handoffReason ? `原阶段尚未完成；本次交接原因：\n${state.handoffReason}\n` : ""}
-核对当前工作与上述整体的关系；发现实际变化，用update修订受影响内容并报告重要impact。
-${currentPhase(state) === null || state.handoffReason ? "\n" + delivery + (notePath ? "\n\n深度思考笔记实际位置：\n" + notePath : "") : ""}`;
-}
-export function shortView(state, notePath, receipt) {
-  const phase = currentPhase(state);
-  if (phase === null || state.handoffReason) return currentView(state, notePath, receipt);
-  return `${receipt}\n\n当前阶段：${names[phase]}（phase=${phase}）\n当前进展：${state.phases[phase].progress}\n\n继续按当前阶段方法处理剩余工作，并持续用update保存实际变化。\n${submissionHelp(phase)}`;
-}
-export const resources = { methods, stateUse, unavailable, delivery, noteKeys };

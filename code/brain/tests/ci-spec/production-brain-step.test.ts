@@ -18,13 +18,15 @@ import {
   type BrainStepHost,
 } from "../../step/index.mjs";
 
-const passed = (assessment: string) => ({ outcome: "passed", assessment });
-const deliveryPreparation = "准备最终回复或未完成交接前，先读取并严格执行下方交付指导：\n";
-
-function guidance(result: unknown) {
-  const response = result as { isError?: boolean; structuredContent: { guidance: string } };
-  expect(response.isError).not.toBe(true);
-  return response.structuredContent.guidance;
+type CallResult = Awaited<ReturnType<Client["callTool"]>>;
+function markdown(result: CallResult) {
+  expect(result.isError).not.toBe(true);
+  expect(result.structuredContent).toBeUndefined();
+  return (result.content as Array<{ type: string; text: string }>).map((x) => x.text).join("\n");
+}
+function errorText(result: CallResult) {
+  expect(result.isError).toBe(true);
+  return (result.content as Array<{ type: string; text: string }>).map((x) => x.text).join("\n");
 }
 
 async function fixture(options: { fileSystem?: BrainStepFileSystem } = {}) {
@@ -41,18 +43,23 @@ async function fixture(options: { fileSystem?: BrainStepFileSystem } = {}) {
     ...options,
   });
   registerBrainStep(server, runtime);
-  const client = new Client({ name: "brain-step-check", version: "1.0.0" });
+  const client = new Client({ name: "brain-step-test", version: "1.0.0" });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(left), client.connect(right)]);
   const call = (request: Record<string, unknown>) =>
     client.callTool({ name: "brain_step", arguments: request });
-  const raw = () => fs.readFile(statePathFor(currentHost), "utf8");
-  const state = async () => JSON.parse(await raw()).state;
   return {
     client,
     call,
-    raw,
-    state,
+    raw: () => fs.readFile(statePathFor(currentHost), "utf8"),
+    state: async () => {
+      const file = statePathFor(currentHost);
+      const stored = (JSON.parse(await fs.readFile(file, "utf8")) as { state: any }).state;
+      return {
+        ...stored,
+        content: await fs.readFile(path.join(path.dirname(file), stored.contentFile), "utf8"),
+      };
+    },
     host,
     hostReads: () => hostReads,
     setHost(value: BrainStepHost) {
@@ -61,439 +68,463 @@ async function fixture(options: { fileSystem?: BrainStepFileSystem } = {}) {
     async close() {
       await client.close();
       await server.close();
+      await fs.rm(sourceRoot, { recursive: true, force: true });
     },
   };
 }
 
-async function ready(
-  f: Awaited<ReturnType<typeof fixture>>,
-  phase: "intent" | "essence" | "work" = "work",
-) {
-  await f.call({ action: "start", message: "合成契约检查；不执行真实业务。" });
-  await f.call({
-    action: "update",
-    updates: {
-      intent: "合成意图及依据",
-      scope: "仅合成契约核对",
-      analysis: "合成关系和证明边界",
-      research: "合成方法来源与适用条件",
-      method: "合成核对方法",
-      acceptance: "合成标准和核对方式",
-      result: "合成核对结果",
-      replyDraft: "草稿A",
-    },
-  });
-  if (phase === "intent") return;
-  await f.call({
-    action: "submit",
-    phase: "intent",
-    decision: "advance",
-    assessment: "合成意图范围已核对",
-  });
-  if (phase === "essence") return;
-  await f.call({
-    action: "submit",
-    phase: "essence",
-    decision: "advance",
-    assessment: "合成关系已核对",
-  });
+async function reachEssence(f: Awaited<ReturnType<typeof fixture>>) {
+  markdown(await f.call({ action: "start", message: "用户要求解决页面慢" }));
+  markdown(
+    await f.call({ action: "submit_work", result: "目标：及时而准确地报价；缓存只是办法。" }),
+  );
+  markdown(await f.call({ action: "submit_review" }));
+  return markdown(await f.call({ action: "confirm_review" }));
+}
+async function reachFinalWork(f: Awaited<ReturnType<typeof fixture>>) {
+  await reachEssence(f);
+  markdown(
+    await f.call({
+      action: "submit_work",
+      result: "事实：多个串行接口造成主要等待，有调用链依据。",
+    }),
+  );
+  markdown(await f.call({ action: "submit_review" }));
+  return markdown(await f.call({ action: "confirm_review" }));
 }
 
-describe("brain_step native MCP and persisted state", () => {
-  it.each(["intent", "essence", "work"] as const)(
-    "provides readable delivery guidance and restores drafts before finishing %s",
-    async (phase) => {
-      const f = await fixture();
-      try {
-        const started = await f.call({
-          action: "start",
-          message: "合成契约检查；不执行真实业务。",
-        });
-        expect(guidance(started)).toContain(deliveryPreparation);
-        await ready(f, phase);
-        const before = await f.raw();
-        const status = await f.call({ action: "status" });
-        expect(status.structuredContent).toMatchObject({ currentPhase: phase });
-        const current = guidance(status);
-        expect(current).toContain("草稿A");
-        const resourcePath = current.split(deliveryPreparation)[1]?.split("\n")[0];
-        expect(path.isAbsolute(resourcePath)).toBe(true);
-        expect(await fs.readFile(resourcePath, "utf8")).toBe(
-          await fs.readFile(
-            new URL("../../step/guidance/delivery-rules.md", import.meta.url),
-            "utf8",
-          ),
-        );
-        const overview = guidance(await f.call({ action: "overview" }));
-        expect(overview).toContain("用status读取完整文本");
-        expect(overview).not.toContain("草稿A");
-        expect(await f.raw()).toBe(before);
-        const updated = guidance(await f.call({ action: "update", progress: "读取路径已核对" }));
-        expect(updated).not.toContain(deliveryPreparation);
-        expect(updated).not.toContain("# 本轮交付");
-        await f.call({ action: "update", updates: { replyDraft: null } });
-        expect(guidance(await f.call({ action: "status" }))).not.toContain("当前回复草稿：");
-        expect(guidance(await f.call({ action: "overview" }))).not.toContain(
-          "用status读取完整文本",
-        );
-      } finally {
-        await f.close();
-      }
-    },
-  );
-
-  it.each(["intent", "essence", "work"] as const)(
-    "restores the unfinished phase and its actual handoff reason in %s",
-    async (phase) => {
-      const f = await fixture();
-      try {
-        await ready(f, phase);
-        const reason = "当前授权范围内的调查已完成，缺少用户才能提供的原始资料，取得后继续核对。";
-        guidance(
-          await f.call({
-            action: "submit",
-            phase,
-            decision: "handoff",
-            assessment: reason,
-            workflow: passed("已核对当前应执行流程和无法继续的具体前提"),
-          }),
-        );
-        const before = await f.raw();
-        const overview = await f.call({ action: "overview" });
-        expect(overview.structuredContent).toMatchObject({ currentPhase: phase });
-        expect(guidance(overview)).toContain("原阶段尚未完成");
-        expect(guidance(overview)).toContain(reason);
-        const status = guidance(await f.call({ action: "status" }));
-        expect(status).toContain(reason);
-        expect(status).toContain("草稿A");
-        expect(await f.raw()).toBe(before);
-        const current = await f.state();
-        expect(current.phases[phase].status).toBe("active");
-        expect(current.reviews.completion).toBeNull();
-      } finally {
-        await f.close();
-      }
-    },
-  );
-
-  it("points to overview for completed task content without a separate artifact", async () => {
+describe("brain_step: six actions, one current State and focused Markdown", () => {
+  it("publishes a minimal schema and the first task without invented findings", async () => {
     const f = await fixture();
     try {
-      await ready(f);
-      guidance(
-        await f.call({
-          action: "update",
-          updates: {
-            taskChanges: [
-              { kind: "add", scheduledFor: "current_round", description: "交付已核对的文字结论" },
-            ],
+      const tools = (await f.client.listTools()).tools;
+      expect(tools).toHaveLength(1);
+      expect(tools[0]?.description).toBe(definition.description);
+      expect(tools[0]?.outputSchema).toBeUndefined();
+      expect(tools[0]?.inputSchema).toMatchObject({
+        properties: {
+          action: {
+            enum: ["start", "submit_work", "submit_review", "confirm_review", "update", "read"],
           },
-        }),
-      );
-      const taskId = (await f.state()).tasks[0].id as string;
-      const content = "任务成品正文：核对依据支持的结论与未测范围。";
-      guidance(
-        await f.call({
-          action: "update",
-          updates: {
-            taskChanges: [{ kind: "complete", taskId, result: { content, artifacts: [] } }],
-          },
-        }),
-      );
-      const finished = await f.call({
-        action: "submit",
-        phase: "work",
-        decision: "finish",
-        completion: passed("已核对实际文字成品及交付范围"),
-        workflow: passed("已核对本轮实际流程"),
+        },
       });
-      expect(finished.structuredContent).toMatchObject({ currentPhase: null });
-      expect(guidance(finished)).toContain("调用overview");
-      expect(guidance(finished)).not.toContain(content);
+      const first = markdown(await f.call({ action: "start", message: "商品页太慢，帮我加缓存" }));
+      expect(first).toContain("# Brain 的背景与目的");
+      expect(first).toContain("# 当前任务：查清用户的完整意图");
+      expect(first).toContain("## 本次提交");
+      expect(first).not.toContain("当前意图：已");
+      const state = await f.state();
+      expect(state.mode).toBe("work");
+      expect(state.phase).toBe("intent");
+      expect(state.content).toBe("# 当前 State\n");
+      expect(state.contentFile).toMatch(/\.md$/);
+      expect(
+        await fs.readFile(path.join(path.dirname(statePathFor(f.host)), state.contentFile), "utf8"),
+      ).toBe(state.content);
+      expect(await f.raw()).not.toContain('"content":');
+      expect(state.saved).toEqual({ intent: false, essence: false, work: false });
       const before = await f.raw();
-      expect(guidance(await f.call({ action: "overview" }))).toContain(content);
-      expect(guidance(await f.call({ action: "status" }))).toContain("调用overview");
+      expect(markdown(await f.call({ action: "start", message: "商品页太慢，帮我加缓存" }))).toBe(
+        first,
+      );
+      expect(markdown(await f.call({ action: "read" }))).toBe(state.content);
+      expect(await f.raw()).toBe(before);
+      expect(
+        errorText(await f.call({ action: "start", message: "冒充本轮另一用户消息" })),
+      ).toContain("不同");
       expect(await f.raw()).toBe(before);
     } finally {
       await f.close();
     }
   });
 
-  it.each(["current_round", "future"] as const)(
-    "lists only actual unfinished work for %s without changing task status",
-    async (scheduledFor) => {
-      const f = await fixture();
-      const statuses = ["todo", "doing", "blocked", "deferred", "done", "cancelled"] as const;
-      try {
-        await ready(f);
-        guidance(
-          await f.call({
-            action: "update",
-            updates: {
-              taskChanges: statuses.map((status) => ({
-                kind: "add",
-                scheduledFor,
-                description: `fixture-${scheduledFor}-${status}`,
-              })),
-            },
-          }),
-        );
-        const tasks = (await f.state()).tasks as Array<{ id: string; description: string }>;
-        const taskChanges: Array<Record<string, unknown>> = [];
-        for (const [index, status] of statuses.entries()) {
-          const taskId = tasks[index].id;
-          if (status === "doing")
-            taskChanges.push({ kind: "progress", taskId, progress: "已取得部分进展" });
-          else if (status === "done")
-            taskChanges.push({
-              kind: "complete",
-              taskId,
-              result: { content: "实际结果已核对", artifacts: [] },
-            });
-          else if (status !== "todo")
-            taskChanges.push({
-              kind: { blocked: "block", deferred: "defer", cancelled: "cancel" }[status],
-              taskId,
-              reason: "按当前实际前提和决定保存状态",
-            });
-        }
-        guidance(await f.call({ action: "update", updates: { taskChanges } }));
-        const handoff = guidance(
-          await f.call({
-            action: "submit",
-            phase: "work",
-            decision: "handoff",
-            assessment: "本次仅获准核对任务展示，未获准执行业务任务；展示核对后交接现状。",
-            workflow: passed("已核对实际权限和未完状态"),
-          }),
-        );
-        const remaining = handoff
-          .split("尚未完成及后续验收安排：\n")[1]
-          ?.split("深度思考笔记实际位置：\n")[0];
-        expect(remaining).toBeDefined();
-        for (const status of statuses)
-          if (["done", "cancelled"].includes(status))
-            expect(remaining).not.toContain(`fixture-${scheduledFor}-${status}`);
-          else expect(remaining).toContain(`fixture-${scheduledFor}-${status}`);
-        const before = await f.raw();
-        const overview = guidance(await f.call({ action: "overview" }));
-        expect(overview).toContain(`fixture-${scheduledFor}-done`);
-        expect(overview).toContain(`fixture-${scheduledFor}-cancelled`);
-        const after = await f.state();
-        expect(
-          after.tasks.map((task: { execution: { status: string } }) => task.execution.status),
-        ).toEqual(statuses);
-        expect(await f.raw()).toBe(before);
-      } finally {
-        await f.close();
-      }
-    },
-  );
-
-  it("uses the common Brain registry with trusted per-call host identity and rejects absent identity", async () => {
-    const sourceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "brain-step-common-"));
-    const services = { sourceRoot } as BrainApplicationServices;
-    let host: BrainStepHost | undefined = {
-      conversationId: "common-session",
-      turnId: "one",
-      sourceRoot,
-    };
-    const server = new McpServer({ name: "brain-common", version: "1" });
-    registerBrainTools(server, undefined, {
-      resolveInvocation: () => ({ services, stepHost: host }),
-    });
-    const client = new Client({ name: "common-check", version: "1" });
-    const [left, right] = InMemoryTransport.createLinkedPair();
-    await Promise.all([server.connect(left), client.connect(right)]);
-    try {
-      expect((await client.listTools()).tools.some((tool) => tool.name === "brain_step")).toBe(
-        true,
-      );
-      const call = (arguments_: Record<string, unknown>) =>
-        client.callTool({ name: "brain_step", arguments: arguments_ });
-      const started = await call({ action: "start", message: "第一轮" });
-      expect(started.isError).not.toBe(true);
-      const file = statePathFor(host!);
-      const before = await fs.readFile(file, "utf8");
-      host = undefined;
-      const missing = await call({ action: "start", message: "不应覆盖" });
-      expect(missing.isError).toBe(true);
-      expect(JSON.stringify(missing.content)).toContain("宿主须提供");
-      expect(await fs.readFile(file, "utf8")).toBe(before);
-      host = { conversationId: "common-session", turnId: "two", sourceRoot };
-      expect((await call({ action: "start", message: "第二轮" })).isError).not.toBe(true);
-      expect(JSON.parse(await fs.readFile(file, "utf8")).state.message).toBe("第二轮");
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-  it("publishes its contract and rejects invalid input before resolving or mutating host state", async () => {
+  it("advances from intent through essence and actual work, reviewing mature outcomes", async () => {
     const f = await fixture();
     try {
-      const listed = (await f.client.listTools()).tools;
-      expect(listed).toHaveLength(1);
-      expect(listed[0].name).toBe("brain_step");
-      expect(listed[0].description).toBe(definition.description);
-      expect(listed[0].outputSchema).toBeDefined();
-      const result = await f.call({ action: "update", taskChanges: [] });
-      expect(result.isError).toBe(true);
-      expect(f.hostReads()).toBe(0);
-      await expect(f.raw()).rejects.toMatchObject({ code: "ENOENT" });
-      const unstarted = await f.call({ action: "status" });
-      expect(unstarted.isError).toBe(true);
-      await expect(f.raw()).rejects.toMatchObject({ code: "ENOENT" });
+      const essence = await reachEssence(f);
+      expect(essence).toContain("# 当前任务：查清决定结果的事实本质");
+      const work = markdown(
+        await f.call({
+          action: "submit_work",
+          result: "事实：多个串行接口造成主要等待，有实际调用轨迹。",
+        }),
+      );
+      expect(work).toContain("## 本次检视要求");
+      expect(work).toContain("事实形成关系");
+      const confirm = markdown(await f.call({ action: "submit_review" }));
+      expect(confirm).toContain("「Brain 的背景与目的」");
+      expect(confirm).toContain("「本次检视要求」");
+      const actual = markdown(await f.call({ action: "confirm_review" }));
+      expect(actual).toContain("完成用户工作");
+      const review = markdown(
+        await f.call({
+          action: "submit_work",
+          result: "已调整调用方案并验收结果；真实成果位置和未完成约束见项目文件。",
+        }),
+      );
+      expect(review).toContain("## 本次检视要求");
+      expect(review).toContain("最终回复");
+      markdown(await f.call({ action: "submit_review" }));
+      expect(markdown(await f.call({ action: "confirm_review" }))).toContain(
+        "本轮工作及一次最终确认已完成",
+      );
+      const state = await f.state();
+      expect(state.mode).toBe("done");
+      expect(state.saved).toEqual({ intent: true, essence: true, work: true });
+      const raw = markdown(await f.call({ action: "read" }));
+      for (const title of ["## 完整意图", "## 事实本质", "## 实际工作与交付"])
+        expect(raw).toContain(title);
+      expect(raw).toBe(state.content);
+      expect(errorText(await f.call({ action: "submit_work", result: "重复" }))).toContain(
+        "已经完成",
+      );
     } finally {
       await f.close();
     }
   });
 
-  it("preserves same-turn progress, isolates conversations and resets only on a real new turn", async () => {
+  it("requires complete current results; a review issue opens correction work and a fresh full review", async () => {
     const f = await fixture();
     try {
-      const started = await f.call({ action: "start", message: "第一轮" });
-      expect(JSON.parse((started.content as { text: string }[])[0].text)).toEqual(
-        started.structuredContent,
+      await f.call({ action: "start", message: "处理报价问题" });
+      expect(errorText(await f.call({ action: "submit_work" }))).toContain("完整新成果");
+      const review = markdown(
+        await f.call({
+          action: "submit_work",
+          result: "用户真正的目标是加缓存。",
+        }),
       );
-      await f.call({
-        action: "update",
-        progress: "已核对一项",
-        updates: { intent: "当前有据理解" },
-      });
+      expect(review).toContain("完整客观检视");
+      const correction = markdown(
+        await f.call({
+          action: "submit_review",
+          result: "把缓存办法误当用户目标；实际目标是及时得到可靠报价。",
+        }),
+      );
+      expect(correction).toContain("当前任务：修正完整意图");
+      expect(correction).toContain("把缓存办法误当用户目标");
+      expect(errorText(await f.call({ action: "submit_review" }))).toContain("不能调用");
+      expect(errorText(await f.call({ action: "submit_work" }))).toContain("尚未通过 update");
+      expect(
+        markdown(
+          await f.call({
+            action: "update",
+            edits: [
+              {
+                old_text: "用户真正的目标是加缓存。",
+                new_text: "用户真正的目标是及时得到可靠报价；缓存是候选办法。",
+              },
+            ],
+          }),
+        ),
+      ).toBe("更新已保存。");
+      const before = await f.state();
+      expect(before.content).not.toContain("用户真正的目标是加缓存。");
+      expect(
+        errorText(
+          await f.call({
+            action: "submit_work",
+            result: "仅给出修正完成说明",
+          }),
+        ),
+      ).toContain("请用 update");
+      const fresh = markdown(await f.call({ action: "submit_work" }));
+      expect(fresh).toContain("完整客观检视");
+      expect((await f.state()).mode).toBe("review");
+      const confirm = markdown(await f.call({ action: "submit_review" }));
+      expect(confirm).toContain("简短确认");
+      expect(markdown(await f.call({ action: "confirm_review" }))).toContain("事实本质");
+      expect((await f.state()).content).toContain("可靠报价");
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("a problem discovered at brief confirmation also repairs through update and a new full review", async () => {
+    const f = await fixture();
+    try {
+      markdown(await f.call({ action: "start", message: "用户消息" }));
+      markdown(await f.call({ action: "submit_work", result: "当前完整意图结论A" }));
+      markdown(await f.call({ action: "submit_review" }));
+      const correction = markdown(
+        await f.call({
+          action: "confirm_review",
+          result: "最后发现依据A实际上无效，应修正为B。",
+        }),
+      );
+      expect(correction).toContain("修正完整意图");
+      markdown(
+        await f.call({
+          action: "update",
+          edits: [{ old_text: "结论A", new_text: "结论B" }],
+        }),
+      );
+      expect(markdown(await f.call({ action: "submit_work" }))).toContain("## 本次检视要求");
+      markdown(await f.call({ action: "submit_review" }));
+      expect(markdown(await f.call({ action: "confirm_review" }))).toContain("事实本质");
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("Pi edits are atomic, reject missing/ambiguous matches and preserve previously submitted results", async () => {
+    const f = await fixture();
+    try {
+      await reachFinalWork(f);
+      const before = await f.raw();
+      expect(
+        errorText(
+          await f.call({
+            action: "update",
+            edits: [{ old_text: "不存在", new_text: "修改" }],
+          }),
+        ),
+      ).toContain("Could not find");
+      expect(
+        markdown(
+          await f.call({
+            action: "update",
+            edits: [{ old_text: "报价", new_text: "更新" }],
+          }),
+        ),
+      ).toBe("更新已保存。");
+      const after = await f.state();
+      expect(after.content).toContain("及时而准确地更新");
+      const beforeAmbiguous = await f.raw();
+      expect(
+        errorText(
+          await f.call({
+            action: "update",
+            edits: [
+              { old_text: "多个串行接口", new_text: "并行调用" },
+              { old_text: "不存在", new_text: "新内容" },
+            ],
+          }),
+        ),
+      ).toContain("Could not find");
+      expect(await f.raw()).toBe(beforeAmbiguous);
+      const r = markdown(
+        await f.call({
+          action: "update",
+          edits: [
+            { old_text: "多个串行接口", new_text: "并行调用" },
+            { old_text: "缓存只是办法", new_text: "缓存仅是候选办法" },
+          ],
+        }),
+      );
+      expect(r).toBe("更新已保存。");
+      const current = await f.state();
+      expect(current.content).toContain("并行调用");
+      expect(current.content).toContain("缓存仅是候选办法");
+      expect(await f.raw()).not.toBe(before);
+      expect(markdown(await f.call({ action: "read" }))).toBe(current.content);
+      markdown(
+        await f.call({
+          action: "update",
+          edits: [{ old_text: "并行调用", new_text: "并行接口与备用接口" }],
+        }),
+      );
+      const beforeDuplicate = await f.raw();
+      expect(
+        errorText(
+          await f.call({
+            action: "update",
+            edits: [{ old_text: "接口", new_text: "网络" }],
+          }),
+        ),
+      ).toContain("Found 2 occurrences");
+      expect(await f.raw()).toBe(beforeDuplicate);
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("uses Pi's fuzzy Unicode matching to update Markdown without embedding it in JSON", async () => {
+    const f = await fixture();
+    try {
+      markdown(await f.call({ action: "start", message: "说明方案" }));
+      markdown(
+        await f.call({
+          action: "submit_work",
+          result: "status: “Plan A” works.",
+        }),
+      );
+      markdown(await f.call({ action: "submit_review", result: "需改为 Plan B" }));
+      const before = await f.state();
+      expect(
+        markdown(
+          await f.call({
+            action: "update",
+            edits: [{ old_text: '"Plan A" works', new_text: "Plan B works" }],
+          }),
+        ),
+      ).toBe("更新已保存。");
+      const after = await f.state();
+      expect(after.content).toContain("Plan B works");
+      expect(after.content).not.toContain("“Plan A”");
+      expect(after.contentFile).not.toBe(before.contentFile);
+      expect(markdown(await f.call({ action: "read" }))).toBe(after.content);
+      const stored = await f.raw();
+      expect(stored).toContain('"contentFile"');
+      expect(stored).not.toContain("Plan B works");
+      expect(stored).not.toContain('"content":');
+      expect(markdown(await f.call({ action: "submit_work" }))).toContain("完整客观检视");
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("rejects illegal actions and fields before changing State", async () => {
+    const f = await fixture();
+    try {
+      expect(errorText(await f.call({ action: "read" }))).toContain("尚未 start");
+      const invalid = await f.call({ action: "update", taskChanges: [] });
+      expect(errorText(invalid).length).toBeGreaterThan(0);
+      expect(f.hostReads()).toBe(1); // prior read resolves a host
+      await expect(f.raw()).rejects.toMatchObject({ code: "ENOENT" });
+      markdown(await f.call({ action: "start", message: "核对输入" }));
       const before = await f.raw();
       for (const request of [
         { action: "status" },
-        { action: "overview" },
-        { action: "start", message: "第一轮" },
-      ]) {
-        expect((await f.call(request)).isError).not.toBe(true);
-        expect(await f.raw()).toBe(before);
-      }
-      expect((await f.call({ action: "start", message: "冒充同轮的新消息" })).isError).toBe(true);
+        { action: "submit", phase: "intent", decision: "advance" },
+        { action: "submit_review" },
+        { action: "confirm_review" },
+        { action: "submit_work", result: "" },
+        { action: "update", edits: [{ old_text: "缺失", new_text: "修改" }] },
+        { action: "start", message: "核对输入", phase: "intent" },
+      ])
+        expect((await f.call(request)).isError).toBe(true);
       expect(await f.raw()).toBe(before);
-      f.setHost({ ...f.host, conversationId: "session-b" });
-      await f.call({ action: "start", message: "另一个会话" });
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("binds State to trusted host identity, isolates sessions and resets on new turn", async () => {
+    const f = await fixture();
+    try {
+      markdown(await f.call({ action: "start", message: "第一轮" }));
+      markdown(await f.call({ action: "submit_work", result: "第一轮有效认识" }));
+      const before = await f.raw();
+      f.setHost({ ...f.host, conversationId: "other-session" });
+      markdown(await f.call({ action: "start", message: "另一个会话" }));
       expect(statePathFor(f.host)).not.toBe(
-        statePathFor({ ...f.host, conversationId: "session-b" }),
+        statePathFor({ ...f.host, conversationId: "other-session" }),
       );
       f.setHost(f.host);
       expect(await f.raw()).toBe(before);
       f.setHost({ ...f.host, turnId: "turn-2" });
-      await f.call({ action: "start", message: "第二轮" });
-      const current = await f.state();
-      expect(current.message).toBe("第二轮");
-      expect(current.notes.intent).toBeNull();
-      expect(current.tasks).toEqual([]);
-      expect(current.phases.intent.status).toBe("active");
+      expect(errorText(await f.call({ action: "read" }))).toContain("尚未 start");
+      markdown(await f.call({ action: "start", message: "第二轮" }));
+      const state = await f.state();
+      expect(state.message).toBe("第二轮");
+      expect(state.content).not.toContain("第一轮有效认识");
+      expect(state.saved.intent).toBe(false);
     } finally {
       await f.close();
     }
   });
 
-  it("invalidates completed reviews after real draft changes and refuses finishing with stale acceptance", async () => {
-    const f = await fixture();
-    try {
-      await ready(f);
-      const finish = {
-        action: "submit",
-        phase: "work",
-        decision: "finish",
-        completion: passed("草稿A和成果已核对"),
-        workflow: passed("合成流程已核对"),
-      };
-      expect((await f.call(finish)).isError).not.toBe(true);
-      expect((await f.state()).phases.work.status).toBe("done");
-      const before = await f.raw();
-      await f.call({ action: "update", updates: { replyDraft: "草稿A" } });
-      expect(await f.raw()).toBe(before);
-      await f.call({ action: "update", updates: { replyDraft: "草稿B" } });
-      const changed = await f.state();
-      expect(changed.reviews.completion).toBeNull();
-      expect(changed.reviews.workflow).toBeNull();
-      expect(changed.notes.intent).toBe("合成意图及依据");
-      expect(changed.phases.work.status).toBe("active");
-      const afterUpdate = await f.raw();
-      expect(
-        (
-          await f.call({
-            action: "submit",
-            phase: "work",
-            decision: "finish",
-            workflow: passed("仅流程核对"),
-          })
-        ).isError,
-      ).toBe(true);
-      expect(await f.raw()).toBe(afterUpdate);
-      expect((await f.call({ ...finish, completion: passed("草稿B已重验") })).isError).not.toBe(
-        true,
-      );
-      await f.call({ action: "update", updates: { replyDraft: null } });
-      expect((await f.state()).reviews.completion).toBeNull();
-    } finally {
-      await f.close();
-    }
-  });
-
-  it("returns upstream changes before finish and atomically rejects malformed submit fields", async () => {
-    const f = await fixture();
-    try {
-      await ready(f);
-      const before = await f.raw();
-      const invalid = await f.call({
-        action: "submit",
-        phase: "work",
-        decision: "continue",
-        assessment: "继续",
-        progress: "错误位置",
-      });
-      expect(invalid.isError).toBe(true);
-      expect(await f.raw()).toBe(before);
-      expect(JSON.stringify(invalid.content)).toContain("先用独立update");
-      const response = await f.call({
-        action: "submit",
-        phase: "work",
-        decision: "finish",
-        updates: { intent: "新的意图依据" },
-        impact: { areas: ["intent"], reason: "合成新证据改变意图", affectedTaskIds: [] },
-        completion: passed("同次完成判断"),
-        workflow: passed("同次流程判断"),
-      });
-      expect(response.isError).not.toBe(true);
-      expect(response.structuredContent).toMatchObject({ currentPhase: "intent" });
-      const current = await f.state();
-      expect(current.notes.intent).toBe("新的意图依据");
-      expect(current.notes.result).toBe("合成核对结果");
-      expect(current.reviews.completion).toBeNull();
-    } finally {
-      await f.close();
-    }
-  });
-
-  it("retains the original state when atomic replacement fails and rejects missing host identity", async () => {
+  it("does not acknowledge a failed atomic save", async () => {
     let failRename = false;
     const f = await fixture({
       fileSystem: {
         ...fs,
-        async rename(oldPath, newPath) {
-          if (failRename)
-            throw Object.assign(new Error("simulated disk replacement failure"), {
-              code: "EACCES",
-            });
-          return fs.rename(oldPath, newPath);
+        async rename(source, target) {
+          if (failRename) throw Object.assign(new Error("simulated failure"), { code: "EACCES" });
+          return fs.rename(source, target);
         },
       },
     });
     try {
-      await f.call({ action: "start", message: "保存失败检查" });
+      markdown(await f.call({ action: "start", message: "保存失败核查" }));
       const before = await f.raw();
       failRename = true;
-      const response = await f.call({ action: "update", updates: { intent: "不得部分保存" } });
-      expect(response.isError).toBe(true);
+      expect(
+        errorText(
+          await f.call({
+            action: "submit_work",
+            result: "这份结果不能被认为已保存",
+          }),
+        ),
+      ).toContain("未能持久保存");
       expect(await f.raw()).toBe(before);
-      expect(JSON.stringify(response.content)).toContain("尚未返回保存成功");
       expect(() => statePathFor({ ...f.host, turnId: "" })).toThrow("宿主须提供");
     } finally {
       await f.close();
+    }
+  });
+
+  it("keeps the previous JSON to Markdown reference when JSON commit fails", async () => {
+    let failJsonCommit = false;
+    const f = await fixture({
+      fileSystem: {
+        ...fs,
+        async rename(source, target) {
+          if (failJsonCommit && String(target).endsWith(".json"))
+            throw Object.assign(new Error("JSON commit failed"), { code: "EACCES" });
+          return fs.rename(source, target);
+        },
+      },
+    });
+    try {
+      markdown(await f.call({ action: "start", message: "保持状态一致" }));
+      const before = await f.state();
+      const stored = await f.raw();
+      failJsonCommit = true;
+      expect(
+        errorText(
+          await f.call({
+            action: "submit_work",
+            result: "尚未完成持久化的新结论",
+          }),
+        ),
+      ).toContain("未能持久保存");
+      expect(await f.raw()).toBe(stored);
+      expect((await f.state()).content).toBe(before.content);
+      expect(markdown(await f.call({ action: "read" }))).toBe(before.content);
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("registers through the common Brain adapter, using the host instead of model identity", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "brain-step-host-"));
+    const services = { sourceRoot: root } as BrainApplicationServices;
+    let host: BrainStepHost | undefined = {
+      conversationId: "common",
+      turnId: "t1",
+      sourceRoot: root,
+    };
+    const server = new McpServer({ name: "common-brain", version: "1" });
+    registerBrainTools(server, undefined, {
+      resolveInvocation: () => ({ services, stepHost: host }),
+    });
+    const client = new Client({ name: "host-test", version: "1" });
+    const [left, right] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(left), client.connect(right)]);
+    try {
+      const call = (request: Record<string, unknown>) =>
+        client.callTool({ name: "brain_step", arguments: request });
+      expect(markdown(await call({ action: "start", message: "原消息" }))).toContain("完整意图");
+      const before = await fs.readFile(statePathFor(host!), "utf8");
+      host = undefined;
+      expect(errorText(await call({ action: "start", message: "其它" }))).toContain("宿主须提供");
+      expect(
+        await fs.readFile(
+          statePathFor({ conversationId: "common", turnId: "t1", sourceRoot: root }),
+          "utf8",
+        ),
+      ).toBe(before);
+      host = { conversationId: "common", turnId: "t2", sourceRoot: root };
+      expect(markdown(await call({ action: "start", message: "新消息" }))).toContain("完整意图");
+      expect(JSON.parse(await fs.readFile(statePathFor(host), "utf8")).state.message).toBe(
+        "新消息",
+      );
+    } finally {
+      await client.close();
+      await server.close();
+      await fs.rm(root, { recursive: true, force: true });
     }
   });
 });

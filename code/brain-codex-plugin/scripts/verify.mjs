@@ -222,10 +222,22 @@ async function main() {
     const planPermission = await runProcess(permissionHookEntry, {
       cwd: firstSourceRoot,
       env,
-      input: `${JSON.stringify({ ...mutationInput, permission_mode: "plan" })}\n`,
+      input: `${JSON.stringify({ ...mutationInput, permission_mode: "read-only" })}\n`,
     });
     assert.equal(planPermission.code, 0, planPermission.stderr);
     assert.equal(planPermission.stdout, "");
+
+    const planStepPermission = await runProcess(permissionHookEntry, {
+      cwd: firstSourceRoot,
+      env,
+      input: `${JSON.stringify({
+        ...permissionInput,
+        tool_name: "mcp__brain__brain_step",
+        permission_mode: "read-only",
+      })}\n`,
+    });
+    assert.equal(planStepPermission.code, 0, planStepPermission.stderr);
+    assert.equal(planStepPermission.stdout, "");
 
     const staleTurnPermission = await runProcess(permissionHookEntry, {
       cwd: firstSourceRoot,
@@ -283,7 +295,38 @@ async function main() {
     });
     assert.equal(degradedMutationPermission.code, 0, degradedMutationPermission.stderr);
     assert.equal(degradedMutationPermission.stdout, "");
-    console.log("PASS degraded Git history keeps reads automatic but mutations in normal approval flow");
+
+    const degradedStepPermission = await runProcess(permissionHookEntry, {
+      cwd: degradedSourceRoot,
+      env,
+      input: `${JSON.stringify({
+        ...permissionInput,
+        session_id: degradedHookInput.session_id,
+        turn_id: degradedHookInput.turn_id,
+        cwd: degradedSourceRoot,
+        tool_name: "mcp__brain__brain_step",
+      })}\n`,
+    });
+    assert.equal(degradedStepPermission.code, 0, degradedStepPermission.stderr);
+    assert.equal(
+      JSON.parse(degradedStepPermission.stdout).hookSpecificOutput.decision.behavior,
+      "allow",
+    );
+    const readOnlyStepPermission = await runProcess(permissionHookEntry, {
+      cwd: degradedSourceRoot,
+      env,
+      input: `${JSON.stringify({
+        ...permissionInput,
+        session_id: degradedHookInput.session_id,
+        turn_id: degradedHookInput.turn_id,
+        cwd: degradedSourceRoot,
+        tool_name: "mcp__brain__brain_step",
+        permission_mode: "read-only",
+      })}\n`,
+    });
+    assert.equal(readOnlyStepPermission.code, 0, readOnlyStepPermission.stderr);
+    assert.equal(readOnlyStepPermission.stdout, "");
+    console.log("PASS brain_step remains automatic without Git recovery while other mutations require approval");
     const refreshed = await runProcess(hookEntry, {
       cwd: firstSourceRoot,
       env,
@@ -374,7 +417,7 @@ async function main() {
       stepCall(100, firstHookInput.session_id, { action: "start", message: "第一会话实际轮次" }),
       stepCall(101, firstHookInput.session_id, { action: "update", updates: { intent: "本轮已保存" } }),
       stepCall(102, secondHookInput.session_id, { action: "start", message: "第二会话独立内容" }),
-      stepCall(103, firstHookInput.session_id, { action: "status" }),
+      stepCall(103, firstHookInput.session_id, { action: "read" }),
     );
     const mcp = await runMcpSession(mcpEntry, {
       cwd: pluginRoot,

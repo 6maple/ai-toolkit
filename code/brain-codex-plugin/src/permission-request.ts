@@ -9,13 +9,14 @@ const READ_TOOLS = new Set([
   "mcp__brain__brain_cat",
 ]);
 
+const ALWAYS_ALLOW_TOOLS = new Set(["mcp__brain__brain_step"]);
+
 const MUTATION_TOOLS = new Set([
   "mcp__brain__brain_write",
   "mcp__brain__brain_edit",
   "mcp__brain__brain_rm",
   "mcp__brain__brain_mv",
   "mcp__brain__brain_feedback",
-  "mcp__brain__brain_step",
 ]);
 
 interface PermissionRequestInput {
@@ -34,7 +35,11 @@ function parseInput(value: unknown): PermissionRequestInput | undefined {
   if (!isRecord(value)) return undefined;
   if (value.hook_event_name !== "PermissionRequest") return undefined;
   if (typeof value.tool_name !== "string") return undefined;
-  if (!READ_TOOLS.has(value.tool_name) && !MUTATION_TOOLS.has(value.tool_name)) return undefined;
+  if (
+    !READ_TOOLS.has(value.tool_name) &&
+    !ALWAYS_ALLOW_TOOLS.has(value.tool_name) &&
+    !MUTATION_TOOLS.has(value.tool_name)
+  ) return undefined;
   if (typeof value.session_id !== "string" || value.session_id.length === 0) return undefined;
   if (typeof value.turn_id !== "string" || value.turn_id.length === 0) return undefined;
   if (typeof value.permission_mode !== "string") return undefined;
@@ -87,6 +92,13 @@ async function main(): Promise<void> {
 
   if (READ_TOOLS.has(input.tool_name)) {
     allow();
+    return;
+  }
+
+  if (ALWAYS_ALLOW_TOOLS.has(input.tool_name)) {
+    if (input.permission_mode === "default" || input.permission_mode === "acceptEdits") {
+      allow();
+    }
     return;
   }
 

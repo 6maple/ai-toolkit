@@ -144,7 +144,7 @@ $brain 请结合本项目已有记忆，帮我处理这项工作。
 
 Claude Code 使用 `/brain` 并附上任务。用户选择使用后，AI 才按 skill 调用 Brain；CLI 的 `think` 是正式工作的入口，不是安装检测命令。
 
-完整工作还使用 `step --input-file` 推进同一轮流程。真实会话标识的来源及缺失处理见安装后的命令参考；会话/轮次由 CLI 绑定，模型只提交 Brain 的业务参数。只验证 cat 成功不代表完整深度思考流程已具备宿主上下文。
+完整工作使用 `step start --message ...`、`step submit-work --result ...`、`step submit-review`、`step confirm-review`、`step update`、`step read` 推进同一轮流程。长文本使用 CLI 的 `--*-file` 选项或标准输入。真实会话标识的来源及缺失处理见安装后的命令参考；会话/轮次由 CLI 绑定。只验证 cat 成功不代表完整深度思考流程已具备宿主上下文。
 
 运行失败时，记录命令、错误码、错误信息和相关警告，反馈给维护者。命令参考已包含在安装后的 `references/commands.md` 中，目标项目 AI 据此调用公开能力。
 

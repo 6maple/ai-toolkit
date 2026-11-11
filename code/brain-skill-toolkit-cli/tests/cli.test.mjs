@@ -241,24 +241,19 @@ void test("stub help/version and invalid arguments do not initialize Brain", asy
 });
 
 async function step(f, request, options = {}) {
-  return ok(f, ["step", "--input-file", "-"], { ...options, input: JSON.stringify(request) });
+  const args = ["step", request.action.replaceAll("_", "-")];
+  if (request.message !== undefined) args.push("--message", request.message);
+  if (request.result !== undefined) args.push("--result", request.result);
+  for (const edit of request.edits ?? [])
+    args.push("--old-text", edit.old_text, "--new-text", edit.new_text);
+  return ok(f, args, options);
 }
 
-void test("CLI step carries the same State through three phases across processes", async (t) => {
+void test("CLI step preserves one State and advances six actions across processes", async (t) => {
   const f = await fixture(t);
   await ok(f, ["think"]);
   const started = await step(f, { action: "start", message: "合成 CLI 契约检查" });
-  assert.equal(JSON.parse(started.text).currentPhase, "intent");
-  const notes = {
-    intent: "合成意图与依据",
-    scope: "只验证 CLI 接入",
-    analysis: "合成事实与条件",
-    research: "合成方法来源",
-    method: "合成工程验证",
-    acceptance: "跨进程状态承接",
-    result: "合成结果",
-  };
-  await step(f, { action: "update", updates: notes, progress: "已保存合成资料" });
+  assert.match(started.text, /# Brain 的背景与目的/);
   const context = await createCliStepContext(
     f.brain,
     await fs.realpath(f.project),
@@ -268,87 +263,111 @@ void test("CLI step carries the same State through three phases across processes
   const { statePathFor } = await import("../../brain/step/index.mjs");
   const file = statePathFor(host);
   const before = await fs.readFile(file, "utf8");
-  await step(f, { action: "start", message: "合成 CLI 契约检查" });
-  await step(f, { action: "status" });
-  const overview = JSON.parse((await step(f, { action: "overview" })).text);
-  assert.ok(overview.guidance.includes(notes.intent));
+  assert.match((await step(f, { action: "read" })).text, /# 当前 State/);
+  assert.match((await step(f, { action: "start", message: "合成 CLI 契约检查" })).text, /完整意图/);
   assert.equal(await fs.readFile(file, "utf8"), before);
-  const rejected = await run(f, ["step", "--input-file", "-"], {
-    input: JSON.stringify({
-      action: "submit",
-      phase: "work",
-      decision: "continue",
-      assessment: "不正确阶段",
-    }),
+  const refused = await run(f, ["step", "--input-file", "-"], {
+    input: JSON.stringify({ action: "submit_review" }),
   });
-  assert.equal(rejected.code, 1);
-  assert.match(rejected.result.error.message, /当前阶段/);
-  assert.equal(await fs.readFile(file, "utf8"), before);
+  assert.equal(refused.code, 1);
+  assert.match(refused.result.error.message, /不能调用/);
   const invalid = await run(f, ["step", "--input-file", "-"], {
     input: JSON.stringify({ action: "update", taskChanges: [] }),
   });
   assert.equal(invalid.code, 2);
-  assert.match(invalid.result.error.message, /updates/);
   assert.equal(await fs.readFile(file, "utf8"), before);
-  for (const [phase, next] of [
-    ["intent", "essence"],
-    ["essence", "work"],
+  for (const [result, expected] of [
+    ["意图：及时准确报价", "事实本质"],
+    ["形成机制：上游接口串行导致等待", "完成用户工作"],
   ]) {
-    const advanced = await step(f, {
-      action: "submit",
-      phase,
-      decision: "advance",
-      assessment: "合成检查已完成",
-    });
-    assert.equal(JSON.parse(advanced.text).currentPhase, next);
+    assert.match((await step(f, { action: "submit_work", result })).text, /完整客观检视/);
+    assert.match((await step(f, { action: "submit_review" })).text, /简短确认/);
+    assert.match((await step(f, { action: "confirm_review" })).text, new RegExp(expected));
   }
-  const finished = await step(f, {
-    action: "submit",
-    phase: "work",
-    decision: "finish",
-    completion: { outcome: "passed", assessment: "合成成果核对" },
-    workflow: { outcome: "passed", assessment: "合成流程核对" },
-  });
-  const output = JSON.parse(finished.text);
-  assert.equal(output.currentPhase, null);
-  assert.ok(output.guidance.includes(file));
+  assert.match((await step(f, { action: "submit_work", result: "已经实施并核对本轮结果" })).text, /完整客观检视/);
+  await step(f, { action: "submit_review" });
+  assert.match((await step(f, { action: "confirm_review" })).text, /已完成/);
   const state = JSON.parse(await fs.readFile(file, "utf8")).state;
-  assert.equal(state.notes.result, notes.result);
-  assert.equal(state.phases.work.status, "done");
+  assert.equal(state.mode, "done");
+  assert.match(state.contentFile, /\.md$/);
+  assert.equal(state.content, undefined);
+  assert.match(await fs.readFile(path.join(path.dirname(file), state.contentFile), "utf8"), /已经实施并核对本轮结果/);
+});
+void test("CLI step accepts native action options and long text without JSON request files", async (t) => {
+  const f = await fixture(t);
+  for (const args of [
+    ["step", "start"],
+    ["step", "read", "--result", "unexpected"],
+    ["step", "start", "--message", "x", "--message-file", "-"],
+    ["step", "update", "--old-text", "a"],
+    ["step", "update", "--old-text", "a", "--new-text", "b", "--old-text", "c"],
+    ["step", "update", "--old-text", "a", "--new-text", "b", "--old-text-file", "-"],
+    ["step", "update", "--old-text-file", "-", "--new-text-file", "-"],
+    ["step", "start", "--input-file", "-"],
+  ]) {
+    const invalid = await run(f, args);
+    assert.equal(invalid.code, 2, args.join(" ") + " " + invalid.stdout);
+    assert.equal(invalid.result.error.code, "usage");
+  }
+  await assert.rejects(fs.stat(f.brain), { code: "ENOENT" });
+  await ok(f, ["think"]);
+  const originalMessage = "用户消息：中文\n第二行：\\ ` $ ' \"";
+  await ok(f, ["step", "start", "--message-file", "-"], { input: originalMessage });
+  const originalResult = "甲节点\n乙节点\n特殊内容 ` $ \\ ' \"";
+  await ok(f, ["step", "submit-work", "--result-file", "-"], { input: originalResult });
+  assert.match((await step(f, { action: "read" })).text, /甲节点/);
+  await step(f, { action: "submit_review", result: "甲乙两节点需要修正" });
+  const updated = await step(f, {
+    action: "update",
+    edits: [
+      { old_text: "甲节点", new_text: "甲已经更新" },
+      { old_text: "乙节点", new_text: "乙已经更新" },
+    ],
+  });
+  assert.ok(updated.ok);
+  const current = (await step(f, { action: "read" })).text;
+  assert.match(current, /甲已经更新/);
+  assert.match(current, /乙已经更新/);
+  const afterFile = await ok(f, ["step", "update", "--old-text-file", "-", "--new-text", "甲再次更新"], {
+    input: "甲已经更新",
+  });
+  assert.ok(afterFile.ok);
+  assert.match((await step(f, { action: "read" })).text, /甲再次更新/);
+  assert.match((await step(f, { action: "submit_work" })).text, /完整客观检视/);
 });
 
 void test("CLI sessions and data roots isolate State; only new think starts a new turn", async (t) => {
   const f = await fixture(t);
   await ok(f, ["think"]);
   await step(f, { action: "start", message: "会话一第一轮" });
-  await step(f, { action: "update", updates: { result: "旧成果" } });
+  await step(f, { action: "submit_work", result: "旧成果" });
   const other = { env: { BRAIN_SESSION_ID: "session-two" } };
   await ok(f, ["think"], other);
   await step(f, { action: "start", message: "会话二" }, other);
-  await step(f, { action: "update", updates: { intent: "会话二独立认知" } }, other);
-  assert.ok((await step(f, { action: "overview" })).text.includes("旧成果"));
-  assert.ok(!(await step(f, { action: "overview" }, other)).text.includes("旧成果"));
+  await step(f, { action: "submit_work", result: "会话二独立认知" }, other);
+  assert.ok((await step(f, { action: "read" })).text.includes("旧成果"));
+  assert.ok(!(await step(f, { action: "read" }, other)).text.includes("旧成果"));
   const secondRoot = { ...f, brain: path.join(f.temp, "other-brain") };
   await ok(secondRoot, ["think"]);
   await step(secondRoot, { action: "start", message: "同会话不同数据环境" });
-  assert.ok((await step(f, { action: "overview" })).text.includes("旧成果"));
-  assert.ok(!(await step(secondRoot, { action: "overview" })).text.includes("旧成果"));
+  assert.ok((await step(f, { action: "read" })).text.includes("旧成果"));
+  assert.ok(!(await step(secondRoot, { action: "read" })).text.includes("旧成果"));
   const secondProject = path.join(f.temp, "other-project");
   await fs.mkdir(secondProject);
   const unboundProject = await run(f, ["step", "--input-file", "-"], {
     project: secondProject,
-    input: JSON.stringify({ action: "status" }),
+    input: JSON.stringify({ action: "read" }),
   });
   assert.equal(unboundProject.result.error.code, "step-context-unavailable");
   await ok(f, ["think"]);
   const notStarted = await run(f, ["step", "--input-file", "-"], {
-    input: JSON.stringify({ action: "status" }),
+    input: JSON.stringify({ action: "read" }),
   });
   assert.equal(notStarted.code, 1);
   assert.match(notStarted.result.error.message, /start/);
   await step(f, { action: "start", message: "会话一第二轮" });
-  assert.ok(!(await step(f, { action: "overview" })).text.includes("旧成果"));
-  assert.ok((await step(f, { action: "overview" }, other)).text.includes("会话二独立认知"));
+  assert.ok(!(await step(f, { action: "read" })).text.includes("旧成果"));
+  assert.ok((await step(f, { action: "read" }, other)).text.includes("会话二独立认知"));
 });
 
 void test("CLI requires host identity, supports explicit/env bindings and invalidates failed turns", async (t) => {
@@ -358,7 +377,7 @@ void test("CLI requires host identity, supports explicit/env bindings and invali
   assert.equal(missing.result.error.code, "session-context-unavailable");
   await assert.rejects(fs.stat(f.brain), { code: "ENOENT" });
   const unbound = await run(f, ["step", "--input-file", "-"], {
-    input: JSON.stringify({ action: "status" }),
+    input: JSON.stringify({ action: "read" }),
   });
   assert.equal(unbound.result.error.code, "step-context-unavailable");
   const requestFile = path.join(f.temp, "步骤.json");
@@ -387,7 +406,7 @@ void test("CLI requires host identity, supports explicit/env bindings and invali
   assert.equal(failedThink.code, 1);
   await fs.writeFile(metadata, metadataBefore);
   const stale = await run(f, ["step", "--session", "explicit-session", "--input-file", "-"], {
-    input: JSON.stringify({ action: "status" }),
+    input: JSON.stringify({ action: "read" }),
   });
   assert.equal(stale.result.error.code, "step-context-unavailable");
   await ok(f, ["think", "--session", "explicit-session"]);
@@ -404,10 +423,10 @@ void test("CLI requires host identity, supports explicit/env bindings and invali
       f,
       ["step", "--session", `${prefix}:host-test-session`, "--input-file", "-"],
       {
-        input: JSON.stringify({ action: "status" }),
+        input: JSON.stringify({ action: "read" }),
       },
     );
-    assert.equal(JSON.parse(status.text).currentPhase, "intent");
+    assert.equal(status.text.includes("# 当前 State"), true);
   }
 });
 
@@ -422,8 +441,8 @@ void test("CLI first turn resolves a new data root through a directory link", as
   await step(linked, { action: "start", message: "通过目录链接首次建立轮次" });
   const physical = { ...f, brain: path.join(physicalParent, "new-brain") };
   assert.equal(
-    JSON.parse((await step(physical, { action: "status" })).text).currentPhase,
-    "intent",
+    (await step(physical, { action: "read" })).text.includes("# 当前 State"),
+    true,
   );
 });
 

@@ -1,11 +1,7 @@
 import { BRAIN_VIRTUAL_PATHS } from "../application/think-context.ts";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import {
-  definition as stepDefinition,
-  inputSchema as stepInputSchema,
-  outputSchema as stepOutputSchema,
-} from "brain/step";
+import { definition as stepDefinition, inputSchema as stepInputSchema } from "brain/step";
 import { BRAIN_TOOL_DESCRIPTIONS, BRAIN_TOOL_FIELDS } from "./approved-tool-descriptions.ts";
 
 import { DEFAULT_BRAIN_RUNTIME_FEATURES, type BrainRuntimeFeatures } from "../runtime/features.ts";
@@ -289,13 +285,12 @@ export interface BrainToolDefinition {
   readonly annotations?: ToolAnnotations;
 }
 
-// Cognition tools return text; brain_step retains its reviewed structured result contract.
+// All public Brain tools return text; brain_step supplies focused Markdown tasks.
 const rawPublicBrainTools: readonly BrainToolDefinition[] = [
   {
     name: "brain_step",
     description: stepDefinition.description,
     inputSchema: stepInputSchema,
-    outputSchema: stepOutputSchema,
   },
   {
     name: "brain_think",

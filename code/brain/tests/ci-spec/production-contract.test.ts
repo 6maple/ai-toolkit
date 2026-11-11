@@ -162,10 +162,8 @@ describe("generic MCP public contract", () => {
       expect(tool.description.length).toBeGreaterThan(0);
       if (tool.name === "brain_ask_search") continue;
       expect(registered.get(tool.name)?.config.inputSchema).toBe(tool.inputSchema);
-      if (tool.name !== "brain_step") {
-        expect(tool).not.toHaveProperty("outputSchema");
-        expect(registered.get(tool.name)?.config).not.toHaveProperty("outputSchema");
-      }
+      expect(tool).not.toHaveProperty("outputSchema");
+      expect(registered.get(tool.name)?.config).not.toHaveProperty("outputSchema");
       expect(registered.get(tool.name)?.config.annotations).toBe(tool.annotations);
     }
   });
@@ -227,8 +225,7 @@ describe("generic MCP public contract", () => {
         properties: { path: { anyOf: expect.any(Array) } },
       });
       for (const tool of listed.tools) {
-        if (tool.name === "brain_step") expect(tool.outputSchema).toBeDefined();
-        else expect(tool.outputSchema).toBeUndefined();
+        expect(tool.outputSchema).toBeUndefined();
       }
       const called = await client.callTool({
         name: "brain_write",

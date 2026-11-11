@@ -1,12 +1,10 @@
-# brain_step
+# brain_step：单轮深度思考推进
 
-三阶段深度思考控制器：持续深挖用户完整意图 → 持续深挖事情本质 → 研究专业方法、计划、执行和验收。三阶段承接同一份当前 State。
-
-本目录以经过 A–D 两轮验证的 quality 候选为基线。工具定义、阶段方法及状态转换沿用受测版本；交付指导与恢复读取行为按后续确认修订。提交指导从审核文档逐字提取为 `guidance/submissions.json`，运行时不依赖审核稿或本机工作目录。
+模型是真正的工作主体；本工具以每次返回一项 Markdown 任务，帮助模型把完整意图、事实本质、实际工作与关键整体检视衔接起来。程序只保证可信身份、当前动作合法、State 保存及读取和确定的下一项工作；模型负责调查、实际执行、综合判断及客观检视。
 
 ## 宿主注册
 
-`brain_step` 已并入 `PUBLIC_BRAIN_TOOLS` 和 `registerBrainTools`，与其它 `brain_*` 工具一起注册。Codex、Claude 和 DSH 插件通过现有公共入口使用同一实现。下面的单工具注册 API 留给独立嵌入方。
+`brain_step` 已通过 `registerBrainTools` 与 Brain 其它工具一同注册；也可以单独注册：
 
 ```js
 import { registerBrainStep, createFileRuntime } from "brain/step";
@@ -15,41 +13,58 @@ registerBrainStep(
   server,
   createFileRuntime({
     async resolveHost(extra) {
-      // 从当前宿主的可信调用上下文取得；不能由模型提交或猜测。
       return resolveCurrentHostContext(extra);
     },
   }),
 );
 ```
 
-`resolveHost` 必须返回真实 `conversationId`、真实 `turnId` 和当前工作目录的绝对 `sourceRoot`。默认 [模型入口](../think-workflow/brain-ai/index.md) 已使用三阶段工具流程。
+`resolveHost` 必须返回可信的 `conversationId`、`turnId` 与绝对路径 `sourceRoot`。这些由宿主绑定，不是模型传入的业务参数。标准 Brain 集成优先使用 `BrainToolInvocation.stepHost`，也支持实际 MCP metadata 提供的 threadId/turnId；不同宿主的会话接线参见 [MCP_HOSTS.md](../MCP_HOSTS.md)。
 
-公共注册入口从可信 `BrainToolInvocation.stepHost` 取得这些信息；普通 MCP 宿主也可以在调用信封的 `_meta.threadId`、`_meta.turnId` 中提供身份，目录由当前服务绑定。它们不是模型业务参数。Codex 由 UserPromptSubmit 保存会话/轮次；DSH 使用实际 agent ID 和最新用户 splice 序号；Claude 由会话环境标识和 UserPromptSubmit 绑定取得轮次，SessionEnd 清理过期绑定。
+CLI 入口由 [brain-skill](../../brain-skill-toolkit-cli/README.md) 提供 `step --input-file` 和 `step --schema`，复用同一控制器及 State runtime。新代码部署后已运行的 Host/MCP 进程需要重启加载。
 
-宿主未提供有效身份时，brain_step 返回失败并保持原状态；其它 cognition 工具继续可用。Claude 较旧版本可能没有 `CLAUDE_CODE_SESSION_ID`，清空/恢复后保留旧 MCP 进程的场景也须重新连接到正确会话；不能用固定标识或扫描其它会话代替。
+## 模型可见的六个动作
 
-独立 CLI 通过 [brain-skill](../../brain-skill-toolkit-cli/README.md) 的 `step --input-file` 接入本 runtime，schema 和业务指导沿用本模块。它从真实宿主会话标识建立独立 CLI 绑定，每次成功 think 分配逻辑轮次；不会假定宿主安装了恢复 hook。
+| 动作             | 输入                                         | 行为                                                                                      |
+| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `start`          | `message`：本轮用户原消息                    | 为本轮建立当前 State，返回首次完整意图任务；同轮同消息重复调用仅返回当前任务              |
+| `submit_work`    | `result?`：当前任务完整新成果 Markdown       | 首次形成正式成果时保存正文，派完整整体检视；修正 work 已用 update 保存后，可以省略 result |
+| `submit_review`  | `result?`：仅发现有据实质问题时提供 Markdown | 完整客观检视结束；空结果进入一次简短确认，有问题则派修正 work                             |
+| `confirm_review` | `result?`：仅发现有据实质问题时提供 Markdown | 最后确认；空结果进入既定后继，有问题则派修正 work                                         |
+| `update`         | `edits:[{old_text,new_text}]`                | 仅在 work 中调用 Pi edit 修改 State Markdown；找不到或出现多处匹配时建议 read             |
+| `read`           | 无                                           | 原样读取当前 State 的 Markdown 认知内容，不改变工作状态                                   |
 
-## 动作与保存
+结果经 MCP `content` 返回**直接 Markdown 文本**，无 `structuredContent` / `outputSchema`。工具固定契约说明动作，当前任务 Markdown 单独说明目标、质量要求和「本次提交」。JSON 无须提供 phase、taskId、next、outcome 或 confirmed。
 
-- `start`：以宿主轮次开始本轮；同轮同消息重复调用保留进展，新轮清空旧工作内容。
-- `status`：取得当前阶段、当前所需成果、已保存的回复草稿、方法及提交要求。
-- `overview`：取得同一 State 的整体目标、关系、计划、单项任务完整成果、未知及实际交接原因；有回复草稿时提示通过 `status` 读取。
-- `update`：保存最新修订、任务和进展；重要变化报告实际 `impact`。
-- `submit`：记录继续、转换、回查、执行核对、完成或交接判断。
+## 实际推进
 
-State 路径为 `{sourceRoot}/.brain-working/brain-step-three-phase/{SHA256(conversationId)}.json`。它是本地工作状态，不是新的 Brain cognition scope。阶段切换不复制或清空成果；新轮初始化才重置本轮内容。
+```text
+start(message)
+    → 查清完整意图 work
+submit_work(result)
+    → 当前意图的完整客观 review
+submit_review()          → 一次简短确认
+confirm_review()         → 事实本质调查 work
+submit_work(result)
+    → 事实认识的完整客观 review
+submit_review()          → 一次简短确认
+confirm_review()         → 实际专业处理、执行与验证 work
+submit_work(result)
+    → 整体工作成果完整客观 review
+submit_review()          → 一次简短确认
+confirm_review()         → 本轮结束，交付真实成果
+```
 
-当前完整指导提供随包 `guidance/delivery-rules.md` 的实际绝对路径，准备最终回复或未完成交接、核验交付内容前读取并执行。该指导规定需要哪些内容，示例轻度引导表达，具体呈现按任务选择。普通更新不重复指导全文；交付中的后续工作按实际未完成状态筛选，排除已完成或已取消的事项。
+这是正常路径。任何 `submit_review(result)` 或 `confirm_review(result)` 都表示发现**实际有据的问题**，程序直接派一项修正 work；模型修改 State 后调用 `submit_work()`，程序派**新的一次完整 review**。上一轮 review 已经结束，不保存待恢复的旧 review，也不引入任务队列或单独 TaskState。
 
-每次调用读取当前文件；成功变更经临时文件与原子替换保存。被拒绝的请求不部分应用；查询不写文件，保存失败不返回成功。该实现沿用每会话串行调用的约束，不提供并发写入合并。
+模型在任一 work 内可开展必要的调查、专业方法选择、编码、验证和中间文件记录，直到当前任务真正达到要求才提交。程序不能仅凭 result 非空证明理解、实现或质量正确，完整 review 必须对最新认识与实际证据作客观核查，必要时主动取得外部资料。
 
-## 质量与验收边界
+## State 与保存
 
-程序维护阶段、真实任务 ID、检查失效和持久化；开放调查、授权与依赖判断、语义验收仍由模型完成。`passed` 是模型提交的判断，不是程序独立认证。
+按宿主真实会话 ID 隔离，在 `{sourceRoot}/.brain-working/brain-step/{SHA256(conversationId)}.json` 存放程序状态。JSON 的 `state.contentFile` 字段引用同目录下的当前 Markdown 文件；模型的已提交成果保存在这个 `.md` 文件中，JSON 不嵌入 Markdown 正文。
 
-`replyDraft` 实际修改或清空使成果验收和流程检查失效；相同内容不失效。变更范围、方法或验收目标也会使执行核对失效。上游影响优先于同次完成判断，实际成果保留。
+`start` 初始化 State；`submit_work` 把新成果写入 Markdown；`update` 使用已安装的 `@earendil-works/pi-coding-agent` 的 **Pi edit** 完成已有原文的替换，支持其 Unicode 标点和空白规范化匹配，同时要求修改位置唯一、不重叠。找不到旧文或匹配多处时按错误建议 `read` 后重试。`read` 读取 JSON 指向的 `.md` 并直接返回全文，不改变状态。
 
-成功结果沿用受测的 `structuredContent`，并在文本中返回同一对象的 JSON；失败返回 `isError` 和具体纠正指导。这是 `brain_step` 的契约，区别于已有 cognition 工具的纯文本结果。
+正文变动时先写入新的 Markdown 文件，再原子写入引用它的 JSON；若 JSON 保存失败，原有 JSON 仍指向原有 Markdown，未确认的新文件会清理。更新成功后清理旧正文文件。单纯推进 review/confirm 时复用现有 Markdown 文件。State 存储和跨轮长期认知仍各有边界：跨轮长期记忆及项目持续材料由 Brain cognition 和正常项目工作文件负责。
 
-模型验证支持给定四个小型任务的主要本地成果，尚未证明开放复杂任务的持续最深追溯、长期用户认识学习或本次新增提示词的独立增益。原生注册、插件轮次绑定及打包资源另由确定性检查覆盖；尚未追加真实模型的正式插件使用验证。
+本轮最终确认后的结果以实际有效 State、真实工具产物和用户可见交付为准；当前实现没有通过模型实测证明认知质量增益。旧三阶段状态文件保留在原 `brain-step-three-phase` 目录，升级不会把旧数据按新 schema 解读。

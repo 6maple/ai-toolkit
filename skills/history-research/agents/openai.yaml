@@ -1,0 +1,4 @@
+interface:
+  display_name: "全历史研究"
+  short_description: "分级研究大量会话与项目资料，保留原话证据、认识演变和整体关联"
+  default_prompt: "使用 $history-research，在我授权的范围内按需读取历史，建立有原话依据的整体认识。"

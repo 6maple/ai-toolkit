@@ -32,21 +32,28 @@ brain-skill --project 'D:/Workspace/my-project' absolute-path '@project/memories
 
 ## 深度思考流程控制
 
-`think`、`step` 使用真实宿主会话标识，优先级为 `--session`、`BRAIN_SESSION_ID`、`CODEX_THREAD_ID`、`CLAUDE_CODE_SESSION_ID`。后两种自动加宿主前缀。提供显式值时，后续调用保持相同的值；标识属于 CLI 调用上下文，不写进 `brain_step` 的业务 JSON。没有真实标识时明确失败，不使用固定默认会话。
+`think`、`step` 使用真实宿主会话标识，优先级为 `--session`、`BRAIN_SESSION_ID`、`CODEX_THREAD_ID`、`CLAUDE_CODE_SESSION_ID`。后两种自动加宿主前缀。宿主提供环境变量时，`think` 和 `step` 都让 CLI 自动读取；只有无法取得环境标识时，才在两者都显式传入相同的 `--session '<真实宿主会话标识>'`。没有真实标识时明确失败。
 
 ```powershell
 brain-skill --project 'D:/Workspace/my-project' step --help
-brain-skill step --schema
-brain-skill --project 'D:/Workspace/my-project' step --input-file 'D:/Cache/brain-step-request.json'
+brain-skill --project 'D:/Workspace/my-project' step start --message '本轮用户消息原文'
+brain-skill --project 'D:/Workspace/my-project' step submit-work --result '实际 Markdown 成果'
+brain-skill --project 'D:/Workspace/my-project' step submit-review
+brain-skill --project 'D:/Workspace/my-project' step confirm-review
+brain-skill --project 'D:/Workspace/my-project' step read
 ```
 
-没有会话环境标识时，在 `think`、`step` 后都加 `--session '<真实宿主会话标识>'`。`step --schema` 输出当前完整输入 schema，不初始化 Brain。JSON 请求直接对应 `brain_step` 参数，例如开始时使用：
+`step submit-review` / `step confirm-review` 省略 `--result` 表示检视无实质问题，有实际问题则通过 `--result '<问题、依据与影响>'` 提交。首次提交成果用 `step submit-work --result '<Markdown>'`；已通过 update 保存的修正成果用 `step submit-work` 完成修正，不重复提交整篇。
 
-```json
-{ "action": "start", "message": "本轮用户消息原文" }
+```powershell
+brain-skill --project 'D:/Workspace/my-project' step update --old-text '旧文' --new-text '新文'
+brain-skill --project 'D:/Workspace/my-project' step update --old-text '旧文甲' --new-text '新文甲' --old-text '旧文乙' --new-text '新文乙'
+brain-skill --project 'D:/Workspace/my-project' step submit-work --result-file 'D:/Cache/current-result.md'
 ```
 
-后续 `status`、`overview`、`update`、`submit` 同样通过 `--input-file` 提交。按返回指导维护最新成果并推进阶段；读取状态用 `status`，核对整体用 `overview`。完整字段、提交条件和纠正方式由当前 schema 与返回指导提供。
+较长、包含引号或复杂 Shell 字符的消息和 Markdown 用 `--message-file`、`--result-file`、`--old-text-file`、`--new-text-file` 传完整 UTF-8 原文；这些选项都接受 `-` 从 stdin 读取。通过 Shell 可靠传送 stdin 时不需要创建参数文件。多处替换按顺序重复 `--old-text` 和 `--new-text`，由程序一次提交，旧文必须唯一匹配。返回直接是当前 Markdown 任务或 State 正文，按返回任务继续推进。
+
+旧 `step --input-file <file或->` 仍可兼容 JSON 调用；`step --schema` 仅供需要内部协议的调用方查看，不是常规 CLI 操作的前置步骤。
 
 每次成功的 `think` 建立一个新 CLI 轮次，因此每条新用户消息只成功调用一次，不能为查询进展重复调用。随后 `step start` 初始化本轮 State，同轮相同消息重复 start 保留进展。新轮查询不会返回旧轮成果，必须先 start。
 
@@ -114,7 +121,7 @@ mv、rm、feedback 只作用于具体归档文档。mv 保留来源身份及适�
 
 JSON 结果包含 `ok`、`text`、`warnings`、`binding`。binding 包含 sourceRoot、brainRoot、projectId；初始化尚未成功时可能为 null。失败附 `error.code` 与 `error.message`。正文保留现有 Brain 渲染，不额外解析为另一套记忆数据结构。帮助和版本查询始终输出普通文本。
 
-`step` 的 `text` 是 Brain 原有 `{currentPhase, guidance}` 的 JSON 文本；未加 `--json` 时也直接输出该文本。输入 schema 错误退出 2；状态机拒绝退出 1，并保留原有纠正指导。`session-context-unavailable` 表示缺真实会话标识；`step-context-unavailable` 表示没有可用的本轮绑定，按错误提示检查同一会话、项目、数据根及本轮 think。
+`step` 的 `text` 是当前 Brain Markdown 任务或 State 正文；不加 `--json` 时直接输出 Markdown。输入参数或 schema 错误退出 2；状态机拒绝退出 1，并保留原有纠正指导。`session-context-unavailable` 表示缺真实会话标识；`step-context-unavailable` 表示没有可用的本轮绑定，按错误提示检查同一会话、项目、数据根及本轮 think。
 
 - 用法错误：退出码 2，修正参数、路径对象种类、JSON 格式或缺失内容。
 - 操作失败：退出码 1，按具体 code 处理。过期精确替换失败时重读原文，不改成覆盖。

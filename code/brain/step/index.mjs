@@ -1,3 +1,3 @@
-export { registerThreePhase as registerBrainStep } from "./tool.mjs";
+export { registerBrainStepTool as registerBrainStep } from "./tool.mjs";
 export { createFileRuntime, statePathFor } from "./file-runtime.mjs";
-export { definition, inputSchema, outputSchema } from "./schema.mjs";
+export { definition, inputSchema } from "./schema.mjs";

@@ -29,10 +29,13 @@ export const COMMANDS: Record<string, Command> = {
   },
   step: {
     tool: "brain_step",
-    usage: "step --input-file <file|-> [--session <host-conversation-id>] | step --schema",
+    usage: "step <start|submit-work|submit-review|confirm-review|update|read> [options] | step --schema",
     description: BRAIN_EXPLICIT_STEP_INSTRUCTION,
     positional: [],
-    options: ["session", "input-file", "schema"],
+    options: [
+      "session", "input-file", "schema", "message", "message-file", "result", "result-file",
+      "old-text", "new-text", "old-text-file", "new-text-file", "edits-file",
+    ],
   },
   cat: {
     tool: "brain_cat",
@@ -119,11 +122,23 @@ export const COMMANDS: Record<string, Command> = {
   },
 };
 
+const STEP_ACTIONS: Record<string, string> = {
+  start: "start",
+  "submit-work": "submit_work",
+  "submit-review": "submit_review",
+  "confirm-review": "confirm_review",
+  update: "update",
+  read: "read",
+};
+const STEP_INPUT_OPTIONS = [
+  "message", "message-file", "result", "result-file",
+  "old-text", "new-text", "old-text-file", "new-text-file", "edits-file",
+] as const;
 const COMMON = ["project", "brain-root", "json", "help", "version"];
 const BOOLEAN = new Set(["json", "help", "version", "literal", "ignore-case", "schema"]);
 const OPTIONS = Object.fromEntries(
   [...new Set([...COMMON, ...Object.values(COMMANDS).flatMap((command) => command.options)])].map(
-    (name) => [name, { type: BOOLEAN.has(name) ? "boolean" : "string" }],
+    (name) => [name, { type: BOOLEAN.has(name) ? "boolean" : "string", ...(["old-text", "new-text"].includes(name) ? { multiple: true } : {}) }],
   ),
 ) as Record<string, { type: "boolean" | "string" }>;
 
@@ -159,8 +174,20 @@ export function help(command?: string): string {
           ...(command === "step"
             ? [
                 "",
-                stepDefinition.description,
-                "Use step --schema to read the current Brain input schema before preparing JSON.",
+                "按每次返回的当前 Markdown 任务继续；首次成果用 submit-work --result，已由 update 保存的修正成果用 submit-work。",
+                "完整检视无实质问题用 submit-review，最后简短确认无问题用 confirm-review；有实际问题才传 --result。",
+                "update 修改已保存 State 中的唯一匹配文本；read 只读取 State，不推进任务。",
+                "Step actions: start, submit-work, submit-review, confirm-review, update, read.",
+                "  step start --message <text>                   Start this user turn",
+                "  step submit-work --result <markdown>          Submit a new work result",
+                "  step submit-review [--result <markdown>]      Empty result means no issues",
+                "  step confirm-review [--result <markdown>]     Empty result means no issues",
+                "  step update --old-text <text> --new-text <text>  Edit the saved State",
+                "  step read                                     Read the saved State",
+                "Use --message-file - or --result-file - for long UTF-8 text via stdin; other filenames work too.",
+                "For multiple replacements, repeat --old-text and --new-text in the same order.",
+                "For a single long edit pair, use --old-text-file and --new-text-file.",
+                "Use step --schema only when the underlying JSON protocol is needed.",
               ]
             : []),
           ...(["think", "step"].includes(command ?? "")
@@ -198,6 +225,78 @@ async function inputFile(filename: string, signal?: AbortSignal): Promise<string
     .replace(/^\uFEFF/, "");
 }
 
+async function stepRequest(
+  action: string,
+  values: Record<string, string | boolean | (string | boolean)[] | undefined>,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const allowed = action === "start"
+    ? ["message", "message-file"]
+    : ["submit_work", "submit_review", "confirm_review"].includes(action)
+      ? ["result", "result-file"]
+      : action === "update"
+        ? ["old-text", "new-text", "old-text-file", "new-text-file", "edits-file"]
+        : [];
+  for (const name of STEP_INPUT_OPTIONS) {
+    if (values[name] !== undefined && !allowed.includes(name))
+      throw new CliError("usage", `--${name} is not valid for step ${action.replaceAll("_", "-")}.`, 2);
+  }
+  async function textArg(name: "message" | "result" | "old-text" | "new-text") {
+    const inline = values[name];
+    const file = values[`${name}-file`];
+    if (inline !== undefined && file !== undefined)
+      throw new CliError("usage", `Use only one of --${name} and --${name}-file.`, 2);
+    if (file !== undefined) return inputFile(String(file), signal);
+    return inline === undefined ? undefined : String(inline);
+  }
+  if (action === "start") {
+    const message = await textArg("message");
+    if (!message) throw new CliError("usage", "step start requires --message or --message-file.", 2);
+    return { action, message };
+  }
+  if (["submit_work", "submit_review", "confirm_review"].includes(action)) {
+    const result = await textArg("result");
+    return { action, ...(result === undefined ? {} : { result }) };
+  }
+  if (action === "update") {
+    if (values["edits-file"] !== undefined) {
+      if (["old-text", "new-text", "old-text-file", "new-text-file"].some((name) => values[name] !== undefined))
+        throw new CliError("usage", "Use --edits-file separately from text replacement options.", 2);
+      try {
+        return { action, edits: JSON.parse(await inputFile(String(values["edits-file"]), signal)) };
+      } catch (error) {
+        if (error instanceof CliError) throw error;
+        throw new CliError("usage", "--edits-file must contain a JSON array of {old_text,new_text} replacements.", 2);
+      }
+    }
+    const oldValues = values["old-text"] as string[] | undefined;
+    const newValues = values["new-text"] as string[] | undefined;
+    const oldFile = values["old-text-file"];
+    const newFile = values["new-text-file"];
+    if (oldFile !== undefined || newFile !== undefined) {
+      if (oldFile === "-" && newFile === "-")
+        throw new CliError("usage", "Use stdin for only one replacement side per call.", 2);
+      if ((oldFile !== undefined && oldValues !== undefined) ||
+          (newFile !== undefined && newValues !== undefined))
+        throw new CliError("usage", "Use only one inline or file input for each replacement side.", 2);
+      if ((oldValues?.length ?? 0) > 1 || (newValues?.length ?? 0) > 1)
+        throw new CliError("usage", "File-based replacement accepts one text pair.", 2);
+      const oldText = oldFile === undefined ? oldValues?.[0] : await inputFile(String(oldFile), signal);
+      const newText = newFile === undefined ? newValues?.[0] : await inputFile(String(newFile), signal);
+      if (!oldText || newText === undefined)
+        throw new CliError("usage", "step update requires an old and new text pair.", 2);
+      return { action, edits: [{ old_text: oldText, new_text: newText }] };
+    }
+    if (!oldValues?.length || oldValues.length !== newValues?.length ||
+        oldValues.some((item) => !item))
+      throw new CliError("usage", "step update requires matching --old-text and --new-text pairs.", 2);
+    return { action, edits: oldValues.map((old_text, i) => ({
+      old_text, new_text: newValues[i],
+    })) };
+  }
+  return { action };
+}
+
 export async function parseInvocation(
   argv: string[],
   signal?: AbortSignal,
@@ -222,21 +321,32 @@ export async function parseInvocation(
   const spec = COMMANDS[command];
   if (spec === undefined)
     throw new CliError("usage", `Unknown command '${command}'. Run brain-skill --help.`, 2);
-  if (positionals.length !== spec.positional.length + 1)
+  const stepActionName = command === "step" && positionals.length === 2
+    ? positionals[1]
+    : undefined;
+  const stepAction = stepActionName === undefined ? undefined : STEP_ACTIONS[stepActionName];
+  if (
+    (command === "step" && (positionals.length > 2 || (stepActionName && !stepAction))) ||
+    (command !== "step" && positionals.length !== spec.positional.length + 1)
+  )
     throw new CliError("usage", `Usage: brain-skill ${spec.usage}`, 2);
   for (const name of Object.keys(values)) {
     if (!COMMON.includes(name) && !spec.options.includes(name))
       throw new CliError("usage", `--${name} is not valid for ${command}.`, 2);
   }
   if (values.schema) {
-    if (values["input-file"] !== undefined)
-      throw new CliError("usage", "Use step --schema separately from --input-file.", 2);
+    if (command !== "step" || positionals.length !== 1 ||
+        values["input-file"] !== undefined ||
+        STEP_INPUT_OPTIONS.some((name) => values[name] !== undefined))
+      throw new CliError("usage", "Use step --schema without an action or input options.", 2);
     return { help: JSON.stringify(stepDefinition.inputSchema, null, 2) };
   }
-  if (command === "step" && values["input-file"] === undefined)
+  if (command === "step" &&
+      ((stepAction === undefined && values["input-file"] === undefined) ||
+        (stepAction !== undefined && values["input-file"] !== undefined)))
     throw new CliError(
       "usage",
-      "step requires --input-file <file|->. Read step --schema for the current input contract.",
+      "Use step <action> with direct options. Legacy --input-file cannot be combined with an action.",
       2,
     );
   if (values.session !== undefined && !String(values.session).trim())
@@ -262,13 +372,16 @@ export async function parseInvocation(
   )
     throw new CliError("usage", "--challenge-file is only valid with question.", 2);
 
-  let args: Record<string, unknown> = Object.fromEntries(
-    spec.positional.map((name, index) => [name, positionals[index + 1]]),
-  );
+  if (command === "step" && stepAction === undefined &&
+      STEP_INPUT_OPTIONS.some((name) => values[name] !== undefined))
+    throw new CliError("usage", "Use step <action> for direct text options.", 2);
+  let args: Record<string, unknown> = stepAction === undefined
+    ? Object.fromEntries(spec.positional.map((name, index) => [name, positionals[index + 1]]))
+    : await stepRequest(stepAction, values, signal);
   for (const name of spec.options) {
     const value = values[name];
     if (value === undefined) continue;
-    if (name === "session") continue;
+    if (name === "session" || (stepAction !== undefined && command === "step")) continue;
     if (name.endsWith("-file")) {
       const text = await inputFile(String(value), signal);
       if (name === "input-file") {

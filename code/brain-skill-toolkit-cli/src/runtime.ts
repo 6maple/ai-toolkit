@@ -127,8 +127,7 @@ export async function createCliRuntime(
           case "step": {
             const host = await stepContext!.current();
             const runtime = await createFileRuntime({ resolveHost: () => host })(undefined);
-            const result = await runtime.execute(args);
-            return JSON.stringify(result);
+            return await runtime.execute(args);
           }
           case "cat": {
             if (isBrainVirtualPath(path)) {

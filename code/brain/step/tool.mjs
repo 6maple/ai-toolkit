@@ -1,27 +1,21 @@
-import { definition, inputSchema, outputSchema } from "./schema.mjs";
+import { definition, inputSchema } from "./schema.mjs";
 
-export function registerThreePhase(server, resolveRuntime) {
+export function registerBrainStepTool(server, resolveRuntime) {
   return server.registerTool(
     "brain_step",
-    { description: definition.description, inputSchema, outputSchema },
+    { description: definition.description, inputSchema },
     async (raw, extra) => {
       try {
         const runtime = await resolveRuntime(extra);
-        const output = await runtime.execute(raw);
-        return {
-          structuredContent: output,
-          content: [{ type: "text", text: JSON.stringify(output) }],
-        };
+        const markdown = await runtime.execute(raw);
+        return { content: [{ type: "text", text: markdown }] };
       } catch (error) {
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text:
-                error instanceof Error
-                  ? error.message
-                  : "操作未正常完成；保存影响尚未确认，需按实际失败范围继续。",
+              text: error instanceof Error ? error.message : "操作失败；当前 State 未更改。",
             },
           ],
         };

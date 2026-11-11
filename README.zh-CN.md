@@ -51,6 +51,7 @@ Brain 数据默认保存在 `~/.brain-data`。配置、记忆语义与可选语�
 | [code/custom-dsh-plugin](code/custom-dsh-plugin/README.md) | DSH 审批审查插件。 |
 | [code/router-creator](code/router-creator/README.md) | DSH 创造模式 Agent 预设与配套工具。 |
 | [skills/lsh](skills/lsh/README.md) | 仅用户主动调用的本地 Skill 查找、使用、管理及按需依赖检查；[人和 AI 的安装说明](skills/lsh/INSTALL.md)、[随包提供的 Skill 链接工具](skills/lsh/LINK-SKILLS.md)及[初始背景与目的 Base](skills/lsh/BASE.md)。 |
+| [skills/history-research](skills/history-research/SKILL.md) | 一次性全历史会话及项目研究Skill；按需流式读取、分级研究、证据/过程记录与必经整体回看，不内置模型调用。 |
 
 ## 文档与开发
 
