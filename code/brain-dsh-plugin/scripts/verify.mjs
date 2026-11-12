@@ -32,37 +32,25 @@ const dshToolsRequire = createRequire(dshToolsPackage)
 const dshValuesEntry = dshToolsRequire.resolve('@deepseek-ai/dsh-util-values')
 const { isJsonValue } = await import(pathToFileURL(dshValuesEntry).href)
 
-const hookVisible = visibleToolDefinitions(true, true)
-const manualVisible = visibleToolDefinitions(false, true)
-const semanticHookVisible = visibleToolDefinitions(true, true, true)
-const semanticManualVisible = visibleToolDefinitions(false, true, true)
+const visible = visibleToolDefinitions(false)
+const semanticVisible = visibleToolDefinitions(true)
 const coreStep = PUBLIC_BRAIN_TOOLS.find((tool) => tool.name === 'brain_step')
-if (manualVisible.find((tool) => tool.name === 'brain_step')?.description ===
-    `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${coreStep?.description}` &&
-    semanticManualVisible.find((tool) => tool.name === 'brain_step')?.description ===
-    `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${coreStep?.description}` &&
-    hookVisible.find((tool) => tool.name === 'brain_step')?.description === coreStep?.description &&
-    visibleToolDefinitions(false, false).find((tool) => tool.name === 'brain_step')?.description === coreStep?.description)
-  ok('A0 explicit step requires think; host mode and hidden-think mode retain core guidance')
-else fail('A0 step restore-mode guidance', 'step description differs from its actual entry mode')
-if (hookVisible.length === 11 && !hookVisible.some((tool) => tool.name === 'brain_think')) ok('A0 hook hides think')
-else fail('A0 hook hides think', hookVisible.map((tool) => tool.name).join(','))
-if (manualVisible.length === 12 && manualVisible.some((tool) => tool.name === 'brain_think')) ok('A0 manual exposes think')
-else fail('A0 manual exposes think', manualVisible.map((tool) => tool.name).join(','))
-if (semanticHookVisible.length === 12 &&
-    semanticHookVisible.some((tool) => tool.name === 'brain_ask_search') &&
-    !semanticHookVisible.some((tool) => tool.name === 'brain_think')) ok('A0 semantic hook surface')
-else fail('A0 semantic hook surface', semanticHookVisible.map((tool) => tool.name).join(','))
-if (semanticManualVisible.length === 13 &&
-    semanticManualVisible.some((tool) => tool.name === 'brain_ask_search') &&
-    semanticManualVisible.some((tool) => tool.name === 'brain_think')) ok('A0 semantic manual surface')
-else fail('A0 semantic manual surface', semanticManualVisible.map((tool) => tool.name).join(','))
+if (visible.find((tool) => tool.name === 'brain_step')?.description ===
+    `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${coreStep?.description}`)
+  ok('A0 model Step guidance uses the issued ID')
+else fail('A0 model Step guidance', 'step description differs from the direct entry')
+if (visible.length === 11 && !visible.some((tool) => tool.name === 'brain_think')) ok('A0 model surface hides think')
+else fail('A0 model surface hides think', visible.map((tool) => tool.name).join(','))
+if (semanticVisible.length === 12 &&
+    semanticVisible.some((tool) => tool.name === 'brain_ask_search') &&
+    !semanticVisible.some((tool) => tool.name === 'brain_think')) ok('A0 semantic model surface')
+else fail('A0 semantic model surface', semanticVisible.map((tool) => tool.name).join(','))
 const thinkDefinition = PUBLIC_BRAIN_TOOLS.find((tool) => tool.name === 'brain_think')
 if (thinkDefinition?.inputSchema.safeParse({ unknown: true }).success === false) ok('A0 strict host contract source')
 else fail('A0 strict host contract source', 'unknown argument accepted')
 if (extractAnchorContext([{ type: 'text', text: '<context />' }, { type: 'text', text: 'warning: degraded' }]) === '<context />') ok('A0 anchor diagnostics stay separate')
 else fail('A0 anchor diagnostics stay separate', 'warning leaked into context')
-if (buildCallArgs({ query: 'x' }, undefined, true).query === 'x') ok('A0 Brain args pass through')
+if (buildCallArgs({ query: 'x' }).query === 'x') ok('A0 Brain args pass through')
 else fail('A0 Brain args pass through', 'model argument changed')
 const invalidHostSchemas = PUBLIC_BRAIN_TOOLS
   .filter((definition) => !isJsonValue(toHostSchema(definition)))
@@ -294,8 +282,8 @@ async function main() {
     else fail('B1 one anchor per user splice', `${calls.length} calls`)
     if (calls[0]?.[1] === 'brain_think' && Object.keys(calls[0]?.[2] ?? {}).length === 0) ok('B2 AutoThink calls brain_think with empty args')
     else fail('B2 AutoThink calls brain_think with empty args', JSON.stringify(calls[0]))
-    if (injected === exactContext) ok('B3 context injected byte-for-byte')
-    else fail('B3 context injected byte-for-byte', JSON.stringify(injected))
+    if (injected === BRAIN_EXPLICIT_STEP_INSTRUCTION) ok('B3 direct Step instruction injected')
+    else fail('B3 direct Step instruction injected', JSON.stringify(injected))
     if (!String(injected).includes('degraded detail') && warnings.some((line) => line.includes('degraded detail'))) ok('B4 diagnostics log only')
     else fail('B4 diagnostics log only', JSON.stringify({ injected, warnings }))
   } catch (e) { fail('B AutoThink success hook', String(e)) }
@@ -338,27 +326,32 @@ async function main() {
     const realRoot = join(VERIFY_DIR, 'real-root')
     mkdirSync(realRoot, { recursive: true })
     const mgrReal = new InstanceManager({
-      command: process.execPath, args: [dist], timeoutMs: 15_000,
+      command: process.execPath, args: [dist], env: { ...process.env, BRAIN_MCP_RESTORE_MODE: 'host' }, timeoutMs: 15_000,
     })
     try {
       const tools = await mgrReal.tools(realRoot)
       const liveNames = [...tools.keys()].sort()
-      const publicNames = visibleToolDefinitions(false, true).map((t) => t.name).sort()
+      const publicNames = [...visibleToolDefinitions(false).map((t) => t.name), 'brain_think'].sort()
       if (JSON.stringify(liveNames) === JSON.stringify(publicNames) && liveNames.length === 12) ok('C1 default public tool names')
       else fail('C1 default public tool names', `live=${liveNames.join(',')} public=${publicNames.join(',')}`)
       const liveThink = tools.get('brain_think')?.inputSchema ?? {}
       const props = Object.keys(liveThink.properties ?? {})
       if (props.length === 0 && liveThink.additionalProperties === false) ok('C2 brain_think schema')
       else fail('C2 brain_think schema', JSON.stringify(liveThink))
-      const startedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message: 'DSH actual metadata forwarding check' }, undefined, { threadId: 'dsh-session-one', turnId: 'user-splice-42' })
-      const savedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'update', updates: { intent: 'DSH current round' } }, undefined, { threadId: 'dsh-session-one', turnId: 'user-splice-42' })
-      const otherStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message: 'Independent DSH session' }, undefined, { threadId: 'dsh-session-two', turnId: 'user-splice-43' })
-      const queriedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'status' }, undefined, { threadId: 'dsh-session-one', turnId: 'user-splice-42' })
-      const nextStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message: 'DSH next real user round' }, undefined, { threadId: 'dsh-session-one', turnId: 'user-splice-44' })
-      if (![startedStep, savedStep, otherStep, queriedStep, nextStep].some(result => result.isError) &&
+      const message = 'DSH calls Step with the issued ID'
+      const startedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message })
+      const turnId = startedStep.content?.[1]?.text?.match(/[0-9a-f-]{36}/)?.[0]
+      const savedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'submit_work', turnId, result: 'DSH current round' })
+      const otherStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message })
+      const otherTurnId = otherStep.content?.[1]?.text?.match(/[0-9a-f-]{36}/)?.[0]
+      const queriedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'read', turnId })
+      const otherState = await mgrReal.call(realRoot, 'brain_step', { action: 'read', turnId: otherTurnId })
+      if (turnId && otherTurnId && turnId !== otherTurnId &&
+          ![startedStep, savedStep, otherStep, queriedStep, otherState].some(result => result.isError) &&
           queriedStep.content?.[0]?.text?.includes('DSH current round') &&
-          !nextStep.content?.[0]?.text?.includes('DSH current round')) ok('C2b brain_step metadata, isolation and new-round reset')
-      else fail('C2b brain_step metadata, isolation and new-round reset', JSON.stringify([startedStep, savedStep, otherStep, queriedStep, nextStep]))
+          queriedStep.content?.[1]?.text?.includes(turnId) &&
+          !otherState.content?.[0]?.text?.includes('DSH current round')) ok('C2b brain_step IDs and isolation')
+      else fail('C2b brain_step IDs and isolation', JSON.stringify([startedStep, savedStep, otherStep, queriedStep, otherState]))
       const r = await mgrReal.call(realRoot, 'brain_think', {})
       const text = r.content?.map((b) => b.text ?? '').join('\n') ?? ''
       if (!r.isError && text.includes('# 处理流程') && text.includes('@brain-virtual/deep.md') && !text.includes('<core ')) ok('C3 brain_think provides processing entry')

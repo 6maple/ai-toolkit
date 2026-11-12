@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -180,11 +179,11 @@ async function main() {
     assert.equal(firstHookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     const firstContext = firstHookOutput.hookSpecificOutput.additionalContext;
     assert.equal(typeof firstContext, "string");
-    assert.match(firstContext, /# 处理流程/);
-    assert.match(firstContext, /@brain-virtual\/deep\.md/);
+    assert.match(firstContext, /start\(message\)/);
+    assert.match(firstContext, /Background \+ Goal/);
     assert.doesNotMatch(firstContext, /<core\b/);
     assert.doesNotMatch(firstContext, /<brain_context\b/);
-    console.log("PASS hook provides processing entry and records the host binding");
+    console.log("PASS hook provides direct Brain Step entry and records the host binding");
 
     const permissionInput = {
       session_id: firstHookInput.session_id,
@@ -415,9 +414,7 @@ async function main() {
     const stepCall = (id, threadId, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { _meta: { threadId }, name: "brain_step", arguments: args } });
     requests.push(
       stepCall(100, firstHookInput.session_id, { action: "start", message: "第一会话实际轮次" }),
-      stepCall(101, firstHookInput.session_id, { action: "update", updates: { intent: "本轮已保存" } }),
       stepCall(102, secondHookInput.session_id, { action: "start", message: "第二会话独立内容" }),
-      stepCall(103, firstHookInput.session_id, { action: "read" }),
     );
     const mcp = await runMcpSession(mcpEntry, {
       cwd: pluginRoot,
@@ -438,21 +435,30 @@ async function main() {
     assert.equal(names.length, 11);
     assert.equal(names.includes("brain_step"), true);
     console.log("PASS MCP omits brain_think after host-owned restoration");
-    for (const id of [100, 101, 102, 103]) assert.notEqual(messages.find(message => message.id === id)?.result?.isError, true);
-    const stepFile = (root, sessionId) => join(root, ".brain-working", "brain-step-three-phase", createHash("sha256").update(sessionId).digest("hex") + ".json");
-    const firstStep = JSON.parse(await readFile(stepFile(firstSourceRoot, firstHookInput.session_id), "utf8"));
-    const secondStep = JSON.parse(await readFile(stepFile(secondSourceRoot, secondHookInput.session_id), "utf8"));
-    assert.equal(firstStep.turnId, "turn-1b");
-    assert.equal(firstStep.state.notes.intent, "本轮已保存");
-    assert.equal(secondStep.state.message, "第二会话独立内容");
-    const newPrompt = await runProcess(hookEntry, { cwd: firstSourceRoot, env, input: `${JSON.stringify({ ...firstHookInput, turn_id: "turn-1c" })}\n` });
-    assert.equal(newPrompt.code, 0, newPrompt.stderr);
-    const nextStep = await runMcpSession(mcpEntry, { cwd: pluginRoot, env, requests: [requests[0], requests[1], stepCall(104, firstHookInput.session_id, { action: "start", message: "同会话下一轮" })] });
-    assert.notEqual(nextStep.messages.find(message => message.id === 104)?.result?.isError, true);
-    const refreshedStep = JSON.parse(await readFile(stepFile(firstSourceRoot, firstHookInput.session_id), "utf8"));
-    assert.equal(refreshedStep.turnId, "turn-1c");
-    assert.equal(refreshedStep.state.notes.intent, null);
-    console.log("PASS native brain_step follows trusted Codex turns and isolates conversations");
+    const stepId = (id) => {
+      const response = messages.find((message) => message.id === id)?.result;
+      assert.equal(response?.content?.[1]?.type, "text", response?.content?.[0]?.text);
+      return response.content[1].text.match(/[0-9a-f-]{36}/)[0];
+    };
+    const firstTurn = stepId(100);
+    assert.notEqual(stepId(102), firstTurn);
+    const next = await runMcpSession(mcpEntry, {
+      cwd: pluginRoot,
+      env,
+      requests: [
+        requests[0], requests[1],
+        stepCall(104, firstHookInput.session_id, { action: "submit_work", turnId: firstTurn, result: "本轮已保存" }),
+        stepCall(105, firstHookInput.session_id, { action: "read", turnId: firstTurn }),
+        stepCall(106, secondHookInput.session_id, { action: "read", turnId: firstTurn }),
+      ],
+    });
+    const response = (id) => next.messages.find((message) => message.id === id)?.result;
+    assert.match(response(104)?.content[0].text, /Background \+ Goal \/ Review/);
+    assert.match(response(105)?.content[0].text, /本轮已保存/);
+    assert.match(response(105)?.content[1].text, new RegExp(firstTurn));
+    assert.equal(response(106)?.isError, true);
+    assert.match(response(106)?.content[0].text, /turnId/);
+    console.log("PASS brain_step resumes by issued ID and respects Codex project routing");
 
     const firstCat = messages.find((message) => message.id === 6);
     const secondCat = messages.find((message) => message.id === 7);
@@ -489,7 +495,7 @@ async function main() {
     const semanticContext = JSON.parse(
       semanticPrompted.stdout,
     ).hookSpecificOutput.additionalContext;
-    assert.match(semanticContext, /# 处理流程/);
+    assert.match(semanticContext, /start\(message\)/);
     assert.doesNotMatch(semanticContext, /## 候选与发现/);
 
     const semanticPermission = await runProcess(permissionHookEntry, {

@@ -18,7 +18,6 @@ import { createCliRuntime } from "../src/runtime.ts";
 import { createBrainServicesForRoot } from "../../brain/src/runtime/production.ts";
 import { registerBrainTools } from "../../brain/src/integration/mcp-adapter.ts";
 import { definition as stepDefinition } from "../../brain/step/index.mjs";
-import { createCliStepContext } from "../src/step-context.ts";
 import { COMMANDS } from "../src/arguments.ts";
 import { PUBLIC_BRAIN_TOOLS } from "../../brain/src/integration/public-tools.ts";
 
@@ -61,7 +60,7 @@ function run(f, args, options = {}) {
           ...process.env,
           CODEX_THREAD_ID: "",
           CLAUDE_CODE_SESSION_ID: "",
-          BRAIN_SESSION_ID: "cli-test-session",
+
           ...options.env,
         },
         stdio: ["pipe", "pipe", "pipe"],
@@ -221,7 +220,7 @@ void test("stub help/version and invalid arguments do not initialize Brain", asy
     Object.values(COMMANDS)
       .map((command) => command.tool)
       .sort((a, b) => a.localeCompare(b)),
-    PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort((a, b) => a.localeCompare(b)),
+    PUBLIC_BRAIN_TOOLS.filter((tool) => tool.name !== "brain_think").map((tool) => tool.name).sort((a, b) => a.localeCompare(b)),
   );
   for (const args of [
     ["unknown"],
@@ -230,6 +229,8 @@ void test("stub help/version and invalid arguments do not initialize Brain", asy
     ["edit", "@project/core.md", "--content-file", "-", "--edits-file", "-"],
     ["feedback", memoryPath, "question"],
     ["step"],
+    ["step", "read"],
+    ["step", "read", "--turn-id", "host-session"],
     ["step", "--input-file", "-", "--schema"],
   ]) {
     const response = await run(f, args);
@@ -241,209 +242,65 @@ void test("stub help/version and invalid arguments do not initialize Brain", asy
 });
 
 async function step(f, request, options = {}) {
-  const args = ["step", request.action.replaceAll("_", "-")];
-  if (request.message !== undefined) args.push("--message", request.message);
-  if (request.result !== undefined) args.push("--result", request.result);
-  for (const edit of request.edits ?? [])
-    args.push("--old-text", edit.old_text, "--new-text", edit.new_text);
-  return ok(f, args, options);
+  return ok(f, ["step", "--input-file", "-"], { ...options, input: JSON.stringify(request) });
 }
 
-void test("CLI step preserves one State and advances six actions across processes", async (t) => {
+void test("CLI Step advances all four stages across processes by ID", async (t) => {
   const f = await fixture(t);
-  await ok(f, ["think"]);
-  const started = await step(f, { action: "start", message: "合成 CLI 契约检查" });
-  assert.match(started.text, /# Brain 的背景与目的/);
-  const context = await createCliStepContext(
-    f.brain,
-    await fs.realpath(f.project),
-    "cli-test-session",
-  );
-  const host = await context.current();
-  const { statePathFor } = await import("../../brain/step/index.mjs");
-  const file = statePathFor(host);
-  const before = await fs.readFile(file, "utf8");
-  assert.match((await step(f, { action: "read" })).text, /# 当前 State/);
-  assert.match((await step(f, { action: "start", message: "合成 CLI 契约检查" })).text, /完整意图/);
-  assert.equal(await fs.readFile(file, "utf8"), before);
-  const refused = await run(f, ["step", "--input-file", "-"], {
-    input: JSON.stringify({ action: "submit_review" }),
-  });
-  assert.equal(refused.code, 1);
-  assert.match(refused.result.error.message, /不能调用/);
-  const invalid = await run(f, ["step", "--input-file", "-"], {
-    input: JSON.stringify({ action: "update", taskChanges: [] }),
-  });
-  assert.equal(invalid.code, 2);
-  assert.equal(await fs.readFile(file, "utf8"), before);
-  for (const [result, expected] of [
-    ["意图：及时准确报价", "事实本质"],
-    ["形成机制：上游接口串行导致等待", "完成用户工作"],
-  ]) {
-    assert.match((await step(f, { action: "submit_work", result })).text, /完整客观检视/);
-    assert.match((await step(f, { action: "submit_review" })).text, /简短确认/);
-    assert.match((await step(f, { action: "confirm_review" })).text, new RegExp(expected));
+  const message = "用户消息：中文\n第二行：$ '";
+  const started = await ok(f, ["step", "start", "--message-file", "-"], { input: message });
+  const { turnId } = started;
+  assert.match(turnId, /^[0-9a-f-]{36}$/);
+  assert.match(started.text, /Background \+ Goal \/ Work/);
+  const call = async (action, input = {}) => {
+    const response = await step(f, { action, turnId, ...input });
+    assert.equal(response.turnId, turnId);
+    return response.text;
+  };
+  for (const phase of ["Background + Goal", "Method", "Plan", "Execute"]) {
+    const submitted = await ok(f, ["step", "submit-work", "--turn-id", turnId, "--result-file", "-"], {
+      input: phase + " 的成果",
+    });
+    assert.equal(submitted.turnId, turnId);
+    assert.match(submitted.text, /\/ Review/);
+    assert.match(await call("submit_review"), /\/ Confirm/);
+    await call("confirm_review");
   }
-  assert.match((await step(f, { action: "submit_work", result: "已经实施并核对本轮结果" })).text, /完整客观检视/);
-  await step(f, { action: "submit_review" });
-  assert.match((await step(f, { action: "confirm_review" })).text, /已完成/);
-  const state = JSON.parse(await fs.readFile(file, "utf8")).state;
-  assert.equal(state.mode, "done");
-  assert.match(state.contentFile, /\.md$/);
-  assert.equal(state.content, undefined);
-  assert.match(await fs.readFile(path.join(path.dirname(file), state.contentFile), "utf8"), /已经实施并核对本轮结果/);
-});
-void test("CLI step accepts native action options and long text without JSON request files", async (t) => {
-  const f = await fixture(t);
-  for (const args of [
-    ["step", "start"],
-    ["step", "read", "--result", "unexpected"],
-    ["step", "start", "--message", "x", "--message-file", "-"],
-    ["step", "update", "--old-text", "a"],
-    ["step", "update", "--old-text", "a", "--new-text", "b", "--old-text", "c"],
-    ["step", "update", "--old-text", "a", "--new-text", "b", "--old-text-file", "-"],
-    ["step", "update", "--old-text-file", "-", "--new-text-file", "-"],
-    ["step", "start", "--input-file", "-"],
-  ]) {
-    const invalid = await run(f, args);
-    assert.equal(invalid.code, 2, args.join(" ") + " " + invalid.stdout);
-    assert.equal(invalid.result.error.code, "usage");
-  }
-  await assert.rejects(fs.stat(f.brain), { code: "ENOENT" });
-  await ok(f, ["think"]);
-  const originalMessage = "用户消息：中文\n第二行：\\ ` $ ' \"";
-  await ok(f, ["step", "start", "--message-file", "-"], { input: originalMessage });
-  const originalResult = "甲节点\n乙节点\n特殊内容 ` $ \\ ' \"";
-  await ok(f, ["step", "submit-work", "--result-file", "-"], { input: originalResult });
-  assert.match((await step(f, { action: "read" })).text, /甲节点/);
-  await step(f, { action: "submit_review", result: "甲乙两节点需要修正" });
-  const updated = await step(f, {
-    action: "update",
-    edits: [
-      { old_text: "甲节点", new_text: "甲已经更新" },
-      { old_text: "乙节点", new_text: "乙已经更新" },
-    ],
-  });
-  assert.ok(updated.ok);
-  const current = (await step(f, { action: "read" })).text;
-  assert.match(current, /甲已经更新/);
-  assert.match(current, /乙已经更新/);
-  const afterFile = await ok(f, ["step", "update", "--old-text-file", "-", "--new-text", "甲再次更新"], {
-    input: "甲已经更新",
-  });
-  assert.ok(afterFile.ok);
-  assert.match((await step(f, { action: "read" })).text, /甲再次更新/);
-  assert.match((await step(f, { action: "submit_work" })).text, /完整客观检视/);
+  assert.match(await call("read"), /Execute 的成果/);
 });
 
-void test("CLI sessions and data roots isolate State; only new think starts a new turn", async (t) => {
+void test("CLI Step isolates identical messages and enforces project and data root boundaries", async (t) => {
   const f = await fixture(t);
-  await ok(f, ["think"]);
-  await step(f, { action: "start", message: "会话一第一轮" });
-  await step(f, { action: "submit_work", result: "旧成果" });
-  const other = { env: { BRAIN_SESSION_ID: "session-two" } };
-  await ok(f, ["think"], other);
-  await step(f, { action: "start", message: "会话二" }, other);
-  await step(f, { action: "submit_work", result: "会话二独立认知" }, other);
-  assert.ok((await step(f, { action: "read" })).text.includes("旧成果"));
-  assert.ok(!(await step(f, { action: "read" }, other)).text.includes("旧成果"));
-  const secondRoot = { ...f, brain: path.join(f.temp, "other-brain") };
-  await ok(secondRoot, ["think"]);
-  await step(secondRoot, { action: "start", message: "同会话不同数据环境" });
-  assert.ok((await step(f, { action: "read" })).text.includes("旧成果"));
-  assert.ok(!(await step(secondRoot, { action: "read" })).text.includes("旧成果"));
-  const secondProject = path.join(f.temp, "other-project");
-  await fs.mkdir(secondProject);
-  const unboundProject = await run(f, ["step", "--input-file", "-"], {
-    project: secondProject,
-    input: JSON.stringify({ action: "read" }),
-  });
-  assert.equal(unboundProject.result.error.code, "step-context-unavailable");
-  await ok(f, ["think"]);
-  const notStarted = await run(f, ["step", "--input-file", "-"], {
-    input: JSON.stringify({ action: "read" }),
-  });
-  assert.equal(notStarted.code, 1);
-  assert.match(notStarted.result.error.message, /start/);
-  await step(f, { action: "start", message: "会话一第二轮" });
-  assert.ok(!(await step(f, { action: "read" })).text.includes("旧成果"));
-  assert.ok((await step(f, { action: "read" }, other)).text.includes("会话二独立认知"));
-});
-
-void test("CLI requires host identity, supports explicit/env bindings and invalidates failed turns", async (t) => {
-  const f = await fixture(t);
-  const missing = await run(f, ["think"], { env: { BRAIN_SESSION_ID: "" } });
-  assert.equal(missing.code, 1);
-  assert.equal(missing.result.error.code, "session-context-unavailable");
-  await assert.rejects(fs.stat(f.brain), { code: "ENOENT" });
-  const unbound = await run(f, ["step", "--input-file", "-"], {
-    input: JSON.stringify({ action: "read" }),
-  });
-  assert.equal(unbound.result.error.code, "step-context-unavailable");
-  const requestFile = path.join(f.temp, "步骤.json");
-  await fs.writeFile(
-    requestFile,
-    "\uFEFF" + JSON.stringify({ action: "start", message: "显式会话" }),
-  );
-  await ok(f, ["think", "--session", "explicit-session"]);
-  await ok(f, ["step", "--session", "explicit-session", "--input-file", requestFile]);
-  const explicitContext = await createCliStepContext(
-    f.brain,
-    await fs.realpath(f.project),
-    "explicit-session",
-  );
-  const original = await explicitContext.current();
-  // A damaged mapping forces setup to fail after think invalidates its old binding.
-  const metadata = path.join(
-    f.brain,
-    "projects",
-    (await ok(f, ["cat", "@project/core.md"])).binding.projectId,
-    "project.json",
-  );
-  const metadataBefore = await fs.readFile(metadata, "utf8");
-  await fs.writeFile(metadata, "{}");
-  const failedThink = await run(f, ["think", "--session", "explicit-session"]);
-  assert.equal(failedThink.code, 1);
-  await fs.writeFile(metadata, metadataBefore);
-  const stale = await run(f, ["step", "--session", "explicit-session", "--input-file", "-"], {
-    input: JSON.stringify({ action: "read" }),
-  });
-  assert.equal(stale.result.error.code, "step-context-unavailable");
-  await ok(f, ["think", "--session", "explicit-session"]);
-  assert.notEqual((await explicitContext.current()).turnId, original.turnId);
-  for (const [variable, prefix] of [
-    ["CODEX_THREAD_ID", "codex"],
-    ["CLAUDE_CODE_SESSION_ID", "claude"],
+  const projectAlias = path.join(f.temp, "project-link");
+  await fs.symlink(f.project, projectAlias, "junction");
+  const brainAlias = path.join(f.temp, "brain-link");
+  await fs.mkdir(f.brain);
+  await fs.symlink(f.brain, brainAlias, "junction");
+  const request = { action: "start", message: "同一条原文" };
+  const first = await step(f, request);
+  const second = await step(f, request);
+  assert.notEqual(first.turnId, second.turnId);
+  await step(f, { action: "submit_work", turnId: first.turnId, result: "甲节点\n乙节点" });
+  await step(f, { action: "submit_review", turnId: first.turnId, result: "修改甲乙两节点" });
+  await ok(f, [
+    "step", "update", "--turn-id", first.turnId,
+    "--old-text", "甲节点", "--new-text", "甲已经更新",
+    "--old-text", "乙节点", "--new-text", "乙已经更新",
+  ]);
+  assert.match((await step(f, { ...request, turnId: first.turnId })).text, /\/ Fix/);
+  const readFirst = ["step", "read", "--turn-id", first.turnId];
+  const readViaAliases = await ok({ ...f, brain: brainAlias }, readFirst, { project: projectAlias });
+  assert.match(readViaAliases.text, /甲已经更新\n乙已经更新/);
+  assert.doesNotMatch((await step(f, { action: "read", turnId: second.turnId })).text, /甲已经更新/);
+  const otherProject = path.join(f.temp, "other-project");
+  await fs.mkdir(otherProject);
+  for (const invalid of [
+    await run(f, readFirst, { project: otherProject }),
+    await run({ ...f, brain: path.join(f.temp, "other-brain") }, readFirst),
   ]) {
-    const env = { BRAIN_SESSION_ID: undefined, [variable]: "host-test-session" };
-    await ok(f, ["think"], { env });
-    await step(f, { action: "start", message: variable }, { env });
-    // Explicit continuation uses the same canonical identity as the host environment.
-    const status = await ok(
-      f,
-      ["step", "--session", `${prefix}:host-test-session`, "--input-file", "-"],
-      {
-        input: JSON.stringify({ action: "read" }),
-      },
-    );
-    assert.equal(status.text.includes("# 当前 State"), true);
+    assert.notEqual(invalid.code, 0);
+    assert.match(invalid.result.error.message, /turnId/);
   }
-});
-
-void test("CLI first turn resolves a new data root through a directory link", async (t) => {
-  const f = await fixture(t);
-  const physicalParent = path.join(f.temp, "physical-data");
-  const linkedParent = path.join(f.temp, "linked-data");
-  await fs.mkdir(physicalParent);
-  await fs.symlink(physicalParent, linkedParent, process.platform === "win32" ? "junction" : "dir");
-  const linked = { ...f, brain: path.join(linkedParent, "new-brain") };
-  await ok(linked, ["think"]);
-  await step(linked, { action: "start", message: "通过目录链接首次建立轮次" });
-  const physical = { ...f, brain: path.join(physicalParent, "new-brain") };
-  assert.equal(
-    (await step(physical, { action: "read" })).text.includes("# 当前 State"),
-    true,
-  );
 });
 
 void test("UTF-8 file/stdin roundtrip, pagination and all discovery commands", async (t) => {
@@ -555,11 +412,11 @@ void test("project binding stays explicit and related aliases retain permissions
   assert.match((await ok(f, ["cat", memoryPath], { project: related })).text, /允许写入/);
 });
 
-void test("think and virtual guidance use existing entry and configured workflow", async (t) => {
+void test("virtual guidance uses configured workflow", async (t) => {
   const f = await fixture(t);
-  assert.match((await ok(f, ["think"])).text, /处理流程/);
   const workflow = path.join(f.temp, "custom-flow.md");
   await fs.writeFile(workflow, "configured custom workflow\n");
+  await fs.mkdir(f.brain);
   await fs.writeFile(
     path.join(f.brain, "config.json"),
     JSON.stringify({ thinkWorkflowFile: workflow }),
@@ -682,10 +539,10 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     const pid = Number(await fs.readFile(pidFile, "utf8"));
     controller.abort();
     await rejected;
-    runtime.close();
+    await runtime.close();
     await waitForExit(pid);
   } finally {
     controller.abort();
-    runtime.close();
+    await runtime.close();
   }
 });

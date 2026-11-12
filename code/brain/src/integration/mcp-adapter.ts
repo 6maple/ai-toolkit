@@ -1,7 +1,7 @@
 import { isBrainVirtualPath } from "../application/think-context.ts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createFileRuntime, type BrainStepHost } from "brain/step";
+import { createFileRuntime, stepResultContent } from "brain/step";
 
 import type { AnchorRestore } from "../application/anchor-restore.ts";
 import type {
@@ -38,7 +38,6 @@ export interface BrainApplicationServices {
 
 export interface BrainToolInvocation {
   readonly services: BrainApplicationServices;
-  readonly stepHost?: BrainStepHost;
 }
 
 export type BrainToolInvocationResolver = (
@@ -313,6 +312,7 @@ function handlerFor(
   name: BrainToolName,
   services: BrainApplicationServices | undefined,
   resolveInvocation?: BrainToolInvocationResolver,
+  restoreMode: BrainMcpRestoreMode = "explicit",
 ): (args: unknown, extra?: unknown) => Promise<BrainToolResult> {
   return async (rawArgs: unknown, extra) => {
     try {
@@ -335,22 +335,21 @@ function handlerFor(
       const routed = invocationServices.routed;
       switch (name) {
         case "brain_step": {
-          const metadata =
-            typeof extra === "object" &&
-            extra !== null &&
-            "_meta" in extra &&
-            typeof extra._meta === "object" &&
-            extra._meta !== null
-              ? (extra._meta as Record<string, unknown>)
-              : {};
-          const host = invocation.stepHost ?? {
-            conversationId: typeof metadata.threadId === "string" ? metadata.threadId : "",
-            turnId: typeof metadata.turnId === "string" ? metadata.turnId : "",
+          const runtime = createFileRuntime({
             sourceRoot: invocationServices.sourceRoot ?? "",
-          };
-          const runtime = await createFileRuntime({ resolveHost: () => host })(extra);
-          const markdown = await runtime.execute(rawArgs);
-          return { content: [{ type: "text", text: markdown }] };
+            brainRoot: invocationServices.binding.brainRoot,
+            ...(restoreMode === "host"
+              ? {}
+              : {
+                  onNewTurn: async () => {
+                    const restored = routed === undefined
+                      ? await invocationServices.anchor.runAnchor({})
+                      : await routed.think();
+                    return restored.diagnostics.map((item) => item.message);
+                  },
+                }),
+          });
+          return { content: stepResultContent(await runtime.execute(rawArgs)) };
         }
         case "brain_think": {
           const result =
@@ -563,6 +562,7 @@ export function registerBrainTools(
   options: BrainToolRegistrationOptions = {},
 ): void {
   const excluded = new Set(options.exclude ?? []);
+  if (options.restoreMode !== "host") excluded.add("brain_think");
   for (const definition of selectPublicBrainTools(options.features)) {
     if (excluded.has(definition.name)) continue;
     server.registerTool(
@@ -577,7 +577,7 @@ export function registerBrainTools(
         ...(definition.outputSchema === undefined ? {} : { outputSchema: definition.outputSchema }),
         annotations: definition.annotations,
       },
-      handlerFor(definition.name, services, options.resolveInvocation),
+      handlerFor(definition.name, services, options.resolveInvocation, options.restoreMode),
     );
   }
 }

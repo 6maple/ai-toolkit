@@ -18,7 +18,6 @@
 ## 工作入口与读取
 
 ```powershell
-brain-skill --project 'D:/Workspace/my-project' think
 brain-skill --project 'D:/Workspace/my-project' cat '@brain-virtual/deep.md'
 brain-skill --project 'D:/Workspace/my-project' cat '@brain-virtual/deep-memory.md'
 brain-skill --project 'D:/Workspace/my-project' cat '@project/core.md' --offset 1 --limit 80
@@ -26,38 +25,36 @@ brain-skill --project 'D:/Workspace/my-project' ls '@project/memories/decision/'
 brain-skill --project 'D:/Workspace/my-project' absolute-path '@project/memories/decision/release.md'
 ```
 
-`think` 取得处理入口，并推进 Brain 认知周期和尝试历史 checkpoint。normal/deep 流程及 memory 视图通过 `cat` 分层读取；四份虚拟视图每次生成并完整返回。读取实际工作流步骤时按返回的本地文件路径操作。
+normal/deep 流程及 memory 视图通过 `cat` 分层读取。四份虚拟视图每次生成并完整返回。
 
 普通 cat 的 offset/limit 是从 1 开始的逻辑行；按返回的 `next_offset` 续读。`absolute-path` 只映射位置，目标可以尚不存在。
 
 ## 深度思考流程控制
 
-`think`、`step` 使用真实宿主会话标识，优先级为 `--session`、`BRAIN_SESSION_ID`、`CODEX_THREAD_ID`、`CLAUDE_CODE_SESSION_ID`。后两种自动加宿主前缀。宿主提供环境变量时，`think` 和 `step` 都让 CLI 自动读取；只有无法取得环境标识时，才在两者都显式传入相同的 `--session '<真实宿主会话标识>'`。没有真实标识时明确失败。
+`step start` 返回新轮的 `turnId`，同轮后续操作都传回该 ID。以下示例中的 `'<本轮 ID>'` 替换为实际返回值。
 
 ```powershell
 brain-skill --project 'D:/Workspace/my-project' step --help
 brain-skill --project 'D:/Workspace/my-project' step start --message '本轮用户消息原文'
-brain-skill --project 'D:/Workspace/my-project' step submit-work --result '实际 Markdown 成果'
-brain-skill --project 'D:/Workspace/my-project' step submit-review
-brain-skill --project 'D:/Workspace/my-project' step confirm-review
-brain-skill --project 'D:/Workspace/my-project' step read
+brain-skill --project 'D:/Workspace/my-project' step submit-work --turn-id '<本轮 ID>' --result '实际 Markdown 成果'
+brain-skill --project 'D:/Workspace/my-project' step submit-review --turn-id '<本轮 ID>'
+brain-skill --project 'D:/Workspace/my-project' step confirm-review --turn-id '<本轮 ID>'
+brain-skill --project 'D:/Workspace/my-project' step read --turn-id '<本轮 ID>'
 ```
 
 `step submit-review` / `step confirm-review` 省略 `--result` 表示检视无实质问题，有实际问题则通过 `--result '<问题、依据与影响>'` 提交。首次提交成果用 `step submit-work --result '<Markdown>'`；已通过 update 保存的修正成果用 `step submit-work` 完成修正，不重复提交整篇。
 
 ```powershell
-brain-skill --project 'D:/Workspace/my-project' step update --old-text '旧文' --new-text '新文'
-brain-skill --project 'D:/Workspace/my-project' step update --old-text '旧文甲' --new-text '新文甲' --old-text '旧文乙' --new-text '新文乙'
-brain-skill --project 'D:/Workspace/my-project' step submit-work --result-file 'D:/Cache/current-result.md'
+brain-skill --project 'D:/Workspace/my-project' step update --turn-id '<本轮 ID>' --old-text '旧文' --new-text '新文'
+brain-skill --project 'D:/Workspace/my-project' step update --turn-id '<本轮 ID>' --old-text '旧文甲' --new-text '新文甲' --old-text '旧文乙' --new-text '新文乙'
+brain-skill --project 'D:/Workspace/my-project' step submit-work --turn-id '<本轮 ID>' --result-file 'D:/Cache/current-result.md'
 ```
 
 较长、包含引号或复杂 Shell 字符的消息和 Markdown 用 `--message-file`、`--result-file`、`--old-text-file`、`--new-text-file` 传完整 UTF-8 原文；这些选项都接受 `-` 从 stdin 读取。通过 Shell 可靠传送 stdin 时不需要创建参数文件。多处替换按顺序重复 `--old-text` 和 `--new-text`，由程序一次提交，旧文必须唯一匹配。返回直接是当前 Markdown 任务或 State 正文，按返回任务继续推进。
 
-旧 `step --input-file <file或->` 仍可兼容 JSON 调用；`step --schema` 仅供需要内部协议的调用方查看，不是常规 CLI 操作的前置步骤。
+`step --input-file <file或->` 接受 JSON 请求，后续动作使用 `turnId` 字段。`step --schema` 显示请求契约。
 
-每次成功的 `think` 建立一个新 CLI 轮次，因此每条新用户消息只成功调用一次，不能为查询进展重复调用。随后 `step start` 初始化本轮 State，同轮相同消息重复 start 保留进展。新轮查询不会返回旧轮成果，必须先 start。
-
-绑定保存在 Brain 数据根的 `.runtime/skill-invocations/`，State 仍由既有 `brain/step` runtime 管理。身份按 CLI、Brain 数据根、真实会话及项目隔离，同一会话的新进程继续读写同一份 State。此 CLI 绑定独立于 MCP/hook 接入；完整工作中固定使用同一入口。新一轮 `think` 失败会使旧 CLI 轮次绑定失效，不能继续当作当前轮使用。
+用同一个 ID 和原消息再次调用 `start` 可恢复当前任务。每次省略 ID 的 `start` 都创建独立 State，即使消息完全相同。State 按项目和 Brain 数据根隔离。
 
 ## 发现记忆
 
@@ -121,7 +118,7 @@ mv、rm、feedback 只作用于具体归档文档。mv 保留来源身份及适�
 
 JSON 结果包含 `ok`、`text`、`warnings`、`binding`。binding 包含 sourceRoot、brainRoot、projectId；初始化尚未成功时可能为 null。失败附 `error.code` 与 `error.message`。正文保留现有 Brain 渲染，不额外解析为另一套记忆数据结构。帮助和版本查询始终输出普通文本。
 
-`step` 的 `text` 是当前 Brain Markdown 任务或 State 正文；不加 `--json` 时直接输出 Markdown。输入参数或 schema 错误退出 2；状态机拒绝退出 1，并保留原有纠正指导。`session-context-unavailable` 表示缺真实会话标识；`step-context-unavailable` 表示没有可用的本轮绑定，按错误提示检查同一会话、项目、数据根及本轮 think。
+`step` 的 `text` 是当前任务或 State 正文，`turnId` 是本轮 ID。文本模式在 Markdown 后显示 ID。输入参数或 schema 错误退出 2；状态机拒绝退出 1，并返回纠正指导。
 
 - 用法错误：退出码 2，修正参数、路径对象种类、JSON 格式或缺失内容。
 - 操作失败：退出码 1，按具体 code 处理。过期精确替换失败时重读原文，不改成覆盖。
@@ -129,4 +126,4 @@ JSON 结果包含 `ok`、`text`、`warnings`、`binding`。binding 包含 source
 - `mutation-failed`：操作未完成，此操作先前更改已恢复；修复存储原因后再判断重试。
 - 警告：正文操作可能成功，但辅助状态、历史或索引维护降级。根据警告判断影响，不把它说成全部完成。
 
-语义维护暂不可用时，CLI 保存待更新标记，供后续索引恢复；内容搜索可继续。正常命令不隐式执行 think。Ctrl+C/SIGTERM 请求中断并清理本次资源。
+语义维护暂不可用时，CLI 保存待更新标记，供后续索引恢复；内容搜索可继续。新轮 `step start` 执行记忆周期维护并尝试 Git 检查点。Ctrl+C/SIGTERM 请求中断并清理本次资源。

@@ -19,21 +19,13 @@ interface Command {
 }
 
 export const COMMANDS: Record<string, Command> = {
-  think: {
-    tool: "brain_think",
-    usage: "think",
-    description:
-      "Establish this turn's Brain entry (advances learning cycles and attempts a history checkpoint).",
-    positional: [],
-    options: ["session"],
-  },
   step: {
     tool: "brain_step",
     usage: "step <start|submit-work|submit-review|confirm-review|update|read> [options] | step --schema",
     description: BRAIN_EXPLICIT_STEP_INSTRUCTION,
     positional: [],
     options: [
-      "session", "input-file", "schema", "message", "message-file", "result", "result-file",
+      "turn-id", "input-file", "schema", "message", "message-file", "result", "result-file",
       "old-text", "new-text", "old-text-file", "new-text-file", "edits-file",
     ],
   },
@@ -148,7 +140,6 @@ export interface Invocation {
   args: Record<string, unknown>;
   project: string;
   brainRoot?: string;
-  sessionId?: string;
   json: boolean;
 }
 
@@ -178,6 +169,7 @@ export function help(command?: string): string {
                 "完整检视无实质问题用 submit-review，最后简短确认无问题用 confirm-review；有实际问题才传 --result。",
                 "update 修改已保存 State 中的唯一匹配文本；read 只读取 State，不推进任务。",
                 "Step actions: start, submit-work, submit-review, confirm-review, update, read.",
+                "Pass --turn-id <id> on every call after start. Pass it with the original message to resume start.",
                 "  step start --message <text>                   Start this user turn",
                 "  step submit-work --result <markdown>          Submit a new work result",
                 "  step submit-review [--result <markdown>]      Empty result means no issues",
@@ -188,13 +180,6 @@ export function help(command?: string): string {
                 "For multiple replacements, repeat --old-text and --new-text in the same order.",
                 "For a single long edit pair, use --old-text-file and --new-text-file.",
                 "Use step --schema only when the underlying JSON protocol is needed.",
-              ]
-            : []),
-          ...(["think", "step"].includes(command ?? "")
-            ? [
-                "",
-                "--session <id>: real host conversation ID; otherwise BRAIN_SESSION_ID, CODEX_THREAD_ID or CLAUDE_CODE_SESSION_ID.",
-                "Successful think creates a CLI turn. Keep session/project/brain-root unchanged for subsequent step calls.",
               ]
             : []),
         ]),
@@ -208,7 +193,7 @@ export function help(command?: string): string {
     "",
     "Public paths: @global, @project, configured #alias; quote paths and glob patterns.",
     "Content/edits/challenge/input files are UTF-8; '-' reads stdin. Commands never prompt.",
-    "Examples: brain-skill think | brain-skill cat '@project/core.md'",
+    "Examples: brain-skill step start --message '<本轮用户消息>' | brain-skill cat '@project/core.md'",
   ].join("\n");
 }
 
@@ -230,6 +215,8 @@ async function stepRequest(
   values: Record<string, string | boolean | (string | boolean)[] | undefined>,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  const turnId = values["turn-id"];
+  const request = { action, ...(turnId === undefined ? {} : { turnId }) };
   const allowed = action === "start"
     ? ["message", "message-file"]
     : ["submit_work", "submit_review", "confirm_review"].includes(action)
@@ -252,18 +239,18 @@ async function stepRequest(
   if (action === "start") {
     const message = await textArg("message");
     if (!message) throw new CliError("usage", "step start requires --message or --message-file.", 2);
-    return { action, message };
+    return { ...request, message };
   }
   if (["submit_work", "submit_review", "confirm_review"].includes(action)) {
     const result = await textArg("result");
-    return { action, ...(result === undefined ? {} : { result }) };
+    return { ...request, ...(result === undefined ? {} : { result }) };
   }
   if (action === "update") {
     if (values["edits-file"] !== undefined) {
       if (["old-text", "new-text", "old-text-file", "new-text-file"].some((name) => values[name] !== undefined))
         throw new CliError("usage", "Use --edits-file separately from text replacement options.", 2);
       try {
-        return { action, edits: JSON.parse(await inputFile(String(values["edits-file"]), signal)) };
+        return { ...request, edits: JSON.parse(await inputFile(String(values["edits-file"]), signal)) };
       } catch (error) {
         if (error instanceof CliError) throw error;
         throw new CliError("usage", "--edits-file must contain a JSON array of {old_text,new_text} replacements.", 2);
@@ -285,16 +272,16 @@ async function stepRequest(
       const newText = newFile === undefined ? newValues?.[0] : await inputFile(String(newFile), signal);
       if (!oldText || newText === undefined)
         throw new CliError("usage", "step update requires an old and new text pair.", 2);
-      return { action, edits: [{ old_text: oldText, new_text: newText }] };
+      return { ...request, edits: [{ old_text: oldText, new_text: newText }] };
     }
     if (!oldValues?.length || oldValues.length !== newValues?.length ||
         oldValues.some((item) => !item))
       throw new CliError("usage", "step update requires matching --old-text and --new-text pairs.", 2);
-    return { action, edits: oldValues.map((old_text, i) => ({
+    return { ...request, edits: oldValues.map((old_text, i) => ({
       old_text, new_text: newValues[i],
     })) };
   }
-  return { action };
+  return request;
 }
 
 export async function parseInvocation(
@@ -349,8 +336,6 @@ export async function parseInvocation(
       "Use step <action> with direct options. Legacy --input-file cannot be combined with an action.",
       2,
     );
-  if (values.session !== undefined && !String(values.session).trim())
-    throw new CliError("usage", "--session must be a nonempty real host conversation ID.", 2);
   // Check missing/ambiguous input before reading stdin or creating a Brain project.
   if (command === "write" && values["content-file"] === undefined)
     throw new CliError("usage", "write requires --content-file <file|->.", 2);
@@ -373,7 +358,7 @@ export async function parseInvocation(
     throw new CliError("usage", "--challenge-file is only valid with question.", 2);
 
   if (command === "step" && stepAction === undefined &&
-      STEP_INPUT_OPTIONS.some((name) => values[name] !== undefined))
+      (values["turn-id"] !== undefined || STEP_INPUT_OPTIONS.some((name) => values[name] !== undefined)))
     throw new CliError("usage", "Use step <action> for direct text options.", 2);
   let args: Record<string, unknown> = stepAction === undefined
     ? Object.fromEntries(spec.positional.map((name, index) => [name, positionals[index + 1]]))
@@ -381,7 +366,7 @@ export async function parseInvocation(
   for (const name of spec.options) {
     const value = values[name];
     if (value === undefined) continue;
-    if (name === "session" || (stepAction !== undefined && command === "step")) continue;
+    if (stepAction !== undefined && command === "step") continue;
     if (name.endsWith("-file")) {
       const text = await inputFile(String(value), signal);
       if (name === "input-file") {
@@ -421,12 +406,21 @@ export async function parseInvocation(
         .join("\n"),
       2,
     );
+  const parsedArgs = validated.data as Record<string, unknown>;
+  if (command === "step" && parsedArgs.action !== "start" && !parsedArgs.turnId)
+    throw new CliError("usage", "Pass the turnId returned by step start.", 2);
+  if (
+    command === "step" &&
+    parsedArgs.action === "start" &&
+    (typeof parsedArgs.message !== "string" || !parsedArgs.message.trim())
+  ) {
+    throw new CliError("usage", "step start requires a nonblank user message.", 2);
+  }
   return {
     command,
     tool: spec.tool,
-    args: validated.data as Record<string, unknown>,
+    args: parsedArgs,
     project: resolve(String(values.project ?? process.cwd())),
-    ...(values.session === undefined ? {} : { sessionId: String(values.session) }),
     ...(values["brain-root"] === undefined
       ? {}
       : { brainRoot: resolve(String(values["brain-root"])) }),

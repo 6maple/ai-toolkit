@@ -2,27 +2,31 @@
 import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
 
-/** Trusted host identity. The model does not supply these identifiers. */
-export interface BrainStepHost {
-  readonly conversationId: string;
-  readonly turnId: string;
+export interface BrainStepWorkspace {
   readonly sourceRoot: string;
+  readonly brainRoot?: string;
+}
+
+export interface BrainStepResult {
+  readonly turnId: string;
+  readonly text: string;
 }
 
 export interface BrainStepRuntime {
-  execute(raw: unknown): Promise<string>;
+  execute(raw: unknown): Promise<BrainStepResult>;
 }
 
 export type BrainStepFileSystem = Pick<
   typeof import("node:fs/promises"),
-  "readFile" | "mkdir" | "writeFile" | "rename" | "rm"
+  "readFile" | "stat" | "mkdir" | "writeFile" | "rename" | "rm"
 >;
 
-export function statePathFor(host: BrainStepHost): string;
-export function createFileRuntime(options: {
-  resolveHost(extra: unknown): BrainStepHost | Promise<BrainStepHost>;
+export function statePathFor(workspace: BrainStepWorkspace & { readonly turnId: string }): string;
+export function createFileRuntime(options: BrainStepWorkspace & {
   fileSystem?: BrainStepFileSystem;
-}): (extra: unknown) => Promise<BrainStepRuntime>;
+  onNewTurn?(): Promise<readonly string[]>;
+}): BrainStepRuntime;
+export function stepResultContent(result: BrainStepResult): Array<{ type: "text"; text: string }>;
 export function registerBrainStep(
   server: Pick<McpServer, "registerTool">,
   resolveRuntime: (extra: unknown) => BrainStepRuntime | Promise<BrainStepRuntime>,

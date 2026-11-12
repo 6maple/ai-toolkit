@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,7 +7,10 @@ import type { ThinkWorkflowProjection } from "../application/anchor-renderer.ts"
 import { readBrainGlobalConfig } from "./global-config.ts";
 
 export const DEFAULT_THINK_WORKFLOW = "@internal/think-workflow/brain-ai/index.md";
-const INTERNAL_ROOT = path.dirname(fileURLToPath(import.meta.resolve("brain/package.json")));
+const bundledRoot = fileURLToPath(new URL(".", import.meta.url));
+const INTERNAL_ROOT = existsSync(path.join(bundledRoot, "think-workflow"))
+  ? bundledRoot
+  : path.dirname(fileURLToPath(import.meta.resolve("brain/package.json")));
 
 function resolveWorkflowFile(entry: string, brainRoot: string, internalRoot: string): string {
   if (entry.startsWith("@internal/")) {

@@ -1,6 +1,6 @@
 {
   "name": "brain_step",
-  "description": "推进当前用户轮次内的深度思考，按当前任务返回 Markdown 指导；程序保存有效成果并控制已确定的下一步。\n\n收到每轮用户消息后，先按照当前 think-workflow 调用 start(message)。随后完成工具返回的当前任务：首次形成成果用 submit_work(result)；已有成果经 update 保存后完成修正 work 时用 submit_work()。完整检视结束后用 submit_review() 表示没有实质问题，确实发现有据问题才填写 result；最后一次短确认同理用 confirm_review() 或 confirm_review(result)。检视发现问题时程序派修正 work，完成后开展新一次完整检视。\n\n当前正在 work 且已提交 State 正文需要修订时用 update(edits:[{old_text,new_text}])。使用 Pi edit 修改 Markdown，文本匹配兼容部分 Unicode 标点与空白差异，旧文缺失或匹配多次时根据错误先 read() 取得当前 State，再准确重试；read() 也可在检视前按需取得最新 State，不推进任务。\n\nJSON 只传动作和本动作必要参数；任务目标、质量、依据与本次应提交的内容，以返回的 Markdown 为准。每次调用成功后继续按返回执行；出错时按错误中的具体指导纠正。模型承担语义判断和实际工作，程序只负责动作合法、State 读写与已定后继。",
+  "description": "推进当前用户轮次内的深度思考，按当前任务返回 Markdown 指导；程序保存有效成果并控制已确定的下一步。\n\n收到每轮用户消息后立即调用 start(message)，直接进入 Background + Goal 的 Work。工具返回本轮 turnId。后续动作传回同一个 turnId，带原消息和 turnId 的 start 返回本轮当前任务。随后完成工具返回的当前任务：首次形成成果用 submit_work(result)；已有成果经 update 保存后完成修正 work 时用 submit_work()。完整检视结束后用 submit_review() 表示没有实质问题，确实发现有据问题才填写 result；最后一次短确认同理用 confirm_review() 或 confirm_review(result)。检视发现问题时程序派修正 work，完成后开展新一次完整检视。\n\n当前正在 work 且已提交 State 正文需要修订时用 update(edits:[{old_text,new_text}])。使用 Pi edit 修改 Markdown，文本匹配兼容部分 Unicode 标点与空白差异，旧文缺失或匹配多次时根据错误先 read() 取得当前 State，再准确重试；read() 也可在检视前按需取得最新 State，不推进任务。\n\nJSON 只传动作和本动作必要参数；任务目标、质量、依据与本次应提交的内容，以返回的 Markdown 为准。每次调用成功后继续按返回执行；出错时按错误中的具体指导纠正。模型承担语义判断和实际工作，程序只负责动作合法、State 读写与已定后继。",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -15,6 +15,11 @@
           "read"
         ],
         "description": "本次动作。"
+      },
+      "turnId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+        "description": "本轮工具返回的 turnId。新轮 start 时省略，续作时传回原值。"
       },
       "message": {
         "type": "string",

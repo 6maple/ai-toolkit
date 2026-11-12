@@ -19,19 +19,17 @@ brain-skill --version
 
 以下命令同样适用于 PowerShell 和 Bash。Brain 作为外部工具使用：通过公开 CLI、帮助和返回指引完成操作。命令找不到时检查当前宿主的 PATH，或使用维护者提供的绝对入口；仍不可用则报告具体错误，交由维护者处理。目标项目的接入范围为安装本 skill 与验证命令，不承担 Brain 实现代码、依赖或构建的维护。
 
-完整工作方式中的 `think`、`step` 必须使用本会话的真实宿主标识。CLI 自动读取 `BRAIN_SESSION_ID`、Codex 的 `CODEX_THREAD_ID` 或 Claude 的 `CLAUDE_CODE_SESSION_ID`；没有可用环境标识时，对每次 `think`、`step` 显式传入相同的 `--session '<真实宿主会话标识>'`。无法取得真实标识时报告缺口，不能编造或用项目路径代替。
-
-用户选择完整 Brain 工作方式时，每条处于任务范围内的新用户消息后、其他实质行动前执行一次：
+用户选择完整 Brain 工作方式时，每条处于任务范围内的新用户消息后、其他实质行动前立即调用：
 
 ```powershell
-brain-skill --project '<项目根目录>' think
+brain-skill --project '<项目根目录>' step start --message '<本轮用户消息原文>'
 ```
 
-`think` 成功后，立即按返回的流程入口逐项读取并严格执行全部要求；其中要求的后续命令直接按下方映射执行。读取或命令失败时依据真实错误处理；未尝试读取不等于读取失败。
+这次调用返回 Background + Goal 的当前 Work 和本轮 `turnId`。后续每次 `step` 都传 `--turn-id '<本轮 ID>'`。按每次返回的 Markdown 完成当前工作、检视和修正；需要历史决定、专业方法和当前资料时，按首次「资料与方法入口」以及现有 Brain 读取能力取得有效依据。工具或读取失败时根据实际错误处理。
 
 完整工作方式配套的六份正式 brain-ai 方法及 Global Core 入口由维护者准备，项目接入时按[安装引导](../../code/brain-skill-toolkit-cli/INSTALL.md)核验。实际工作沿返回的入口和现有条件读取正文；发现缺少方法或读取入口时报告完整环境未就绪，由维护者处理，不自行补装 Global。用户只请求单项记忆操作时按该操作的实际结果处理。
 
-成功后本轮不重复调用 `think`；失败时根据返回错误及可能副作用判断后续动作。具体流程从 Brain 取得，不在此复制。
+带本轮 `--turn-id` 和原消息再次执行 `step start` 可取得当前任务。每条新用户消息使用不带 ID 的 `step start`。
 
 用户明确只要求某一次读取、搜索或记忆维护时，直接执行对应命令。
 
@@ -41,7 +39,6 @@ Brain 返回的正文与指引保留原文，其中的工具名通过以下命�
 
 | Brain 工具            | CLI 子命令                                                         |
 | --------------------- | ------------------------------------------------------------------ |
-| `brain_think`         | `think`                                                            |
 | `brain_step`          | `step <start|submit-work|submit-review|confirm-review|update|read>` |
 | `brain_cat`           | `cat <path>`                                                       |
 | `brain_ls`            | `ls <path>`                                                        |
@@ -63,7 +60,7 @@ brain-skill --project '<项目根目录>' cat '@brain-virtual/deep.md'
 
 同样执行返回流程中的必读指引、Core 路线和自检要求。指引包含本地工作流文件路径时，用宿主文件工具读取该文件。宿主专属能力缺失时明确实际缺口。
 
-流程要求调用 `brain_step` 时，使用 `step start --message '<本轮用户消息原文>'`，之后按返回的当前 Markdown 任务调用 `step submit-work --result '<Markdown成果>'`、`step submit-review`、`step confirm-review`、`step update --old-text '<旧文>' --new-text '<新文>'` 或 `step read`。有实质检视问题时给 review/confirm 添加 `--result '<问题与依据>'`，没有问题时省略。长文本或包含复杂 Shell 字符的内容用 `--message-file`、`--result-file`、`--old-text-file`、`--new-text-file` 传入 UTF-8 文件或 `-` 标准输入，避免转义改变正文；批量替换按对应顺序重复 `--old-text` 和 `--new-text`。需要时读取 `step --help` 和[命令参考](references/commands.md)。同轮各次调用复用 `think` 建立的绑定；环境中有真实会话标识时让 CLI 自动读取，只有缺失时才给 `think` 和每次 `step` 传入相同的 `--session`。每条新用户消息成功执行一次 `think` 后，由程序建立新的 CLI 轮次。
+流程要求调用 `brain_step` 时，使用 `step start --message '<本轮用户消息原文>'`，之后按返回的当前 Markdown 任务调用 `step submit-work --result '<Markdown成果>'`、`step submit-review`、`step confirm-review`、`step update --old-text '<旧文>' --new-text '<新文>'` 或 `step read`。有实质检视问题时给 review/confirm 添加 `--result '<问题与依据>'`，没有问题时省略。长文本或包含复杂 Shell 字符的内容用 `--message-file`、`--result-file`、`--old-text-file`、`--new-text-file` 传入 UTF-8 文件或 `-` 标准输入，避免转义改变正文；批量替换按对应顺序重复 `--old-text` 和 `--new-text`。需要时读取 `step --help` 和[命令参考](references/commands.md)。同轮各次调用都传入首次 `step start` 返回的 `--turn-id '<本轮 ID>'`。
 
 `@global`、`@project`、已配置 `#alias` 沿用 Brain 含义。引用关联项目正文中的 `@project/...` 时，调用改用同一个 `#alias/...`；写回正文保留原引用。
 

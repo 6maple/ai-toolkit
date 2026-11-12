@@ -1,5 +1,6 @@
 import { restoreProductionBrainContext } from "../../brain/src/index.ts";
 import { randomUUID } from "node:crypto";
+import { BRAIN_EXPLICIT_STEP_INSTRUCTION } from "../../brain/src/integration/model-facing-text.ts";
 import { brainRestoreFailureDiagnostic } from "../../brain/src/integration/server-instructions.ts";
 import { writeClaudeInvocationState } from "./invocation-state.ts";
 
@@ -62,7 +63,7 @@ async function main(): Promise<void> {
     `${JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "UserPromptSubmit",
-        additionalContext: result.context,
+        additionalContext: BRAIN_EXPLICIT_STEP_INSTRUCTION,
       },
     })}\n`,
   );

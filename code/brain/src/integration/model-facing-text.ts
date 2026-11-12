@@ -43,10 +43,10 @@ export const BRAIN_SCOPE = `## 范围与相关项目
 Global cognition跨项目使用；Project cognition用于对应项目。相关项目的普通cognition在实际配置的发现范围内；相关Project Core不自动加载，当前可用路径和权限见本轮相关项目列表。`;
 
 export const BRAIN_EXPLICIT_INSTRUCTION =
-  "每收到一条新的用户消息，在其他实质行动前调用brain_think，取得本轮处理入口并严格执行；按入口读取相应流程及记忆要求。成功建立后不重复调用；调用失败时根据实际错误及副作用判断重试，继续可完成的工作。";
+  "每收到一条新的用户消息，在其他实质行动前立即调用 brain_step 的 start(message)，直接进入 Background + Goal 工作。后续调用传回本轮返回的 turnId，并按当前 Markdown 任务完成工作、检视和修正。";
 
 export const BRAIN_EXPLICIT_STEP_INSTRUCTION =
-  "每轮收到新的用户消息后，必须立即先调用一次 brain_think，再根据其返回内容中的引导调用本工具。";
+  "每收到一条新的用户消息，立即使用本工具的 start(message) 直接进入 Background + Goal / Work。后续调用传回本轮返回的 turnId，并按当前 Markdown 任务完成工作、检视和修正。";
 
 export const BRAIN_FAILURE_TEMPLATE = `# 本轮 Brain 上下文未建立
 

@@ -1,5 +1,12 @@
 import { definition, inputSchema } from "./schema.mjs";
 
+export function stepResultContent({ turnId, text }) {
+  return [
+    { type: "text", text },
+    { type: "text", text: `本轮 turnId: \`${turnId}\`` },
+  ];
+}
+
 export function registerBrainStepTool(server, resolveRuntime) {
   return server.registerTool(
     "brain_step",
@@ -7,8 +14,7 @@ export function registerBrainStepTool(server, resolveRuntime) {
     async (raw, extra) => {
       try {
         const runtime = await resolveRuntime(extra);
-        const markdown = await runtime.execute(raw);
-        return { content: [{ type: "text", text: markdown }] };
+        return { content: stepResultContent(await runtime.execute(raw)) };
       } catch (error) {
         return {
           isError: true,

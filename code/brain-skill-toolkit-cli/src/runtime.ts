@@ -16,8 +16,7 @@ import {
 import { isBrainVirtualPath } from "../../brain/src/application/think-context.ts";
 import type { Invocation } from "./arguments.ts";
 import { CliError } from "./errors.ts";
-import { createFileRuntime } from "../../brain/step/index.mjs";
-import { cliSessionId, createCliStepContext } from "./step-context.ts";
+import { createFileRuntime, type BrainStepResult } from "../../brain/step/index.mjs";
 
 const MUTATIONS = new Set(["write", "edit", "rm", "mv", "feedback"]);
 
@@ -28,27 +27,6 @@ export async function createCliRuntime(
 ) {
   const brainRoot = invocation.brainRoot ?? DEFAULT_BRAIN_HOME;
   const sourceRoot = await realpath(invocation.project);
-  signal.throwIfAborted();
-  const stepContext = ["think", "step"].includes(invocation.command)
-    ? await createCliStepContext(brainRoot, sourceRoot, cliSessionId(invocation.sessionId))
-    : undefined;
-  // Invalidate the previous CLI turn before attempting think, including setup failures.
-  if (invocation.command === "think") await stepContext!.clear();
-  const config = loadBrainGlobalConfig(brainRoot);
-  warnings.push(...config.diagnostics.map((item) => item.message));
-  if (invocation.command === "ask-search" && !config.features.semanticSearch) {
-    throw new CliError(
-      "semantic-search-disabled",
-      "Semantic search is disabled in this Brain configuration. Use grep/glob.",
-    );
-  }
-  const project = await resolveOrCreateProject({ brainRoot, sourceRoot });
-  const infrastructure = await bootstrapBrainRuntimeInfrastructure({
-    brainRoot,
-    projectId: project.projectId,
-  });
-  if (infrastructure.historyPreparation.kind !== "available")
-    warnings.push(infrastructure.historyPreparation.diagnostic.message);
   signal.throwIfAborted();
 
   let embeddings: PythonEmbeddingRuntime | undefined;
@@ -67,6 +45,24 @@ export async function createCliRuntime(
     }
   };
   try {
+    signal.throwIfAborted();
+    const config = loadBrainGlobalConfig(brainRoot);
+    warnings.push(...config.diagnostics.map((item) => item.message));
+    if (invocation.command === "ask-search" && !config.features.semanticSearch) {
+      throw new CliError(
+        "semantic-search-disabled",
+        "Semantic search is disabled in this Brain configuration. Use grep/glob.",
+      );
+    }
+    const project = await resolveOrCreateProject({ brainRoot, sourceRoot });
+    const infrastructure = await bootstrapBrainRuntimeInfrastructure({
+      brainRoot,
+      projectId: project.projectId,
+    });
+    if (infrastructure.historyPreparation.kind !== "available")
+      warnings.push(infrastructure.historyPreparation.diagnostic.message);
+    signal.throwIfAborted();
+
     // Read-only CLI operations need no embedding runtime. Mutation services retain
     // Brain's SemanticAwareMaintenance; a durable marker also covers unavailable runtimes.
     if (
@@ -103,7 +99,7 @@ export async function createCliRuntime(
     });
     return {
       binding: { sourceRoot, brainRoot, projectId: project.projectId },
-      async execute(): Promise<string> {
+      async execute(): Promise<string | BrainStepResult> {
         signal.throwIfAborted();
         if (config.features.semanticSearch && MUTATIONS.has(invocation.command)) {
           // Mark before mutation: failures and partial writes cannot silently leave a
@@ -117,16 +113,16 @@ export async function createCliRuntime(
         const path = String(args.path);
         const context = { signal };
         switch (invocation.command) {
-          case "think": {
-            const result = await routed.think();
-            warnings.push(...result.diagnostics.map((item) => item.message));
-            signal.throwIfAborted();
-            await stepContext!.begin();
-            return result.context;
-          }
           case "step": {
-            const host = await stepContext!.current();
-            const runtime = await createFileRuntime({ resolveHost: () => host })(undefined);
+            const runtime = createFileRuntime({
+              sourceRoot,
+              brainRoot: infrastructure.binding.brainRoot,
+              onNewTurn: async () => {
+                const restored = await routed.think();
+                signal.throwIfAborted();
+                return restored.diagnostics.map((item) => item.message);
+              },
+            });
             return await runtime.execute(args);
           }
           case "cat": {

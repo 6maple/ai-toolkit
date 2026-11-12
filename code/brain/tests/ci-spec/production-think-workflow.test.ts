@@ -99,7 +99,7 @@ describe("think-workflow runtime", () => {
       initializeSemantic: false,
     });
     const server = new McpServer({ name: "workflow-test", version: "0" });
-    registerBrainTools(server, services);
+    registerBrainTools(server, services, { restoreMode: "host" });
     const client = new Client({ name: "workflow-client", version: "0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     try {

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,55 +16,70 @@ import {
   registerBrainStep,
   statePathFor,
   type BrainStepFileSystem,
-  type BrainStepHost,
 } from "../../step/index.mjs";
 
 type CallResult = Awaited<ReturnType<Client["callTool"]>>;
 function markdown(result: CallResult) {
   expect(result.isError).not.toBe(true);
   expect(result.structuredContent).toBeUndefined();
-  return (result.content as Array<{ type: string; text: string }>).map((x) => x.text).join("\n");
+  return (result.content[0] as { text: string }).text;
 }
 function errorText(result: CallResult) {
   expect(result.isError).toBe(true);
   return (result.content as Array<{ type: string; text: string }>).map((x) => x.text).join("\n");
 }
 
-async function fixture(options: { fileSystem?: BrainStepFileSystem } = {}) {
+function responseTurnId(result: CallResult) {
+  const content = result.content[1] as { text: string };
+  const match = /[0-9a-f-]{36}/.exec(content.text);
+  expect(match).not.toBeNull();
+  return match![0];
+}
+
+async function fixture(options: {
+  fileSystem?: BrainStepFileSystem;
+  onNewTurn?: () => Promise<readonly string[]>;
+} = {}) {
   const sourceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "brain-step-"));
-  const host: BrainStepHost = { conversationId: "session-a", turnId: "turn-1", sourceRoot };
-  let currentHost = host;
-  let hostReads = 0;
+  let turnId: string | undefined;
   const server = new McpServer({ name: "brain-step-contract", version: "1.0.0" });
-  const runtime = createFileRuntime({
-    resolveHost() {
-      hostReads++;
-      return currentHost;
-    },
-    ...options,
-  });
-  registerBrainStep(server, runtime);
+  const runtime = createFileRuntime({ sourceRoot, ...options });
+  registerBrainStep(server, () => runtime);
   const client = new Client({ name: "brain-step-test", version: "1.0.0" });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(left), client.connect(right)]);
-  const call = (request: Record<string, unknown>) =>
+  const send = (request: Record<string, unknown>) =>
     client.callTool({ name: "brain_step", arguments: request });
+  const call = async (request: Record<string, unknown>) => {
+    const selected = request.turnId ?? turnId;
+    const result = await send({ ...(selected ? { turnId: selected } : {}), ...request });
+    if (!result.isError) {
+      const returned = responseTurnId(result);
+      if (selected) expect(returned).toBe(selected);
+      else turnId = returned;
+    }
+    return result;
+  };
+  const file = () => statePathFor({ sourceRoot, turnId: turnId! });
   return {
     client,
     call,
-    raw: () => fs.readFile(statePathFor(currentHost), "utf8"),
+    send,
+    sourceRoot,
+    file,
+    turnId: () => turnId!,
+    newTurn: async (message: string) => {
+      const result = await send({ action: "start", message });
+      turnId = responseTurnId(result);
+      return result;
+    },
+    raw: () => fs.readFile(file(), "utf8"),
     state: async () => {
-      const file = statePathFor(currentHost);
-      const stored = (JSON.parse(await fs.readFile(file, "utf8")) as { state: any }).state;
+      const stored = (JSON.parse(await fs.readFile(file(), "utf8")) as { state: any }).state;
       return {
         ...stored,
-        content: await fs.readFile(path.join(path.dirname(file), stored.contentFile), "utf8"),
+        content: await fs.readFile(path.join(path.dirname(file()), stored.contentFile), "utf8"),
       };
-    },
-    host,
-    hostReads: () => hostReads,
-    setHost(value: BrainStepHost) {
-      currentHost = value;
     },
     async close() {
       await client.close();
@@ -94,6 +110,39 @@ async function reachFinalWork(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe("brain_step: six actions, one current State and focused Markdown", () => {
+  it("runs host lifecycle once per new turn and surfaces maintenance diagnostics", async () => {
+    let cycles = 0;
+    const f = await fixture({
+      onNewTurn: async () => {
+        cycles++;
+        return ["Git history checkpoint was not recorded"];
+      },
+    });
+    try {
+      const first = markdown(await f.call({ action: "start", message: "初始工作" }));
+      expect(first).toContain("Background + Goal / Work");
+      expect(first).toContain("warning: Git history checkpoint was not recorded");
+      expect(cycles).toBe(1);
+      const retry = markdown(await f.call({ action: "start", message: "初始工作" }));
+      expect(retry).not.toContain("warning: Git history checkpoint was not recorded");
+      expect(cycles).toBe(1);
+      markdown(await f.call({ action: "submit_work", result: "已提交结果" }));
+      expect(cycles).toBe(1);
+      const firstId = f.turnId();
+      const next = markdown(await f.newTurn("第二轮工作"));
+      expect(next).toContain("Background + Goal / Work");
+      expect(cycles).toBe(2);
+      markdown(await f.call({ action: "submit_work", result: "第二轮成果" }));
+      const committed = await f.raw();
+      expect(markdown(await f.call({ action: "start", message: "初始工作", turnId: firstId }))).toContain("/ Review");
+      expect(cycles).toBe(2);
+      expect(await f.raw()).toBe(committed);
+      expect(markdown(await f.call({ action: "read" }))).toContain("第二轮成果");
+    } finally {
+      await f.close();
+    }
+  });
+
   it("publishes a minimal schema and the first task without invented findings", async () => {
     const f = await fixture();
     try {
@@ -110,19 +159,20 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
       });
       const first = markdown(await f.call({ action: "start", message: "商品页太慢，帮我加缓存" }));
       expect(first).toContain("# Brain 的背景与目的");
-      expect(first).toContain("# 当前任务：查清用户的完整意图");
+      expect(first).toContain("# 当前任务：Background + Goal / Work");
+      expect(first).toContain("用 brain_cat 读取本轮尚未取得的 Global Core（@global/core.md）和 Project Core（@project/core.md）");
       expect(first).toContain("## 本次提交");
       expect(first).not.toContain("当前意图：已");
       const state = await f.state();
       expect(state.mode).toBe("work");
-      expect(state.phase).toBe("intent");
+      expect(state.phase).toBe("background_goal");
       expect(state.content).toBe("# 当前 State\n");
       expect(state.contentFile).toMatch(/\.md$/);
       expect(
-        await fs.readFile(path.join(path.dirname(statePathFor(f.host)), state.contentFile), "utf8"),
+        await fs.readFile(path.join(path.dirname(f.file()), state.contentFile), "utf8"),
       ).toBe(state.content);
       expect(await f.raw()).not.toContain('"content":');
-      expect(state.saved).toEqual({ intent: false, essence: false, work: false });
+      expect(state.saved).toEqual({ background_goal: false, method: false, plan: false, execute: false });
       const before = await f.raw();
       expect(markdown(await f.call({ action: "start", message: "商品页太慢，帮我加缓存" }))).toBe(
         first,
@@ -138,11 +188,11 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
     }
   });
 
-  it("advances from intent through essence and actual work, reviewing mature outcomes", async () => {
+  it("advances through four stages with a full review and brief confirmation each", async () => {
     const f = await fixture();
     try {
       const essence = await reachEssence(f);
-      expect(essence).toContain("# 当前任务：查清决定结果的事实本质");
+      expect(essence).toContain("# 当前任务：Method / Work");
       const work = markdown(
         await f.call({
           action: "submit_work",
@@ -150,12 +200,15 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
         }),
       );
       expect(work).toContain("## 本次检视要求");
-      expect(work).toContain("事实形成关系");
+      expect(work).toContain("「Method 成果」");
       const confirm = markdown(await f.call({ action: "submit_review" }));
       expect(confirm).toContain("「Brain 的背景与目的」");
       expect(confirm).toContain("「本次检视要求」");
       const actual = markdown(await f.call({ action: "confirm_review" }));
-      expect(actual).toContain("完成用户工作");
+      expect(actual).toContain("Plan / Work");
+      markdown(await f.call({ action: "submit_work", result: "安排实际工作的依赖与验收" }));
+      markdown(await f.call({ action: "submit_review" }));
+      expect(markdown(await f.call({ action: "confirm_review" }))).toContain("Execute / Work");
       const review = markdown(
         await f.call({
           action: "submit_work",
@@ -163,16 +216,16 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
         }),
       );
       expect(review).toContain("## 本次检视要求");
-      expect(review).toContain("最终回复");
+      expect(review).toContain("真实执行");
       markdown(await f.call({ action: "submit_review" }));
       expect(markdown(await f.call({ action: "confirm_review" }))).toContain(
         "本轮工作及一次最终确认已完成",
       );
       const state = await f.state();
       expect(state.mode).toBe("done");
-      expect(state.saved).toEqual({ intent: true, essence: true, work: true });
+      expect(state.saved).toEqual({ background_goal: true, method: true, plan: true, execute: true });
       const raw = markdown(await f.call({ action: "read" }));
-      for (const title of ["## 完整意图", "## 事实本质", "## 实际工作与交付"])
+      for (const title of ["## Background + Goal 成果", "## Method 成果", "## Plan 成果", "## Execute 成果"])
         expect(raw).toContain(title);
       expect(raw).toBe(state.content);
       expect(errorText(await f.call({ action: "submit_work", result: "重复" }))).toContain(
@@ -194,15 +247,18 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
           result: "用户真正的目标是加缓存。",
         }),
       );
-      expect(review).toContain("完整客观检视");
+      expect(review).toContain("/ Review");
       const correction = markdown(
         await f.call({
           action: "submit_review",
           result: "把缓存办法误当用户目标；实际目标是及时得到可靠报价。",
         }),
       );
-      expect(correction).toContain("当前任务：修正完整意图");
-      expect(correction).toContain("把缓存办法误当用户目标");
+      expect(correction).toContain("当前任务：Background + Goal / Fix");
+      expect(correction).toContain("「当前任务：Background + Goal / Review」中提交的「检视问题」");
+      expect(correction).toContain("保留经核实仍成立的目标");
+      expect(correction).toContain("若检视证据改变了对整体目标的认识，修订「Background + Goal 成果」中受影响的部分");
+      expect(correction).not.toContain("把缓存办法误当用户目标");
       expect(errorText(await f.call({ action: "submit_review" }))).toContain("不能调用");
       expect(errorText(await f.call({ action: "submit_work" }))).toContain("尚未通过 update");
       expect(
@@ -229,11 +285,11 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
         ),
       ).toContain("请用 update");
       const fresh = markdown(await f.call({ action: "submit_work" }));
-      expect(fresh).toContain("完整客观检视");
+      expect(fresh).toContain("/ Review");
       expect((await f.state()).mode).toBe("review");
       const confirm = markdown(await f.call({ action: "submit_review" }));
-      expect(confirm).toContain("简短确认");
-      expect(markdown(await f.call({ action: "confirm_review" }))).toContain("事实本质");
+      expect(confirm).toContain("/ Confirm");
+      expect(markdown(await f.call({ action: "confirm_review" }))).toContain("Method / Work");
       expect((await f.state()).content).toContain("可靠报价");
     } finally {
       await f.close();
@@ -243,16 +299,21 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
   it("a problem discovered at brief confirmation also repairs through update and a new full review", async () => {
     const f = await fixture();
     try {
-      markdown(await f.call({ action: "start", message: "用户消息" }));
+      const start = { action: "start", message: "用户消息" };
+      markdown(await f.call(start));
       markdown(await f.call({ action: "submit_work", result: "当前完整意图结论A" }));
       markdown(await f.call({ action: "submit_review" }));
-      const correction = markdown(
-        await f.call({
-          action: "confirm_review",
-          result: "最后发现依据A实际上无效，应修正为B。",
-        }),
+      const issue = "最后发现依据A实际上无效，应修正为B。";
+      const correction = markdown(await f.call({ action: "confirm_review", result: issue }));
+      expect(correction).toContain("Background + Goal / Fix");
+      expect(correction).toContain(
+        "「当前任务：Background + Goal / Confirm」中通过 confirm_review(result) 提交的问题",
       );
-      expect(correction).toContain("修正完整意图");
+      expect(correction).not.toContain("「检视问题」");
+      expect(correction).not.toContain(issue);
+      expect((await f.state()).issue).toEqual({ source: "confirm_review", text: issue });
+      expect(markdown(await f.call(start))).toBe(correction);
+
       markdown(
         await f.call({
           action: "update",
@@ -261,7 +322,7 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
       );
       expect(markdown(await f.call({ action: "submit_work" }))).toContain("## 本次检视要求");
       markdown(await f.call({ action: "submit_review" }));
-      expect(markdown(await f.call({ action: "confirm_review" }))).toContain("事实本质");
+      expect(markdown(await f.call({ action: "confirm_review" }))).toContain("Method / Work");
     } finally {
       await f.close();
     }
@@ -368,7 +429,7 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
       expect(stored).toContain('"contentFile"');
       expect(stored).not.toContain("Plan B works");
       expect(stored).not.toContain('"content":');
-      expect(markdown(await f.call({ action: "submit_work" }))).toContain("完整客观检视");
+      expect(markdown(await f.call({ action: "submit_work" }))).toContain("/ Review");
     } finally {
       await f.close();
     }
@@ -377,11 +438,10 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
   it("rejects illegal actions and fields before changing State", async () => {
     const f = await fixture();
     try {
-      expect(errorText(await f.call({ action: "read" }))).toContain("尚未 start");
+      expect(errorText(await f.call({ action: "read" }))).toContain("turnId");
       const invalid = await f.call({ action: "update", taskChanges: [] });
       expect(errorText(invalid).length).toBeGreaterThan(0);
-      expect(f.hostReads()).toBe(1); // prior read resolves a host
-      await expect(f.raw()).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(fs.stat(path.join(f.sourceRoot, ".brain-working"))).rejects.toMatchObject({ code: "ENOENT" });
       markdown(await f.call({ action: "start", message: "核对输入" }));
       const before = await f.raw();
       for (const request of [
@@ -400,26 +460,21 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
     }
   });
 
-  it("binds State to trusted host identity, isolates sessions and resets on new turn", async () => {
+  it("isolates identical messages, rejects unknown IDs and serializes same-turn calls", async () => {
     const f = await fixture();
     try {
-      markdown(await f.call({ action: "start", message: "第一轮" }));
-      markdown(await f.call({ action: "submit_work", result: "第一轮有效认识" }));
-      const before = await f.raw();
-      f.setHost({ ...f.host, conversationId: "other-session" });
-      markdown(await f.call({ action: "start", message: "另一个会话" }));
-      expect(statePathFor(f.host)).not.toBe(
-        statePathFor({ ...f.host, conversationId: "other-session" }),
-      );
-      f.setHost(f.host);
-      expect(await f.raw()).toBe(before);
-      f.setHost({ ...f.host, turnId: "turn-2" });
-      expect(errorText(await f.call({ action: "read" }))).toContain("尚未 start");
-      markdown(await f.call({ action: "start", message: "第二轮" }));
-      const state = await f.state();
-      expect(state.message).toBe("第二轮");
-      expect(state.content).not.toContain("第一轮有效认识");
-      expect(state.saved.intent).toBe(false);
+      const first = responseTurnId(await f.newTurn("同一条原文"));
+      const second = responseTurnId(await f.newTurn("同一条原文"));
+      expect(first).not.toBe(second);
+      const firstWrites = await Promise.all([
+        f.call({ action: "submit_work", turnId: first, result: "第一份成果" }),
+        f.call({ action: "submit_work", turnId: first, result: "重复提交" }),
+      ]);
+      expect(firstWrites.filter((r) => r.isError)).toHaveLength(1);
+      expect(markdown(await f.call({ action: "read", turnId: first }))).toMatch(/第一份成果|重复提交/);
+      expect(markdown(await f.call({ action: "read", turnId: second }))).toBe("# 当前 State\n");
+      expect(errorText(await f.call({ action: "start", turnId: randomUUID(), message: "未知轮次" }))).toContain("找不到");
+      expect(errorText(await f.call({ action: "read", turnId: "../invalid" }))).toBeTruthy();
     } finally {
       await f.close();
     }
@@ -449,7 +504,7 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
         ),
       ).toContain("未能持久保存");
       expect(await f.raw()).toBe(before);
-      expect(() => statePathFor({ ...f.host, turnId: "" })).toThrow("宿主须提供");
+      expect(() => statePathFor({ sourceRoot: f.sourceRoot, turnId: "" })).toThrow("有效 turnId");
     } finally {
       await f.close();
     }
@@ -488,17 +543,14 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
     }
   });
 
-  it("registers through the common Brain adapter, using the host instead of model identity", async () => {
+  it("registers through the common adapter and rejects a turn ID from another project", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "brain-step-host-"));
-    const services = { sourceRoot: root } as BrainApplicationServices;
-    let host: BrainStepHost | undefined = {
-      conversationId: "common",
-      turnId: "t1",
-      sourceRoot: root,
-    };
+    const other = await fs.mkdtemp(path.join(os.tmpdir(), "brain-step-other-"));
+    let sourceRoot = root;
     const server = new McpServer({ name: "common-brain", version: "1" });
     registerBrainTools(server, undefined, {
-      resolveInvocation: () => ({ services, stepHost: host }),
+      restoreMode: "host",
+      resolveInvocation: () => ({ services: { sourceRoot, binding: {} } as BrainApplicationServices }),
     });
     const client = new Client({ name: "host-test", version: "1" });
     const [left, right] = InMemoryTransport.createLinkedPair();
@@ -506,25 +558,18 @@ describe("brain_step: six actions, one current State and focused Markdown", () =
     try {
       const call = (request: Record<string, unknown>) =>
         client.callTool({ name: "brain_step", arguments: request });
-      expect(markdown(await call({ action: "start", message: "原消息" }))).toContain("完整意图");
-      const before = await fs.readFile(statePathFor(host!), "utf8");
-      host = undefined;
-      expect(errorText(await call({ action: "start", message: "其它" }))).toContain("宿主须提供");
-      expect(
-        await fs.readFile(
-          statePathFor({ conversationId: "common", turnId: "t1", sourceRoot: root }),
-          "utf8",
-        ),
-      ).toBe(before);
-      host = { conversationId: "common", turnId: "t2", sourceRoot: root };
-      expect(markdown(await call({ action: "start", message: "新消息" }))).toContain("完整意图");
-      expect(JSON.parse(await fs.readFile(statePathFor(host), "utf8")).state.message).toBe(
-        "新消息",
-      );
+      const started = await call({ action: "start", message: "原消息" });
+      expect(markdown(started)).toContain("Background + Goal");
+      const turnId = responseTurnId(started);
+      sourceRoot = other;
+      expect(errorText(await call({ action: "read", turnId }))).toContain("找不到");
+      sourceRoot = root;
+      expect(markdown(await call({ action: "read", turnId }))).toContain("# 当前 State");
     } finally {
       await client.close();
       await server.close();
       await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(other, { recursive: true, force: true });
     }
   });
 });

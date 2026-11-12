@@ -49,7 +49,7 @@ describe("real runtime + MCP integration", () => {
 
     const services = createBrainApplicationServices(infrastructure);
     const server = new McpServer({ name: "brain-integration", version: "0.0.0" });
-    registerBrainTools(server, services);
+    registerBrainTools(server, services, { restoreMode: "host" });
     const client = new Client({ name: "brain-integration-client", version: "0.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 

@@ -61,19 +61,19 @@ brain-skill step --help
 brain-skill step --schema
 ```
 
-这些查询不初始化 Brain，不需要会话标识，也不调用模型。命令找不到时，PowerShell 用 `Get-Command brain-skill`、Bash 用 `command -v brain-skill` 检查解析位置和宿主实际 PATH。若 PATH 尚未更新，PowerShell 可先执行 `& "$HOME/.local/bin/brain-skill.cmd" --version`。
+这些查询只读取 CLI 信息。命令找不到时，PowerShell 用 `Get-Command brain-skill`、Bash 用 `command -v brain-skill` 检查解析位置和宿主实际 PATH。若 PATH 尚未更新，PowerShell 可先执行 `& "$HOME/.local/bin/brain-skill.cmd" --version`。
 
-再按 [项目安装引导](INSTALL.md) 安装 skill 并验证目标项目绑定。完整宿主会话中的 think/step 流程需另行按其实际任务验证；安装检查不运行 think。
+再按 [项目安装引导](INSTALL.md) 安装 Skill 并验证目标项目绑定。完整宿主会话从 `step start --message` 进入当前工作；安装检查不启动任务。
 
 ```powershell
-brain-skill --project 'D:/Workspace/my-project' think
+brain-skill --project 'D:/Workspace/my-project' step start --message '<本轮用户消息原文>'
 brain-skill --project 'D:/Workspace/my-project' cat '@project/core.md'
 brain-skill --project 'D:/Workspace/my-project' grep '发布流程' --literal
 ```
 
 完整命令、输入文件格式及错误处理见 [命令参考](../../skills/brain/references/commands.md)。所有命令都有 `--help`。默认数据根为 `~/.brain-data`，使用 `--brain-root` 选择隔离数据环境；`--project` 指定项目源码根。读写、争议与权限沿用既有 Brain 行为。
 
-完整流程使用 `step start --message ...`、`step submit-work --result ...`、`step submit-review`、`step confirm-review`、`step update --old-text ... --new-text ...` 和 `step read`，复用 `brain/step` 的六动作、State 与 Markdown 当前任务指导。长文本使用 `--message-file`、`--result-file` 等文件或标准输入（`-`）；更新多个片段可重复 `--old-text`、`--new-text`。原有 `step --input-file <file|->` JSON 接口仅保留兼容，`step --schema` 用于查看底层协议。`think`、`step` 优先自动从 `BRAIN_SESSION_ID`、`CODEX_THREAD_ID` 或 `CLAUDE_CODE_SESSION_ID` 取得真实会话标识；缺少时两者显式使用相同 `--session <真实宿主会话标识>`。没有标识时明确失败。每次成功 think 建立新 CLI 轮次，同轮 step 进程复用绑定；按会话、项目及 Brain 数据根隔离。CLI 不依赖已安装的 MCP/hook 来取得轮次。
+用 `step start --message ...` 开始新轮，保存返回的 `turnId`。同轮的 `step submit-work`、`step submit-review`、`step confirm-review`、`step update` 和 `step read` 均传 `--turn-id <ID>`。带相同 ID 和原消息再次执行 `step start` 可恢复当前任务。长文本可用 `--message-file`、`--result-file` 等文件选项或标准输入 `-`；更新多个片段可重复 `--old-text` 和 `--new-text`。通过 `step --input-file <file|->` 提交 JSON 请求时，在请求中传入 `turnId`。`step --schema` 显示请求契约。
 
 `build` 与 `stub` 都运行 `unbuild --stub`。安装和链接必须保留 CLI、相邻 Brain 源码及依赖的位置关系；源码更新后新命令进程使用更新内容。该目录按仓库内使用设计，不能仅复制 dist 文件执行。
 

@@ -1,7 +1,7 @@
 // Canonical tool wording; layered reads: doc/brain/v7/17-layered-context.md.
 export const BRAIN_TOOL_DESCRIPTIONS: Record<string, string> = {
   brain_think:
-    "取得本轮处理入口，严格按入口选择并读取相应流程及记忆要求。仅在模型负责显式调用的模式暴露；每条新用户消息后、其他实质行动前调用。成功后不重复调用；失败时根据错误与副作用判断是否重试，并继续可完成的工作。",
+    "供宿主执行 Brain 恢复与维护。推进记忆学习周期并尝试 Git 检查点，返回当前流程入口与诊断。",
   brain_cat:
     "按准确路径读取一份 Scope Core、archival 记忆或内置虚拟内容。`@brain-virtual/normal.md`、`deep.md`、`normal-memory.md`、`deep-memory.md` 每次按当前项目生成并完整返回，不分页。普通认知按 1 起始逻辑行分页；返回 `next_offset` 时从该位置续读，archival 结果包含当前可用的争议状态。",
   brain_ls:

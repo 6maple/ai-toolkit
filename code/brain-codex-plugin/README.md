@@ -4,13 +4,16 @@ Default complete setup includes the six formal brain-ai methods and their Global
 
 Codex host adapter for `../brain`.
 
-- `UserPromptSubmit` executes the same restoration path as `brain_think` and adds
-  its unchanged result as developer context before Codex handles the user prompt.
+- `UserPromptSubmit` runs Brain's restoration and maintenance, then instructs
+  Codex to call `brain_step.start(message)` as its first Brain action and pass the returned `turnId` in subsequent Step calls.
 - The same synchronous hook records Codex's documented `session_id` and `cwd` as
   one host-owned invocation binding before the restored context reaches the model.
 - The bundled MCP server omits `brain_think`, preventing duplicate model-triggered restoration. With Semantic Search disabled it exposes the remaining eleven Brain tools, including `brain_step`; when the Brain global config enables Semantic Search it additionally exposes `brain_ask_search`.
 
-The shared restore path provides a short processing entry. The model reads dedicated `@brain-virtual/` flow and memory views with `brain_cat`; each view is generated fresh and returned in full. The deep flow gives the configured workflow's absolute file path for native reading. The built-in default is the full brain-ai workflow. Memory reading guidance remains in Brain memories; see the Brain README for paths and configuration.
+Step starts with Background + Goal and provides a guide to obtaining relevant
+Brain memories, external sources, and project evidence. The model can use
+`brain_cat` to read applicable Core and memory documents. See the Brain README
+for paths and configuration.
 - Each MCP call uses the host-owned thread/session binding to resolve the correct
   project services/source root. The host session identity stops at that adapter boundary and does not become Brain cognition state, so one long-lived server can safely serve tasks from different projects.
 - Brain remains the owner of cognition, persistence, ranking, and tool semantics.

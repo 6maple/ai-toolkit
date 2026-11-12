@@ -4,7 +4,7 @@ import { inputSchema } from "./schema.mjs";
 import { sectionTitle, taskView } from "./views.mjs";
 import { editWithPi } from "./pi-edit.mjs";
 
-const phases = ["intent", "essence", "work"];
+const phases = ["background_goal", "method", "plan", "execute"];
 const present = (s) => typeof s === "string" && s.trim().length > 0;
 const fields = {
   start: ["action", "message"],
@@ -20,16 +20,16 @@ function error(message) {
 function fresh(message) {
   return {
     message,
-    phase: "intent",
+    phase: "background_goal",
     mode: "work",
     content: "# 当前 State\n",
-    saved: { intent: false, essence: false, work: false },
+    saved: { background_goal: false, method: false, plan: false, execute: false },
     issue: null,
     revised: false,
   };
 }
 function enforceFields(req) {
-  const extra = Object.keys(req).filter((key) => !fields[req.action].includes(key));
+  const extra = Object.keys(req).filter((key) => key !== "turnId" && !fields[req.action].includes(key));
   if (extra.length)
     error(`${req.action} 不接受字段：${extra.join("、")}。请只提交此动作所需参数。`);
 }
@@ -37,7 +37,7 @@ function requireMode(state, modes, action) {
   if (state.mode === "done") error("本轮已经完成；新的用户消息到来后用 start 开始新一轮。");
   if (!modes.includes(state.mode))
     error(
-      `当前任务是 ${state.mode}，不能调用 ${action}。请按当前任务 Markdown 完成工作并使用对应提交动作；可用 start(message) 重新取得当前任务。`,
+      `当前任务是 ${state.mode}，不能调用 ${action}。请按当前任务 Markdown 完成工作并使用对应提交动作；可用 start 传回本轮 turnId 和原消息，重新取得当前任务。`,
     );
 }
 function next(state) {
@@ -51,9 +51,7 @@ function next(state) {
   state.revised = false;
 }
 
-export async function execute(previous, host, raw) {
-  if (!present(host?.conversationId) || !present(host?.turnId))
-    error("宿主须提供真实 conversationId 和 turnId；没有可信身份，不初始化或修改 State。");
+export function parseStepRequest(raw) {
   const parsed = inputSchema.safeParse(raw);
   if (!parsed.success)
     error(
@@ -63,26 +61,26 @@ export async function execute(previous, host, raw) {
     );
   const req = parsed.data;
   enforceFields(req);
-  const sameTurn =
-    previous?.conversationId === host.conversationId && previous?.turnId === host.turnId;
+  if (req.action === "start" && !present(req.message))
+    error("start 必须提供本轮用户原消息 message。");
+  if (req.action !== "start" && !req.turnId)
+    error("请传回本轮 start 返回的 turnId。");
+  return req;
+}
 
+export async function execute(previous, turnId, req) {
   if (req.action === "start") {
-    if (!present(req.message)) error("start 必须提供本轮用户原消息 message。");
-    if (sameTurn) {
+    if (previous) {
       if (previous.state.message !== req.message)
         error("同一轮 start 的 message 与已保存的用户原消息不同；本次未更改 State。");
       return { changed: false, envelope: previous, output: taskView(previous.state) };
     }
     const envelope = {
-      conversationId: host.conversationId,
-      turnId: host.turnId,
+      turnId,
       state: fresh(req.message),
     };
     return { changed: true, envelope, output: taskView(envelope.state) };
   }
-  if (!sameTurn)
-    error("本轮尚未 start；请先用 start(message) 开始本轮工作，不能隐式沿用上一轮 State。");
-
   const state = structuredClone(previous.state);
   if (req.action === "read") return { changed: false, envelope: previous, output: state.content };
 
@@ -130,7 +128,7 @@ export async function execute(previous, host, raw) {
   } else if (req.action === "submit_review" || req.action === "confirm_review") {
     requireMode(state, [req.action === "submit_review" ? "review" : "confirm"], req.action);
     if (present(req.result)) {
-      state.issue = req.result.trim();
+      state.issue = { source: req.action, text: req.result.trim() };
       state.mode = "fix";
       state.revised = false;
     } else if (req.action === "submit_review") state.mode = "confirm";

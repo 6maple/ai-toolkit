@@ -2,11 +2,9 @@
  * @dsh-external/brain-dsh-plugin — brain 记忆系统 DSH 原生插件。
  *
  * 薄包装：按source root懒spawn brain（MCP stdio），把core唯一public
- * contract 注册进 dsh-tools，并转发可信的 DSH session fact。
+ * contract 注册进 dsh-tools。
  *
- * 会话/项目解析（宿主直读，无需 _meta）：
- * - 会话 id：exec.agent.id
- * - source root：exec.agent.session.header.cwd（DSH 会话创建时校验写入）
+ * source root 来自 exec.agent.session.header.cwd（DSH 会话创建时校验写入）。
  *
  * 资源注册全部挂 ctx.effect（热重载/卸载自动清理）。
  */
@@ -23,7 +21,7 @@ import {
   type BrainToolDefinition,
 } from 'brain/public-tools'
 import { BRAIN_MCP_RESTORE_MODE_ENV, loadBrainGlobalConfig } from 'brain/shared'
-import { lastUserMessageSeq, setupAutoThink } from './autothink.js'
+import { setupAutoThink } from './autothink.js'
 import { InstanceManager } from './instances.js'
 import { extractText } from './mcp.js'
 import { setupOpenCodeSessionHeader } from './opencode-session.js'
@@ -45,15 +43,8 @@ export interface Config {
     args: string[]
     timeoutMs: number
   }
-  /**
-   * 是否把 brain_think 注册给模型（默认开放）。
-   * 注意：当 autoThink.enabled 开启（宿主自动注入）时，brain_think 自动对模型隐藏
-   * （避免模型重复调用），即实际注册条件 = exposeThink && !autoThink.enabled。
-   * DSH 部署下 autoThink 默认开启 → brain_think 默认不开放，由自动注入接管。
-   */
-  exposeThink: boolean
   autoThink: {
-    /** 收到用户消息后自动调用 brain_think 并注入模型上下文（默认开启）。 */
+    /** 收到用户消息后执行 Brain 维护，并注入 Step 入口。 */
     enabled: boolean
     /** 自动注入的单次调用超时（默认 5s；超时静默跳过，不阻塞 step）。 */
     timeoutMs: number
@@ -74,7 +65,6 @@ export const Config = z.object({
     args: z.array(z.string()).default([]),
     timeoutMs: z.number().default(30_000),
   }),
-  exposeThink: z.boolean().default(true),
   autoThink: z.object({
     enabled: z.boolean().default(true),
     timeoutMs: z.number().default(5000),
@@ -110,15 +100,12 @@ export function toHostSchema(definition: BrainToolDefinition): Record<string, un
   return hostSchema
 }
 
-/** The hook owns anchor triggering, so it is the only mode that hides think. */
 export function visibleToolDefinitions(
-  autoThinkEnabled: boolean,
-  exposeThink: boolean,
   semanticSearchEnabled = false,
 ): readonly BrainToolDefinition[] {
   return selectPublicBrainTools({ semanticSearch: semanticSearchEnabled })
-    .filter((definition) => definition.name !== 'brain_think' || (exposeThink && !autoThinkEnabled))
-    .map((definition) => definition.name === 'brain_step' && exposeThink && !autoThinkEnabled
+    .filter((definition) => definition.name !== 'brain_think')
+    .map((definition) => definition.name === 'brain_step'
       ? { ...definition, description: `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${definition.description}` }
       : definition)
 }
@@ -163,21 +150,14 @@ export function apply(ctx: Context, config: Config): void {
     command,
     args: serverArgs,
     timeoutMs: config.server.timeoutMs,
-    env: { ...process.env, [BRAIN_MCP_RESTORE_MODE_ENV]: 'host' },
+    env: { ...process.env, [BRAIN_MCP_RESTORE_MODE_ENV]: config.autoThink.enabled ? 'host' : 'explicit' },
     expectedSemanticSearchEnabled: semanticSearchEnabled,
   })
   ctx.effect(() => () => manager.dispose(), 'brain: instances')
 
   // ---- register the core-owned public contract (lazy instances) ----
-  // brain_think 的实际注册条件 = exposeThink && !autoThink.enabled：
-  // 自动注入开启时它对模型隐藏（宿主接管），关闭时才开放给模型手动调。
-  const exposeThink = config.exposeThink && !config.autoThink.enabled
   const registered: string[] = []
-  for (const definition of visibleToolDefinitions(
-    config.autoThink.enabled,
-    config.exposeThink,
-    semanticSearchEnabled,
-  )) {
+  for (const definition of visibleToolDefinitions(semanticSearchEnabled)) {
     registered.push(definition.name)
     ctx.effect(
       () =>
@@ -194,11 +174,7 @@ export function apply(ctx: Context, config: Config): void {
           async execute(args: unknown, exec: ToolRunContext) {
             const sourceRoot = resolveSourceRoot(exec.agent)
             const callArgs = buildCallArgs(args)
-            const userSeq = definition.name === 'brain_step' && exec.agent ? lastUserMessageSeq(exec.agent) : 0
-            const meta = definition.name === 'brain_step' && exec.agent
-              ? { threadId: exec.agent.id, turnId: userSeq > 0 ? String(userSeq) : '' }
-              : undefined
-            const result = await manager.call(sourceRoot, definition.name, callArgs, exec.signal, meta)
+            const result = await manager.call(sourceRoot, definition.name, callArgs, exec.signal)
             if (result.isError === true) throw new Error(extractText(result.content, definition.name))
             return { content: result.content }
           },
@@ -207,7 +183,7 @@ export function apply(ctx: Context, config: Config): void {
     )
   }
 
-  // ---- 自动注入：收到用户消息后自动 brain_think + 注入模型上下文 ----
+  // Run host maintenance and announce the Step entry on each user message.
   ctx.effect(
     () =>
       setupAutoThink(
@@ -222,6 +198,6 @@ export function apply(ctx: Context, config: Config): void {
   ctx.logger.info(
     `brain-dsh-plugin: ${registered.length} tools registered (${registered.join(', ')}); ` +
       `server ${command} ${serverArgs.join(' ')}, ` +
-      `exposeThink=${exposeThink}, autoThink=${config.autoThink.enabled}, semanticSearch=${semanticSearchEnabled}`,
+      `autoThink=${config.autoThink.enabled}, semanticSearch=${semanticSearchEnabled}`,
   )
 }

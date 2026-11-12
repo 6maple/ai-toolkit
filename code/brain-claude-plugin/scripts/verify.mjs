@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -155,11 +154,10 @@ async function main() {
     const restored = await runProcess(hookEntry, { cwd: pluginRoot, env: firstEnv, input: prompt });
     assert.equal(restored.code, 0, restored.stderr);
     const context = JSON.parse(restored.stdout).hookSpecificOutput.additionalContext;
-    assert.match(context, /# 处理流程/);
-    assert.match(context, /@brain-virtual\/normal\.md/);
-    assert.match(context, /@brain-virtual\/deep\.md/);
+    assert.match(context, /start\(message\)/);
+    assert.match(context, /Background \+ Goal/);
     assert.doesNotMatch(context, /<core\b/);
-    console.log("PASS hook provides processing entry from Claude project root");
+    console.log("PASS hook provides direct Brain Step entry from Claude project root");
 
     const readPermission = await runProcess(permissionEntry, {
       cwd: pluginRoot,
@@ -190,7 +188,6 @@ async function main() {
         }),
         call(4, "brain_cat", { path: "@project/memories/knowledge/routed.md" }),
         call(5, "brain_step", { action: "start", message: "当前真实会话轮次" }),
-        call(6, "brain_step", { action: "update", updates: { intent: "本轮有据理解" } }),
       ],
     });
     assert.equal(firstMcp[0].result.instructions, undefined);
@@ -198,25 +195,32 @@ async function main() {
     assert.equal(names.includes("brain_think"), false);
     assert.equal(names.length, 11);
     assert.equal(names.includes("brain_step"), true);
-    assert.notEqual(firstMcp[5].result.isError, true);
-    assert.notEqual(firstMcp[6].result.isError, true);
-    const stepFile = join(firstRoot, ".brain-working", "brain-step-three-phase", createHash("sha256").update(prompt.session_id).digest("hex") + ".json");
-    const firstStep = JSON.parse(await readFile(stepFile, "utf8"));
-    assert.equal(firstStep.state.notes.intent, "本轮有据理解");
-    assert.ok(firstStep.turnId);
-    const nextPrompt = await runProcess(hookEntry, { cwd: pluginRoot, env: firstEnv, input: { ...prompt, prompt: "下一轮" } });
-    assert.equal(nextPrompt.code, 0, nextPrompt.stderr);
-    const nextStep = await mcpSession({ env: firstEnv, requests: [init, initialized, call(3, "brain_step", { action: "start", message: "下一轮" })] });
-    assert.notEqual(nextStep[2].result.isError, true);
-    const refreshedStep = JSON.parse(await readFile(stepFile, "utf8"));
-    assert.notEqual(refreshedStep.turnId, firstStep.turnId);
-    assert.equal(refreshedStep.state.notes.intent, null);
+    const stepId = ({ result }) => {
+      assert.equal(result?.content?.[1]?.type, "text", result?.content?.[0]?.text);
+      return result.content[1].text.match(/[0-9a-f-]{36}/)[0];
+    };
+    const turnId = stepId(firstMcp[5]);
+    const continued = await mcpSession({
+      env: firstEnv,
+      requests: [init, initialized, call(3, "brain_step", { action: "submit_work", turnId, result: "本轮有据理解" })],
+    });
+    assert.match(continued[2].result.content[0].text, /Background \+ Goal \/ Review/);
+    assert.equal(stepId(continued[2]), turnId);
     const ended = await runProcess(sessionEndEntry, { cwd: pluginRoot, env: firstEnv, input: { hook_event_name: "SessionEnd", session_id: prompt.session_id, reason: "clear" } });
     assert.equal(ended.code, 0, ended.stderr);
-    const stale = await mcpSession({ env: firstEnv, requests: [init, initialized, call(3, "brain_step", { action: "start", message: "不得串用已结束会话" })] });
-    assert.equal(stale[2].result.isError, true);
-    assert.equal(await readFile(stepFile, "utf8"), JSON.stringify(refreshedStep, null, 2) + "\n");
-    console.log("PASS native brain_step resets trusted hook turns and refuses ended session bindings");
+    const resumed = await mcpSession({
+      env: firstEnv,
+      requests: [
+        init, initialized,
+        call(3, "brain_step", { action: "read", turnId }),
+        call(4, "brain_step", { action: "start", message: "当前真实会话轮次" }),
+      ],
+    });
+    assert.match(resumed[2].result.content[0].text, /本轮有据理解/);
+    assert.equal(stepId(resumed[2]), turnId);
+    assert.notEqual(stepId(resumed[3]), turnId);
+    assert.match(resumed[3].result.content[0].text, /Background \+ Goal \/ Work/);
+    console.log("PASS brain_step resumes across processes after the Claude session ends");
     assert.match(firstMcp[4].result.content[0].text, /First project only/);
     const secondMcp = await mcpSession({
       env: secondEnv,

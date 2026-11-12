@@ -295,7 +295,7 @@ const rawPublicBrainTools: readonly BrainToolDefinition[] = [
   {
     name: "brain_think",
     description:
-      "Establish the user's Brain working context for the current turn, automatically including the selected think-workflow in full, Scope Cores, candidates and diagnostics. Call once after each new user message before other substantive actions in explicit mode.",
+      "Host maintenance entry for Brain context restoration, memory learning and Git checkpoints. Returns the configured workflow entry and any diagnostics.",
     inputSchema: thinkInputSchema,
     annotations: {
       readOnlyHint: false,

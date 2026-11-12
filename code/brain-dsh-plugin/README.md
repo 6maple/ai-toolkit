@@ -7,12 +7,10 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 
 ## 行为边界
 
-- 工具定义直接来自 `brain/public-tools`。Semantic Search 默认关闭，此时 hook 默认开启时模型可见
-  11 个操作工具（含 `brain_step`）；关闭 hook 后，`exposeThink` 决定是否额外公开 `brain_think`。当 Brain 全局配置启用
-  Semantic Search 时，再额外公开 `brain_ask_search`。
-- 显式公开 `brain_think` 时，`brain_step` 描述先要求本轮立即调用一次 `brain_think`，再按返回引导使用 step；AutoThink 开启时使用原 step 描述，避免重复恢复。
-- 每个真实用户消息边界只调用一次 `brain_think`。成功时把短宏观处理入口作为 plugin message 注入下一次模型输入，模型再用 brain_cat 读取各自专用的 @brain-virtual/ 流程和记忆视图（每次计算、完整返回）；自动建立失败时把明确诊断注入同一通道，并记录日志。其他可完成的工作继续进行。
-- 工具与 AutoThink 先用当前 DSH agent/session 的 cwd 选择正确的 source root / Brain instance。DSH session identity 只属于宿主，不注入 Brain tool args；`brain_think` 的模型可见输入为空对象。
+- 工具定义直接来自 `brain/public-tools`。Semantic Search 默认关闭，此时模型可见
+  11 个操作工具（含 `brain_step`）。Brain 全局配置启用 Semantic Search 后额外公开 `brain_ask_search`。
+- 每条新用户消息调用 `brain_step.start(message)`，后续动作传回本轮 `turnId`。插件按 DSH agent 的工作目录选择项目和 Brain 实例。
+- AutoThink 开启时，宿主每条用户消息调用一次内部 `brain_think` 执行维护，成功后注入直接进入 Step 的提示。失败时注入诊断并记录日志。
 - 对 `opencode` / `opencode-go` 的 `opencode.ai` 推理请求，插件把当前 DSH 会话 ID 写入
   `x-opencode-session`。并发会话相互隔离；其他 provider、其他域名和已有显式请求头不变。
 - `InstanceManager`负责按source root的lazy process、timeout、abort、崩溃冷却和plugin
@@ -25,8 +23,7 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 | `server.command` | `node` | MCP server 启动命令；`node` 使用当前 Node。 |
 | `server.args` | `[]` | 为空时解析 profile 已安装的匹配 `brain` package entry。 |
 | `server.timeoutMs` | `30000` | MCP initialize、list 与 call 的超时。 |
-| `exposeThink` | `true` | 仅当 AutoThink 关闭时公开 `brain_think`。 |
-| `autoThink.enabled` | `true` | 在用户消息边界 anchor 并注入 context。 |
+| `autoThink.enabled` | `true` | 在每条用户消息后执行维护并注入 Step 入口。 |
 | `autoThink.timeoutMs` | `5000` | 单次 hook anchor 超时；失败不阻塞 agent step。 |
 | `opencodeSession.enabled` | `true` | 注入 OpenCode Go 要求的会话请求头。 |
 | `opencodeSession.providers` | `[opencode, opencode-go]` | 允许建立会话请求头上下文的 provider。 |

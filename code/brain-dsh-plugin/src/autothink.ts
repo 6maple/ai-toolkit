@@ -1,6 +1,5 @@
 /**
- * AutoThink — 宿主自动注入：收到用户消息后自动调用 brain_think，把结果作为
- * **消息**注入模型输入（AGENTS.md 同款消息通道，非 contexts 条目）。
+ * AutoThink 在用户消息后调用内部 brain_think 执行维护，并通过消息通道注入 Step 入口。
  *
  * 为什么是消息通道而不是 contexts：
  * - contexts 条目每次 assemble 都在注入列表里（每次消息刷屏）且快照消息的
@@ -24,6 +23,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { BRAIN_EXPLICIT_STEP_INSTRUCTION } from 'brain/public-tools'
 import { brainRestoreFailureDiagnostic } from 'brain/shared'
 import { extractAnchorContext, extractText } from './mcp.js'
 import type { InstanceManager } from './instances.js'
@@ -113,7 +113,7 @@ export function setupAutoThink(
       }
       const warnings = result.content.slice(1).filter((block) => block.type === 'text' && block.text)
       for (const warning of warnings) ctx.logger.warn(`brain: auto think diagnostic for ${agent.id}: ${warning.text}`)
-      stage(agent.id, text)
+      stage(agent.id, BRAIN_EXPLICIT_STEP_INSTRUCTION)
       ctx.logger.debug(`brain: auto think staged for ${agent.id} (splice seq ${last})`)
     } catch (error) {
       ctx.logger.warn(`brain: auto think failed for ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)

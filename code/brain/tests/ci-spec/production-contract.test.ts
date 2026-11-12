@@ -144,9 +144,9 @@ describe("generic MCP public contract", () => {
       restoreMode: "host",
       exclude: ["brain_think"],
     });
-    expect(explicit.has("brain_think")).toBe(true);
+    expect(explicit.has("brain_think")).toBe(false);
     expect(explicit.get("brain_step")?.config.description).toBe(
-      `每轮收到新的用户消息后，必须立即先调用一次 brain_think，再根据其返回内容中的引导调用本工具。\n\n${canonicalStep.description}`,
+      `每收到一条新的用户消息，立即使用本工具的 start(message) 直接进入 Background + Goal / Work。后续调用传回本轮返回的 turnId，并按当前 Markdown 任务完成工作、检视和修正。\n\n${canonicalStep.description}`,
     );
     expect(host.has("brain_think")).toBe(false);
     expect(host.get("brain_step")?.config.description).toBe(canonicalStep.description);
@@ -155,12 +155,12 @@ describe("generic MCP public contract", () => {
   test("keeps semantic search off by default while the canonical tool source contains the optional definition", () => {
     const { services } = fakeServices();
     const registered = captureRegistration(services);
-    expect([...registered.keys()].sort()).toEqual([...EXPECTED_TOOLS]);
+    expect([...registered.keys()].sort()).toEqual(EXPECTED_TOOLS.filter((name) => name !== "brain_think"));
     expect(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort()).toEqual(EXPECTED_SEMANTIC_TOOLS);
     expect(new Set(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name)).size).toBe(13);
     for (const tool of PUBLIC_BRAIN_TOOLS) {
       expect(tool.description.length).toBeGreaterThan(0);
-      if (tool.name === "brain_ask_search") continue;
+      if (tool.name === "brain_ask_search" || tool.name === "brain_think") continue;
       expect(registered.get(tool.name)?.config.inputSchema).toBe(tool.inputSchema);
       expect(tool).not.toHaveProperty("outputSchema");
       expect(registered.get(tool.name)?.config).not.toHaveProperty("outputSchema");
@@ -173,7 +173,7 @@ describe("generic MCP public contract", () => {
     const registered = captureRegistration(services, {
       features: { semanticSearch: true },
     } as BrainToolRegistrationOptions);
-    expect([...registered.keys()].sort()).toEqual(EXPECTED_SEMANTIC_TOOLS);
+    expect([...registered.keys()].sort()).toEqual(EXPECTED_SEMANTIC_TOOLS.filter((name) => name !== "brain_think"));
   });
 
   test("declares brain_think as closed-world and non-destructive without claiming read-only or idempotent behavior", () => {
@@ -188,7 +188,7 @@ describe("generic MCP public contract", () => {
 
   test("a host-owned lifecycle operation can be omitted without changing the canonical tool source", () => {
     const { services } = fakeServices();
-    const registered = captureRegistration(services, { exclude: ["brain_think"] });
+    const registered = captureRegistration(services, { restoreMode: "host", exclude: ["brain_think"] });
     expect([...registered.keys()].sort()).toEqual(
       EXPECTED_TOOLS.filter((name) => name !== "brain_think"),
     );
@@ -205,7 +205,7 @@ describe("generic MCP public contract", () => {
     const pageText = "1: first line\nnext_offset: 2\n";
     services.reads.cat = vi.fn(async () => ({ page: {}, text: pageText })) as never;
     const server = new McpServer({ name: "brain-test", version: "0.0.0" });
-    registerBrainTools(server, services);
+    registerBrainTools(server, services, { restoreMode: "host" });
     const client = new Client({ name: "brain-test-client", version: "0.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     try {
@@ -530,6 +530,7 @@ describe("generic MCP public contract", () => {
     const first = fakeServices("project-1");
     const second = fakeServices("project-2");
     const registered = captureRegistration(first.services, {
+      restoreMode: "host",
       resolveInvocation: async (extra) => {
         const route = (extra as { route?: unknown }).route;
         return { services: route === "second" ? second.services : first.services };

@@ -6,13 +6,13 @@ Claude Code adapter for `../brain`. Brain owns cognition and tool behavior. This
 
 ## Behavior
 
-- `UserPromptSubmit` runs the same restoration path as `brain_think` and injects the resulting context before Claude handles the prompt.
+- `UserPromptSubmit` runs Brain's restoration and maintenance, then instructs Claude to call `brain_step.start(message)` as its first Brain action and pass the returned `turnId` in subsequent Step calls.
 - The hook and MCP server use Claude Code's `CLAUDE_PROJECT_DIR` as the source root. Claude's session ID remains host state and does not enter Brain cognition.
 - The MCP server hides `brain_think`. With Semantic Search disabled it exposes eleven Brain tools, including `brain_step`; enabling Semantic Search in `~/.brain-data/config.json` adds `brain_ask_search` after restarting Claude Code.
 - Brain reads are automatically allowed. Brain mutations are automatically allowed in normal edit modes only after the current prompt's restoration completed with a Git history checkpoint. If the checkpoint degrades, Claude handles the permission request normally. Explicit read-only modes stay in control.
 - The permission hook records its state in `CLAUDE_PLUGIN_DATA` and checks the current session and transcript before allowing a mutation.
 
-Flow and memory requirements are loaded on demand from dedicated `@brain-virtual/` paths with `brain_cat`, returned in full. The deep flow points to the actual workflow file; the default is the full brain-ai workflow.
+Step starts with Background + Goal and provides a guide to obtaining relevant Brain memories, external sources, and project evidence. The model can use `brain_cat` to read applicable Core and memory documents.
 
 ## Local development
 

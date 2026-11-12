@@ -40,9 +40,9 @@
 
 `@session/...` 不是合法 Brain 地址。Host session/thread 可以用于 Codex/DSH 等宿主自己的 invocation routing、cwd、approval 或 UI 状态，但不会选择 Brain cognition scope。
 
-## brain_think
+## 宿主维护与虚拟视图
 
-工具和 Host 自动恢复都只返回宏观处理入口。模型按入口选择 A/B，再通过 brain_cat 取得对应专用内容：
+独立 MCP 的显式模式从 `brain_step.start(message)` 进入本轮工作。宿主模式可为 DSH AutoThink 提供内部 `brain_think` 调用。已有虚拟视图可通过 brain_cat 读取：
 
 | 路径                              | 内容                                        |
 | --------------------------------- | ------------------------------------------- |
@@ -63,23 +63,22 @@
 
 未配置时使用完整的内置 brain-ai。读取 B 时重新加载配置并取得实际绝对路径，模型再用文件工具读取该文件；无需为配置或正文更新重启。@internal/ 相对 Brain 包根，普通相对路径相对 Brain 数据根。沿用原配置回退与空文件读取行为。
 
-显式恢复模式每条新用户消息先调用一次 brain_think 并严格执行入口。Host hook 自动恢复时注入相同入口，隐藏或避免重复调用 brain_think。当前 source root 决定 ProjectId；记忆视图按该次调用解析相关项目。初始恢复推进周期并建立历史检查点，记忆视图返回时记录实际展示的候选曝光。
+每条新用户消息调用 `brain_step.start(message)`，直接进入 Background + Goal / Work。工具返回本轮 `turnId`，同轮后续调用传回这个 ID。模型按「资料与方法入口」取得 Global/Project Core 和适用记忆。记忆学习与 Git 检查点由 Step 启动或宿主维护负责。
 
 完整文字及空记忆示例见[分层上下文](../../doc/brain/v7/17-layered-context.md)。
 
 ## brain_step 深度思考推进模块
 
-新版 `brain_step` 从 `brain/step` 导出，提供六个动作（`start`、`submit_work`、`submit_review`、`confirm_review`、`update`、`read`），一次返回一项聚焦的 Markdown 任务，程序管理单轮 State、成果保存与确定的后继。使用说明及实际验证范围见 [step/README.md](step/README.md)；历史三阶段设计见[旧设计资料](../../doc/brain/three-phase-workflow.md)。
+`brain_step` 从 `brain/step` 导出，提供六个动作（`start`、`submit_work`、`submit_review`、`confirm_review`、`update`、`read`）；每条新用户消息从 Background + Goal 开始，依次推进 Method、Plan 和 Execute。程序管理单轮 State、成果保存、完整 Review、修正、短 Confirm 与确定的后继。使用说明见 [step/README.md](step/README.md)；历史三阶段设计见[旧设计资料](../../doc/brain/three-phase-workflow.md)。
 
-`brain_step` 已通过默认 `registerBrainTools` 与其它工具一起注册；默认 `think-workflow/brain-ai/index.md` 使用新版推进入口。Codex、Claude 和 DSH 从各自可信宿主上下文绑定会话和轮次，不增加模型业务身份参数。缺少有效宿主身份时，本工具明确失败，不串用其它会话状态。
+`brain_step` 已通过默认 `registerBrainTools` 与其它工具一起注册；模型直接使用 `brain_step.start(message)` 进入本轮当前任务。宿主选择项目，Step 按返回的 `turnId` 查找该项目及 Brain 数据根下的 State。不带 ID 的 `start` 总是开始独立的新轮。
 
-通过独立 CLI 使用时，配套 [brain-skill](../brain-skill-toolkit-cli/README.md) 提供 `step --input-file`，并用真实宿主会话标识与每次成功 think 建立的 CLI 轮次接入同一状态机；安装与 skill 用法见该入口。
+通过独立 CLI 使用时，配套 [brain-skill](../brain-skill-toolkit-cli/README.md) 提供 `step start --message` 或 `step --input-file`；同轮后续动作传回首次 start 返回的轮次 ID。安装与 Skill 用法见该入口。
 
 ## Public tools
 
 主要模型可见工具：
 
-- `brain_think` — 取得当前处理入口；
 - `brain_step` — 通过六个动作推进当前用户轮次的深度思考，返回当前 Markdown 任务或 State；
 - `brain_absolute_path` — 把 Brain workspace 地址映射为 filesystem path；
 - `brain_ls` — 浏览一个 archival cognition directory；
@@ -95,7 +94,7 @@
 
 具体 model-visible schema / guidance 以 `src/integration/public-tools.ts` 为准。
 
-所有 Brain 工具均通过 MCP `content` 返回文本，`brain_step` 成功时直接返回当前任务 Markdown、精确更新回执或 State 内容，不使用 `structuredContent` / `outputSchema`。警告保留为独立文本块，分页信息保留在正文中，失败继续使用 `isError: true`。宿主应读取全部 `content` 文本块；工具分页和宿主自身的输出截断需要分别处理。
+所有 Brain 工具均通过 MCP `content` 返回文本，`brain_step` 成功时直接返回当前任务 Markdown、精确更新回执或 State 内容，不使用 `structuredContent` / `outputSchema`。Step 在第二段文本返回 `turnId`。分页信息随读取正文返回，失败通过 `isError: true` 标记。宿主应读取全部 `content` 文本块；工具分页和宿主自身的输出截断需要分别处理。
 
 ## Archival cognition
 

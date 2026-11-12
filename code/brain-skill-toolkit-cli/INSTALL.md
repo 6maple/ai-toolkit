@@ -53,15 +53,12 @@ AI 宿主：<当前宿主，例如 Codex 或 Claude Code>
    实际任务按适用条件读取完整方法正文。
    缺少方法或入口时报告完整环境未就绪，交由维护者准备；不自行写入 Global。
    另外执行 brain-skill step --help 与 brain-skill step --schema，确认交付包含流程控制命令。
-   完整工作需要真实宿主会话标识；检查当前宿主是否提供 CODEX_THREAD_ID 或
-   CLAUDE_CODE_SESSION_ID，或维护者是否提供 BRAIN_SESSION_ID / --session 的接入方式。
-   缺少时报告“记忆命令已可用，完整流程仍缺会话标识”，不要猜测标识，也不要为验证运行 think。
 6. 报告 skill 安装位置、CLI 入口与版本、项目绑定验证结果、用户如何显式调用，
-   并分别说明方法记忆/入口、会话标识的就绪情况，以及宿主是否已经实际发现该 skill。
+   并分别说明方法记忆/入口的就绪情况，以及宿主是否已经实际发现该 skill。
 
 本次接入只安装项目 skill 并验证命令，不启用“每轮强制使用 Brain”，
 不新增 MCP/hook，不改变全局配置，也不修改当前项目的业务代码。
-安装验证不运行 think，不替用户执行正式任务。
+安装验证通过帮助和 schema 检查流程入口。
 ```
 
 没有指定其他目标目录时，在该项目聊天中根据已知工作区确定项目根，不把 Brain 的交付目录当作目标项目。
@@ -142,9 +139,9 @@ $verification.warnings
 $brain 请结合本项目已有记忆，帮我处理这项工作。
 ```
 
-Claude Code 使用 `/brain` 并附上任务。用户选择使用后，AI 才按 skill 调用 Brain；CLI 的 `think` 是正式工作的入口，不是安装检测命令。
+Claude Code 使用 `/brain` 并附上任务。用户选择使用后，AI 才按 skill 调用 Brain；CLI 通过 `step start` 开始正式工作。
 
-完整工作使用 `step start --message ...`、`step submit-work --result ...`、`step submit-review`、`step confirm-review`、`step update`、`step read` 推进同一轮流程。长文本使用 CLI 的 `--*-file` 选项或标准输入。真实会话标识的来源及缺失处理见安装后的命令参考；会话/轮次由 CLI 绑定。只验证 cat 成功不代表完整深度思考流程已具备宿主上下文。
+用 `step start --message ...` 开始完整工作，随后每次 `step` 都用 `--turn-id <ID>` 传回工具返回的轮次 ID。长文本使用 CLI 的 `--*-file` 选项或标准输入。
 
 运行失败时，记录命令、错误码、错误信息和相关警告，反馈给维护者。命令参考已包含在安装后的 `references/commands.md` 中，目标项目 AI 据此调用公开能力。
 
