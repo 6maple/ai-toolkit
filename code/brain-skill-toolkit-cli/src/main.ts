@@ -1,6 +1,7 @@
 import { format } from "node:util";
 import { readFile } from "node:fs/promises";
 import { parseInvocation } from "./arguments.ts";
+import { executeStep } from "../../brain/step/index.mjs";
 import { CliError, describeError } from "./errors.ts";
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -23,7 +24,6 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const originalError = console.error;
   let capture = false;
   let text = "";
-  let turnId: string | undefined;
   let failure: ReturnType<typeof describeError> | undefined;
   try {
     const invocation = await parseInvocation(argv, controller.signal);
@@ -42,12 +42,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     // rendered cognition text or mixing logs into JSON stdout.
     console.error = (...args: unknown[]) => warnings.push(format(...args));
     capture = true;
-    const { createCliRuntime } = await import("./runtime.ts");
-    runtime = await createCliRuntime(invocation, warnings, controller.signal);
-    binding = runtime.binding;
-    const result = await runtime.execute();
-    if (typeof result === "string") text = result;
-    else ({ text, turnId } = result);
+    if (invocation.command === "step" && invocation.args.action !== "start") {
+      // ready/review only return static text; they need no Brain project runtime.
+      text = executeStep(invocation.args);
+    } else {
+      const { createCliRuntime } = await import("./runtime.ts");
+      runtime = await createCliRuntime(invocation, warnings, controller.signal);
+      binding = runtime.binding;
+      text = await runtime.execute();
+    }
     controller.signal.throwIfAborted();
   } catch (error) {
     failure = describeError(error);
@@ -73,7 +76,6 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       JSON.stringify({
         ok: failure === undefined,
         text,
-        ...(turnId === undefined ? {} : { turnId }),
         warnings,
         binding,
         ...(failure === undefined ? {} : { error: failure }),
@@ -81,7 +83,6 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     );
   else {
     if (text !== "") process.stdout.write(text + (text.endsWith("\n") ? "" : "\n"));
-    if (turnId !== undefined) process.stdout.write(`本轮 turnId: ${turnId}\n`);
     if (failure !== undefined) process.stderr.write(`error: ${failure.code}\n${failure.message}\n`);
   }
   for (const warning of warnings) process.stderr.write(`warning: ${warning}\n`);

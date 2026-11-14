@@ -63,17 +63,17 @@ brain-skill step --schema
 
 这些查询只读取 CLI 信息。命令找不到时，PowerShell 用 `Get-Command brain-skill`、Bash 用 `command -v brain-skill` 检查解析位置和宿主实际 PATH。若 PATH 尚未更新，PowerShell 可先执行 `& "$HOME/.local/bin/brain-skill.cmd" --version`。
 
-再按 [项目安装引导](INSTALL.md) 安装 Skill 并验证目标项目绑定。完整宿主会话从 `step start --message` 进入当前工作；安装检查不启动任务。
+再按 [项目安装引导](INSTALL.md) 安装 Skill 并验证目标项目绑定。完整 Brain 工作先通过 `step --intro` 读取 Step 1，然后按提示词使用三个固定动作：
 
 ```powershell
-brain-skill --project 'D:/Workspace/my-project' step start --message '<本轮用户消息原文>'
-brain-skill --project 'D:/Workspace/my-project' cat '@project/core.md'
-brain-skill --project 'D:/Workspace/my-project' grep '发布流程' --literal
+brain-skill step --intro
 ```
 
-完整命令、输入文件格式及错误处理见 [命令参考](../../skills/brain/references/commands.md)。所有命令都有 `--help`。默认数据根为 `~/.brain-data`，使用 `--brain-root` 选择隔离数据环境；`--project` 指定项目源码根。读写、争议与权限沿用既有 Brain 行为。
+按 Step 1 完成思考后，单独执行 `brain-skill --project 'D:/Workspace/my-project' step start`，再根据返回的 Step 2 完成相应思考；准备好后单独执行 `step ready`，实际工作并取得结果后再单独执行 `step review`。每次 Shell 调用只执行一个 `step` 命令，阅读返回内容并完成当前工作后才进入下一步。项目记忆可另行读取，例如 `brain-skill --project 'D:/Workspace/my-project' cat '@project/core.md'`。
 
-用 `step start --message ...` 开始新轮，保存返回的 `turnId`。同轮的 `step submit-work`、`step submit-review`、`step confirm-review`、`step update` 和 `step read` 均传 `--turn-id <ID>`。带相同 ID 和原消息再次执行 `step start` 可恢复当前任务。长文本可用 `--message-file`、`--result-file` 等文件选项或标准输入 `-`；更新多个片段可重复 `--old-text` 和 `--new-text`。通过 `step --input-file <file|->` 提交 JSON 请求时，在请求中传入 `turnId`。`step --schema` 显示请求契约。
+`step start`、`ready`、`review` 分别返回固定的 Step 2、3、4 Markdown，不使用轮次 ID、消息或成果提交字段；评估有改进点时由模型根据 Step 4 再次调用 `ready`。 `step --schema` 显示只有 `action` 的调用契约。
+
+完整命令与错误处理见 [命令参考](../../skills/brain/references/commands.md)。所有命令都有 `--help`。默认数据根为 `~/.brain-data`，使用 `--brain-root` 选择隔离数据环境；`--project` 指定项目源码根。Brain 记忆读写、争议与权限沿用既有行为。只有 `start` 保留首次 Brain 维护；`ready` 和 `review` 直接取得本地静态文本。
 
 `build` 与 `stub` 都运行 `unbuild --stub`。安装和链接必须保留 CLI、相邻 Brain 源码及依赖的位置关系；源码更新后新命令进程使用更新内容。该目录按仓库内使用设计，不能仅复制 dist 文件执行。
 

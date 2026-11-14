@@ -5,15 +5,14 @@ Default complete setup includes the six formal brain-ai methods and their Global
 Codex host adapter for `../brain`.
 
 - `UserPromptSubmit` runs Brain's restoration and maintenance, then instructs
-  Codex to call `brain_step.start(message)` as its first Brain action and pass the returned `turnId` in subsequent Step calls.
+  Codex to follow the canonical Step 1 prompt and call `brain_step` using `start`, `ready` and `review`; no turn ID is required.
 - The same synchronous hook records Codex's documented `session_id` and `cwd` as
   one host-owned invocation binding before the restored context reaches the model.
 - The bundled MCP server omits `brain_think`, preventing duplicate model-triggered restoration. With Semantic Search disabled it exposes the remaining eleven Brain tools, including `brain_step`; when the Brain global config enables Semantic Search it additionally exposes `brain_ask_search`.
 
-Step starts with Background + Goal and provides a guide to obtaining relevant
-Brain memories, external sources, and project evidence. The model can use
-`brain_cat` to read applicable Core and memory documents. See the Brain README
-for paths and configuration.
+Step uses four fixed prompts. The model can use `brain_cat` and other tools
+to investigate relevant Brain memories, external sources and project evidence.
+See the Brain README for paths and configuration.
 - Each MCP call uses the host-owned thread/session binding to resolve the correct
   project services/source root. The host session identity stops at that adapter boundary and does not become Brain cognition state, so one long-lived server can safely serve tasks from different projects.
 - Brain remains the owner of cognition, persistence, ranking, and tool semantics.

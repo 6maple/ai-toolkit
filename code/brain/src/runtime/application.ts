@@ -9,7 +9,6 @@ import type { BrainRuntimeInfrastructure } from "./bootstrap.ts";
 import { DEFAULT_BRAIN_RUNTIME_FEATURES, type BrainRuntimeFeatures } from "./features.ts";
 import type { SemanticIndex } from "./semantic-index.ts";
 import type { EmbeddingPort } from "./semantic-runtime.ts";
-import { loadThinkWorkflow } from "./think-workflow.ts";
 
 export interface BrainSemanticRuntime {
   readonly index: SemanticIndex;
@@ -30,7 +29,6 @@ export function createBrainApplicationServices(
     infrastructure.operations,
     infrastructure.checkpoint,
     features,
-    () => loadThinkWorkflow(infrastructure.binding.brainRoot),
   );
   const reads = new ReadDiscovery(
     infrastructure.store,

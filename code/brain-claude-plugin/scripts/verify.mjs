@@ -154,8 +154,8 @@ async function main() {
     const restored = await runProcess(hookEntry, { cwd: pluginRoot, env: firstEnv, input: prompt });
     assert.equal(restored.code, 0, restored.stderr);
     const context = JSON.parse(restored.stdout).hookSpecificOutput.additionalContext;
-    assert.match(context, /start\(message\)/);
-    assert.match(context, /Background \+ Goal/);
+    assert.match(context, /brain_step\("start"\)/);
+    assert.match(context, /\[身份\]/);
     assert.doesNotMatch(context, /<core\b/);
     console.log("PASS hook provides direct Brain Step entry from Claude project root");
 
@@ -187,7 +187,7 @@ async function main() {
           content: "---\ndescription: Claude first project\nimportance: high\n---\nFirst project only.\n",
         }),
         call(4, "brain_cat", { path: "@project/memories/knowledge/routed.md" }),
-        call(5, "brain_step", { action: "start", message: "当前真实会话轮次" }),
+        call(5, "brain_step", { action: "start" }),
       ],
     });
     assert.equal(firstMcp[0].result.instructions, undefined);
@@ -195,32 +195,31 @@ async function main() {
     assert.equal(names.includes("brain_think"), false);
     assert.equal(names.length, 11);
     assert.equal(names.includes("brain_step"), true);
-    const stepId = ({ result }) => {
-      assert.equal(result?.content?.[1]?.type, "text", result?.content?.[0]?.text);
-      return result.content[1].text.match(/[0-9a-f-]{36}/)[0];
-    };
-    const turnId = stepId(firstMcp[5]);
+    assert.match(firstMcp[5].result.content[0].text, /brain_step\("ready"\)/);
+    assert.equal(firstMcp[5].result.content.length, 1);
     const continued = await mcpSession({
       env: firstEnv,
-      requests: [init, initialized, call(3, "brain_step", { action: "submit_work", turnId, result: "本轮有据理解" })],
+      requests: [init, initialized,
+        call(3, "brain_step", { action: "ready" }),
+        call(4, "brain_step", { action: "review" }),
+      ],
     });
-    assert.match(continued[2].result.content[0].text, /Background \+ Goal \/ Review/);
-    assert.equal(stepId(continued[2]), turnId);
+    assert.match(continued[2].result.content[0].text, /brain_step\("review"\)/);
+    assert.match(continued[3].result.content[0].text, /否则开始向用户正式汇报/);
     const ended = await runProcess(sessionEndEntry, { cwd: pluginRoot, env: firstEnv, input: { hook_event_name: "SessionEnd", session_id: prompt.session_id, reason: "clear" } });
     assert.equal(ended.code, 0, ended.stderr);
     const resumed = await mcpSession({
       env: firstEnv,
       requests: [
         init, initialized,
-        call(3, "brain_step", { action: "read", turnId }),
-        call(4, "brain_step", { action: "start", message: "当前真实会话轮次" }),
+        call(3, "brain_step", { action: "ready" }),
+        call(4, "brain_step", { action: "start" }),
       ],
     });
-    assert.match(resumed[2].result.content[0].text, /本轮有据理解/);
-    assert.equal(stepId(resumed[2]), turnId);
-    assert.notEqual(stepId(resumed[3]), turnId);
-    assert.match(resumed[3].result.content[0].text, /Background \+ Goal \/ Work/);
-    console.log("PASS brain_step resumes across processes after the Claude session ends");
+    assert.match(resumed[2].result.content[0].text, /brain_step\("review"\)/);
+    assert.match(resumed[3].result.content[0].text, /brain_step\("ready"\)/);
+    console.log("PASS stateless brain_step prompts work across Claude sessions");
+
     assert.match(firstMcp[4].result.content[0].text, /First project only/);
     const secondMcp = await mcpSession({
       env: secondEnv,

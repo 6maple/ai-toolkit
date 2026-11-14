@@ -1,3 +1,4 @@
 export { registerBrainStepTool as registerBrainStep, stepResultContent } from "./tool.mjs";
-export { createFileRuntime, statePathFor } from "./file-runtime.mjs";
+export { executeStep } from "./engine.mjs";
+export { initialPrompt } from "./views.mjs";
 export { definition, inputSchema } from "./schema.mjs";

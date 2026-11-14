@@ -9,60 +9,44 @@ description: Use Brain through the locally installed brain-skill CLI when the us
 
 ## 开始使用
 
-确定当前任务的项目源码根目录，后续命令显式传入同一个 `--project <目录>`，避免工作目录变化导致绑定其他项目。使用当前 Brain 数据根；用户指定另一数据环境时传入 `--brain-root <目录>`。
+确定当前任务的项目源码根目录，Brain 记忆工具及 CLI 的项目相关命令使用相同的 `--project <目录>`。先确认本机 `brain-skill --version` 可用。
 
-先查询维护者已在本机安装的命令版本：
-
-```powershell
-brain-skill --version
-```
-
-以下命令同样适用于 PowerShell 和 Bash。Brain 作为外部工具使用：通过公开 CLI、帮助和返回指引完成操作。命令找不到时检查当前宿主的 PATH，或使用维护者提供的绝对入口；仍不可用则报告具体错误，交由维护者处理。目标项目的接入范围为安装本 skill 与验证命令，不承担 Brain 实现代码、依赖或构建的维护。
-
-用户选择完整 Brain 工作方式时，每条处于任务范围内的新用户消息后、其他实质行动前立即调用：
+用户显式选择完整 Brain 工作方式时，先取得**正式 Step 1 提示词**，按它进行初始思考：
 
 ```powershell
-brain-skill --project '<项目根目录>' step start --message '<本轮用户消息原文>'
+brain-skill step --intro
 ```
 
-这次调用返回 Background + Goal 的当前 Work 和本轮 `turnId`。后续每次 `step` 都传 `--turn-id '<本轮 ID>'`。按每次返回的 Markdown 完成当前工作、检视和修正；需要历史决定、专业方法和当前资料时，按首次「资料与方法入口」以及现有 Brain 读取能力取得有效依据。工具或读取失败时根据实际错误处理。
-
-完整工作方式配套的六份正式 brain-ai 方法及 Global Core 入口由维护者准备，项目接入时按[安装引导](../../code/brain-skill-toolkit-cli/INSTALL.md)核验。实际工作沿返回的入口和现有条件读取正文；发现缺少方法或读取入口时报告完整环境未就绪，由维护者处理，不自行补装 Global。用户只请求单项记忆操作时按该操作的实际结果处理。
-
-带本轮 `--turn-id` 和原消息再次执行 `step start` 可取得当前任务。每条新用户消息使用不带 ID 的 `step start`。
-
-用户明确只要求某一次读取、搜索或记忆维护时，直接执行对应命令。
-
-## 执行 Brain 指引
-
-Brain 返回的正文与指引保留原文，其中的工具名通过以下命令执行：
-
-| Brain 工具            | CLI 子命令                                                         |
-| --------------------- | ------------------------------------------------------------------ |
-| `brain_step`          | `step <start|submit-work|submit-review|confirm-review|update|read>` |
-| `brain_cat`           | `cat <path>`                                                       |
-| `brain_ls`            | `ls <path>`                                                        |
-| `brain_glob`          | `glob <pattern>`                                                   |
-| `brain_grep`          | `grep <pattern>`                                                   |
-| `brain_ask_search`    | `ask-search <query>`                                               |
-| `brain_write`         | `write <path> --content-file <file或->`                            |
-| `brain_edit`          | `edit <path> --edits-file <file或->` 或 `--content-file <file或->` |
-| `brain_rm`            | `rm <path>`                                                        |
-| `brain_mv`            | `mv <src> <dst>`                                                   |
-| `brain_feedback`      | `feedback <path> <adopt或question或resolve>`                       |
-| `brain_absolute_path` | `absolute-path <path>`                                             |
-
-例如，“使用 brain_cat 读取 @brain-virtual/deep.md”表示执行：
+完成 Step 1 要求的思考后，单独调用：
 
 ```powershell
-brain-skill --project '<项目根目录>' cat '@brain-virtual/deep.md'
+brain-skill --project '<项目根目录>' step start
 ```
 
-同样执行返回流程中的必读指引、Core 路线和自检要求。指引包含本地工作流文件路径时，用宿主文件工具读取该文件。宿主专属能力缺失时明确实际缺口。
+每次 Shell 调用只执行一个 `step` 命令；取得返回的提示词后，完成相应的思考、调查或实际工作，再单独调用下一步。`start` 返回 Step 2；完成 Step 2 后调用 `ready` 取得 Step 3；完成实际工作并取得结果后调用 `review` 取得 Step 4。Step 4 若仍有实际改进点，就继续工作，否则向用户汇报。无需 `turnId`、用户消息参数或阶段成果提交。
 
-流程要求调用 `brain_step` 时，使用 `step start --message '<本轮用户消息原文>'`，之后按返回的当前 Markdown 任务调用 `step submit-work --result '<Markdown成果>'`、`step submit-review`、`step confirm-review`、`step update --old-text '<旧文>' --new-text '<新文>'` 或 `step read`。有实质检视问题时给 review/confirm 添加 `--result '<问题与依据>'`，没有问题时省略。长文本或包含复杂 Shell 字符的内容用 `--message-file`、`--result-file`、`--old-text-file`、`--new-text-file` 传入 UTF-8 文件或 `-` 标准输入，避免转义改变正文；批量替换按对应顺序重复 `--old-text` 和 `--new-text`。需要时读取 `step --help` 和[命令参考](references/commands.md)。同轮各次调用都传入首次 `step start` 返回的 `--turn-id '<本轮 ID>'`。
+`brain-skill step --schema` 可查看仅含 `action` 的调用协议。三个动作只返回固定提示词；Brain 记忆、项目资料、外部查证及实际工作由模型使用可用工具完成。CLI 首次 `step start` 仍执行现有 Brain 记忆与历史维护；遇到实际错误时按错误处理。
 
-`@global`、`@project`、已配置 `#alias` 沿用 Brain 含义。引用关联项目正文中的 `@project/...` 时，调用改用同一个 `#alias/...`；写回正文保留原引用。
+用户仅请求一次记忆查找或维护时，直接执行该操作。Brain 作为已安装的外部工具使用；命令不可用时确认 PATH 或使用维护者提供的绝对入口，不擅自重装。
+
+## Brain 记忆工具
+
+| Brain 工具 | CLI 子命令 |
+| --- | --- |
+| `brain_step` | `step <start|ready|review>` |
+| `brain_cat` | `cat <path>` |
+| `brain_ls` | `ls <path>` |
+| `brain_glob` | `glob <pattern>` |
+| `brain_grep` | `grep <pattern>` |
+| `brain_ask_search` | `ask-search <query>` |
+| `brain_write` | `write <path> --content-file <file或->` |
+| `brain_edit` | `edit <path> --edits-file <file或->` 或 `--content-file <file或->` |
+| `brain_rm` | `rm <path>` |
+| `brain_mv` | `mv <src> <dst>` |
+| `brain_feedback` | `feedback <path> <adopt或question或resolve>` |
+| `brain_absolute_path` | `absolute-path <path>` |
+
+`@global`、`@project` 和已配置的 `#alias` 仍沿用 Brain 的含义。具体命令参数参考[命令说明](references/commands.md)。
 
 ## 读取与维护
 

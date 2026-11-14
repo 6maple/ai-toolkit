@@ -40,46 +40,36 @@
 
 `@session/...` 不是合法 Brain 地址。Host session/thread 可以用于 Codex/DSH 等宿主自己的 invocation routing、cwd、approval 或 UI 状态，但不会选择 Brain cognition scope。
 
-## 宿主维护与虚拟视图
+## Brain Step 与宿主入口
 
-独立 MCP 的显式模式从 `brain_step.start(message)` 进入本轮工作。宿主模式可为 DSH AutoThink 提供内部 `brain_think` 调用。已有虚拟视图可通过 brain_cat 读取：
+`brain_step` 只接收一个 `action` 参数，三个值分别返回固定的 Markdown：
 
-| 路径                              | 内容                                        |
-| --------------------------------- | ------------------------------------------- |
-| `@brain-virtual/normal.md`        | A：常规流程                                 |
-| `@brain-virtual/deep.md`          | B：深度思考流程，包含实际 workflow 绝对路径 |
-| `@brain-virtual/normal-memory.md` | A 专用记忆读取与维护要求及当前记忆上下文    |
-| `@brain-virtual/deep-memory.md`   | B 专用记忆读取与维护要求及当前记忆上下文    |
+| 动作 | 返回 |
+| --- | --- |
+| `start` | [Step 2](step/prompts/step2.md) |
+| `ready` | [Step 3](step/prompts/step3.md) |
+| `review` | [Step 4](step/prompts/step4.md) |
 
-内置视图每次按当前项目重新计算并完整返回；offset/limit 对它们不生效，不分页、不保存恢复快照。普通认知仍按原 brain_cat 分页契约读取；这些虚拟路径不参与记忆搜索或维护。
+[Step 1](step/prompts/step1.md) 是第一次调用 `start` 前模型看到的初始提示词，由 MCP server instructions 或 Codex、Claude、DSH 宿主入口提供；显式 CLI Skill 使用 `brain-skill step --intro`。各份提示词由正式文件直接读取，用户的原文保持不变。无需消息参数、轮次 ID、成果提交或 Step State，模型自主工作和检视，有实际改进时在 Step 4 中再次调用 `ready`。
 
-思考方法在记忆外，记忆读取方法及专业技能仍由 Brain 记忆保存。在 Brain 数据根的 config.json 中通过 thinkWorkflowFile 选择方法：
+Brain 独立管理 Global/Project 长期记忆、发现工具和历史检查点。Codex/Claude/DSH 由已有宿主 Hook 在用户消息边界完成恢复；显式 MCP/Tunnel 与 CLI 的 `start` 保留首次恢复的调用。工作提示词与记忆维护是不同的职责。
 
-```json
-{
-  "thinkWorkflowFile": "@internal/think-workflow/brain-ai/index.md"
-}
-```
+`brain_cat` 仍可读取内置虚拟视图：
 
-未配置时使用完整的内置 brain-ai。读取 B 时重新加载配置并取得实际绝对路径，模型再用文件工具读取该文件；无需为配置或正文更新重启。@internal/ 相对 Brain 包根，普通相对路径相对 Brain 数据根。沿用原配置回退与空文件读取行为。
+| 路径 | 内容 |
+| --- | --- |
+| `@brain-virtual/normal.md` | 固定 Step 1 提示词 |
+| `@brain-virtual/deep.md` | 固定 Step 1 提示词 |
+| `@brain-virtual/normal-memory.md` | 现行 Global/Project Core、记忆及维护引导 |
+| `@brain-virtual/deep-memory.md` | 现行 Global/Project Core、记忆及维护引导 |
 
-每条新用户消息调用 `brain_step.start(message)`，直接进入 Background + Goal / Work。工具返回本轮 `turnId`，同轮后续调用传回这个 ID。模型按「资料与方法入口」取得 Global/Project Core 和适用记忆。记忆学习与 Git 检查点由 Step 启动或宿主维护负责。
-
-完整文字及空记忆示例见[分层上下文](../../doc/brain/v7/17-layered-context.md)。
-
-## brain_step 深度思考推进模块
-
-`brain_step` 从 `brain/step` 导出，提供六个动作（`start`、`submit_work`、`submit_review`、`confirm_review`、`update`、`read`）；每条新用户消息从 Background + Goal 开始，依次推进 Method、Plan 和 Execute。程序管理单轮 State、成果保存、完整 Review、修正、短 Confirm 与确定的后继。使用说明见 [step/README.md](step/README.md)；历史三阶段设计见[旧设计资料](../../doc/brain/three-phase-workflow.md)。
-
-`brain_step` 已通过默认 `registerBrainTools` 与其它工具一起注册；模型直接使用 `brain_step.start(message)` 进入本轮当前任务。宿主选择项目，Step 按返回的 `turnId` 查找该项目及 Brain 数据根下的 State。不带 ID 的 `start` 总是开始独立的新轮。
-
-通过独立 CLI 使用时，配套 [brain-skill](../brain-skill-toolkit-cli/README.md) 提供 `step start --message` 或 `step --input-file`；同轮后续动作传回首次 start 返回的轮次 ID。安装与 Skill 用法见该入口。
+虚拟记忆视图依现有 Brain 数据和项目绑定返回，不作为 Step 状态存储。完整 Step 工具契约参见 [step/README.md](step/README.md)。
 
 ## Public tools
 
 主要模型可见工具：
 
-- `brain_step` — 通过六个动作推进当前用户轮次的深度思考，返回当前 Markdown 任务或 State；
+- `brain_step` — 根据 start、ready、review 返回固定的 Markdown 提示词；
 - `brain_absolute_path` — 把 Brain workspace 地址映射为 filesystem path；
 - `brain_ls` — 浏览一个 archival cognition directory；
 - `brain_glob` — 按 public path glob 查找 archival cognition；
@@ -94,7 +84,7 @@
 
 具体 model-visible schema / guidance 以 `src/integration/public-tools.ts` 为准。
 
-所有 Brain 工具均通过 MCP `content` 返回文本，`brain_step` 成功时直接返回当前任务 Markdown、精确更新回执或 State 内容，不使用 `structuredContent` / `outputSchema`。Step 在第二段文本返回 `turnId`。分页信息随读取正文返回，失败通过 `isError: true` 标记。宿主应读取全部 `content` 文本块；工具分页和宿主自身的输出截断需要分别处理。
+所有 Brain 工具均通过 MCP `content` 返回文本。`brain_step` 成功时第一段文本是对应固定提示词，不使用 `turnId`、`structuredContent` 或 `outputSchema`；显式入口恢复历史记忆有警告时，可能另返回警告文本块。其它 Brain 工具的分页信息随读取正文返回，失败通过 `isError: true` 标记。
 
 ## Archival cognition
 
@@ -252,8 +242,8 @@ pnpm run build
 pnpm run stub
 ```
 
-`stub` 与 production 都使用 `dist/index.mjs` 入口。源码更新后，已经运行的 MCP / host process需要重启以加载新runtime；think-workflow配置更新下一次读取 B 时生效，正文通过实际文件读取。发布包包含 workflow 资源。
+源码更新后，已经运行的 MCP / host process 需要重启以加载新程序。发布包包含固定的 Step Prompt 资源。
 
-`brain_step` 的每次返回直接说明当前任务目标、质量要求和「本次提交」。模型按当前工作取得实际成果、用 `update` 修订已存 State，并按要求完成关键完整检视及一次简短确认；需重新取得当前有效内容时调用 `read`。实际工作结果和交付内容属于最终 `submit_work(result)` 所需成果，交付前核对真实产物、完整目标和未完范围。通过代码调用时须把完整返回 Markdown 或具体错误交给模型。
+模型按四份固定提示词自主决定工作、调查、验证和改进，不需要程序提交中间成果或维护 Step 轮次。
 
 不同 host 的接线见 [MCP_HOSTS.md](MCP_HOSTS.md)。DSH AutoThink 由独立 `brain-dsh-plugin` 提供；Codex 的 thread/session binding 由 `brain-codex-plugin` 持有；Claude Code 的 turn-start restore 与 MCP 接线由 `brain-claude-plugin` 提供。这些 host adapter 不改变 Brain cognition scope。

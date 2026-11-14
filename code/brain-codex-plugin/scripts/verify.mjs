@@ -179,8 +179,8 @@ async function main() {
     assert.equal(firstHookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     const firstContext = firstHookOutput.hookSpecificOutput.additionalContext;
     assert.equal(typeof firstContext, "string");
-    assert.match(firstContext, /start\(message\)/);
-    assert.match(firstContext, /Background \+ Goal/);
+    assert.match(firstContext, /brain_step\("start"\)/);
+    assert.match(firstContext, /\[身份\]/);
     assert.doesNotMatch(firstContext, /<core\b/);
     assert.doesNotMatch(firstContext, /<brain_context\b/);
     console.log("PASS hook provides direct Brain Step entry and records the host binding");
@@ -413,8 +413,8 @@ async function main() {
     })));
     const stepCall = (id, threadId, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { _meta: { threadId }, name: "brain_step", arguments: args } });
     requests.push(
-      stepCall(100, firstHookInput.session_id, { action: "start", message: "第一会话实际轮次" }),
-      stepCall(102, secondHookInput.session_id, { action: "start", message: "第二会话独立内容" }),
+      stepCall(100, firstHookInput.session_id, { action: "start" }),
+      stepCall(102, secondHookInput.session_id, { action: "start" }),
     );
     const mcp = await runMcpSession(mcpEntry, {
       cwd: pluginRoot,
@@ -435,30 +435,25 @@ async function main() {
     assert.equal(names.length, 11);
     assert.equal(names.includes("brain_step"), true);
     console.log("PASS MCP omits brain_think after host-owned restoration");
-    const stepId = (id) => {
-      const response = messages.find((message) => message.id === id)?.result;
-      assert.equal(response?.content?.[1]?.type, "text", response?.content?.[0]?.text);
-      return response.content[1].text.match(/[0-9a-f-]{36}/)[0];
-    };
-    const firstTurn = stepId(100);
-    assert.notEqual(stepId(102), firstTurn);
+    const stepResponse = (id) => messages.find((message) => message.id === id)?.result;
+    assert.match(stepResponse(100)?.content[0].text, /brain_step\("ready"\)/);
+    assert.match(stepResponse(102)?.content[0].text, /brain_step\("ready"\)/);
+    assert.equal(stepResponse(100)?.content.length, 1);
     const next = await runMcpSession(mcpEntry, {
       cwd: pluginRoot,
       env,
       requests: [
         requests[0], requests[1],
-        stepCall(104, firstHookInput.session_id, { action: "submit_work", turnId: firstTurn, result: "本轮已保存" }),
-        stepCall(105, firstHookInput.session_id, { action: "read", turnId: firstTurn }),
-        stepCall(106, secondHookInput.session_id, { action: "read", turnId: firstTurn }),
+        stepCall(104, firstHookInput.session_id, { action: "ready" }),
+        stepCall(105, firstHookInput.session_id, { action: "review" }),
+        stepCall(106, secondHookInput.session_id, { action: "ready" }),
       ],
     });
     const response = (id) => next.messages.find((message) => message.id === id)?.result;
-    assert.match(response(104)?.content[0].text, /Background \+ Goal \/ Review/);
-    assert.match(response(105)?.content[0].text, /本轮已保存/);
-    assert.match(response(105)?.content[1].text, new RegExp(firstTurn));
-    assert.equal(response(106)?.isError, true);
-    assert.match(response(106)?.content[0].text, /turnId/);
-    console.log("PASS brain_step resumes by issued ID and respects Codex project routing");
+    assert.match(response(104)?.content[0].text, /brain_step\("review"\)/);
+    assert.match(response(105)?.content[0].text, /否则开始向用户正式汇报/);
+    assert.match(response(106)?.content[0].text, /brain_step\("review"\)/);
+    console.log("PASS stateless brain_step actions across independent Codex sessions");
 
     const firstCat = messages.find((message) => message.id === 6);
     const secondCat = messages.find((message) => message.id === 7);
@@ -495,7 +490,7 @@ async function main() {
     const semanticContext = JSON.parse(
       semanticPrompted.stdout,
     ).hookSpecificOutput.additionalContext;
-    assert.match(semanticContext, /start\(message\)/);
+    assert.match(semanticContext, /brain_step\("start"\)/);
     assert.doesNotMatch(semanticContext, /## 候选与发现/);
 
     const semanticPermission = await runProcess(permissionHookEntry, {

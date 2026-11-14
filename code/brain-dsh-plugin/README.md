@@ -9,7 +9,7 @@ stdio process；它不拥有 memory schema、工具 contract 或 cognition workf
 
 - 工具定义直接来自 `brain/public-tools`。Semantic Search 默认关闭，此时模型可见
   11 个操作工具（含 `brain_step`）。Brain 全局配置启用 Semantic Search 后额外公开 `brain_ask_search`。
-- 每条新用户消息调用 `brain_step.start(message)`，后续动作传回本轮 `turnId`。插件按 DSH agent 的工作目录选择项目和 Brain 实例。
+- 每条新用户消息注入 Step 1，模型按提示调用 `brain_step` 的 `start`、`ready`、`review`；无需 `turnId`。插件按 DSH agent 的工作目录选择项目和 Brain 实例。
 - AutoThink 开启时，宿主每条用户消息调用一次内部 `brain_think` 执行维护，成功后注入直接进入 Step 的提示。失败时注入诊断并记录日志。
 - 对 `opencode` / `opencode-go` 的 `opencode.ai` 推理请求，插件把当前 DSH 会话 ID 写入
   `x-opencode-session`。并发会话相互隔离；其他 provider、其他域名和已有显式请求头不变。

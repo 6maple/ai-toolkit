@@ -9,7 +9,7 @@
 - multiplexed host MCP 必须为每次调用解析出可信 source/project binding，不得把长驻进程 cwd 当成当前 project；宿主可用自己的 session/thread id 找到该 binding；
 - 同一 ProjectId 可在 `project.json` 中登记多个 source roots；
 - `BRAIN_ASK_LONG_TERM` = `none`（默认）或 `protect`；
-- `brain_step` 的新一轮 `start` 返回 `turnId`，后续调用传回它。宿主提供的上下文用于选择项目。
+- `brain_step` 是无状态工具，`start`、`ready`、`review` 只返回固定提示词，不使用 `turnId`。宿主提供的上下文仅用于其它 Brain 记忆服务的项目绑定。
 
 ## 2. DSH（DeepSeek Harness）
 
@@ -28,7 +28,7 @@ mcp-client:
 
 ### Session / AutoThink 现状
 
-- **推荐 DSH 集成**：使用仓库中的独立 `brain-dsh-plugin`。它从当前 agent/session 取得 cwd，用这个 source root 选择 Brain instance/services，并可在用户消息边界通过内部 `brain_think` 执行维护。模型从 `brain_step.start(message)` 进入流程。
+- **推荐 DSH 集成**：使用仓库中的独立 `brain-dsh-plugin`。它从当前 agent/session 取得 cwd，用这个 source root 选择 Brain instance/services，并可在用户消息边界通过内部 `brain_think` 执行维护。模型从初始 Step 1 提示词进入流程，调用 `brain_step.start` 读取 Step 2。
 - DSH 的 agent/session identity 仍可用于 cwd、OpenCode header、approval 等宿主行为，但 Brain tool args 不再注入 `session_id` 或 thread metadata。
 - 若直接使用 project-scoped 原生 `mcp-client`，只要该 MCP 的 cwd/source root 已正确绑定项目，就不需要额外提供 session id。
 

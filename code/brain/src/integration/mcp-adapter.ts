@@ -1,7 +1,7 @@
 import { isBrainVirtualPath } from "../application/think-context.ts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createFileRuntime, stepResultContent } from "brain/step";
+import { executeStep, stepResultContent } from "brain/step";
 
 import type { AnchorRestore } from "../application/anchor-restore.ts";
 import type {
@@ -15,7 +15,7 @@ import { MutationApplyError } from "../persistence/operation-coordination.ts";
 import { projectAbsoluteLocation, type StorageBinding } from "../persistence/storage.ts";
 import type { BrainRuntimeFeatures } from "../runtime/features.ts";
 import { selectPublicBrainTools, type BrainToolName } from "./public-tools.ts";
-import { BRAIN_EXPLICIT_STEP_INSTRUCTION } from "./model-facing-text.ts";
+
 import type { BrainMcpRestoreMode } from "./server-instructions.ts";
 
 export interface BrainApplicationServices {
@@ -335,21 +335,18 @@ function handlerFor(
       const routed = invocationServices.routed;
       switch (name) {
         case "brain_step": {
-          const runtime = createFileRuntime({
-            sourceRoot: invocationServices.sourceRoot ?? "",
-            brainRoot: invocationServices.binding.brainRoot,
-            ...(restoreMode === "host"
-              ? {}
-              : {
-                  onNewTurn: async () => {
-                    const restored = routed === undefined
-                      ? await invocationServices.anchor.runAnchor({})
-                      : await routed.think();
-                    return restored.diagnostics.map((item) => item.message);
-                  },
-                }),
-          });
-          return { content: stepResultContent(await runtime.execute(rawArgs)) };
+          const text = executeStep(rawArgs);
+          if (args.action !== "start" || restoreMode === "host") {
+            return { content: stepResultContent(text) };
+          }
+          // Explicit hosts previously restored Brain on the first Step call.
+          // Preserve that independent lifecycle work without a Step state file.
+          const restored = routed === undefined
+            ? await invocationServices.anchor.runAnchor({})
+            : await routed.think();
+          return {
+            content: stepResultContent(text, restored.diagnostics.map((item) => item.message)),
+          };
         }
         case "brain_think": {
           const result =
@@ -569,10 +566,7 @@ export function registerBrainTools(
       definition.name,
       {
         title: definition.name,
-        description:
-          definition.name === "brain_step" && (options.restoreMode ?? "explicit") === "explicit"
-            ? `${BRAIN_EXPLICIT_STEP_INSTRUCTION}\n\n${definition.description}`
-            : definition.description,
+        description: definition.description,
         inputSchema: definition.inputSchema,
         ...(definition.outputSchema === undefined ? {} : { outputSchema: definition.outputSchema }),
         annotations: definition.annotations,

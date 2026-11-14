@@ -46,4 +46,4 @@ node code/brain-cli/index.mjs pack install brain-ai [--brain-root <目录>]
 
 宿主 install/update 已从选定来源自动准备这些方法；CLI 本机准备或手动插件接入使用此命令。显式指定数据根时，后续 CLI 核验与工作使用同一个根。此命令安装六份 Global 方法记忆（含 Agent 软件方法），并在 Global Core 加入读取入口。相同内容会跳过；目标内容不同或入口冲突时会停止并列出路径。记忆包没有 `update` 命令。安装后，Agent 应从 Global Core 的入口读取相应正文；包本身不是 Brain MCP 接入，也不会启用语义搜索。
 
-其中core.md只指导记忆读取，专业Skill保持独立；思考流程在记忆外，由brain_think或Host hook自动提供。在Brain数据根config.json中以thinkWorkflowFile选择，例如@internal/think-workflow/brain-ai/index.md；普通相对路径从该配置目录解析，未配置采用内置完整 brain-ai 三阶段流程。配置或流程正文变更下一轮读取时生效；配置或自定义路径读取异常尝试回退同一内置流程并记 warning，内置资源也不可用时返回明确读取失败。
+其中 core.md 负责记忆读取，专业 Skill 保持独立。Brain 的固定 Step 1 由 MCP / Host hook 或显式 CLI Skill 提供，brain_step 的 start、ready、review 返回后续固定提示词；不再通过 thinkWorkflowFile 切换思考流程。

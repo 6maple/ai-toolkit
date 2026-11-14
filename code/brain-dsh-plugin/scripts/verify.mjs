@@ -338,24 +338,23 @@ async function main() {
       const props = Object.keys(liveThink.properties ?? {})
       if (props.length === 0 && liveThink.additionalProperties === false) ok('C2 brain_think schema')
       else fail('C2 brain_think schema', JSON.stringify(liveThink))
-      const message = 'DSH calls Step with the issued ID'
-      const startedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message })
-      const turnId = startedStep.content?.[1]?.text?.match(/[0-9a-f-]{36}/)?.[0]
-      const savedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'submit_work', turnId, result: 'DSH current round' })
-      const otherStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start', message })
-      const otherTurnId = otherStep.content?.[1]?.text?.match(/[0-9a-f-]{36}/)?.[0]
-      const queriedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'read', turnId })
-      const otherState = await mgrReal.call(realRoot, 'brain_step', { action: 'read', turnId: otherTurnId })
-      if (turnId && otherTurnId && turnId !== otherTurnId &&
-          ![startedStep, savedStep, otherStep, queriedStep, otherState].some(result => result.isError) &&
-          queriedStep.content?.[0]?.text?.includes('DSH current round') &&
-          queriedStep.content?.[1]?.text?.includes(turnId) &&
-          !otherState.content?.[0]?.text?.includes('DSH current round')) ok('C2b brain_step IDs and isolation')
-      else fail('C2b brain_step IDs and isolation', JSON.stringify([startedStep, savedStep, otherStep, queriedStep, otherState]))
+      const startedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'start' })
+      const workingStep = await mgrReal.call(realRoot, 'brain_step', { action: 'ready' })
+      const reviewStep = await mgrReal.call(realRoot, 'brain_step', { action: 'review' })
+      const repeatedStep = await mgrReal.call(realRoot, 'brain_step', { action: 'ready' })
+      if (![startedStep, workingStep, reviewStep, repeatedStep].some(result => result.isError) &&
+          startedStep.content?.[0]?.text?.includes('brain_step("ready")') &&
+          workingStep.content?.[0]?.text?.includes('brain_step("review")') &&
+          reviewStep.content?.[0]?.text?.includes('否则开始向用户正式汇报') &&
+          repeatedStep.content?.[0]?.text === workingStep.content?.[0]?.text &&
+          [startedStep, workingStep, reviewStep].every(result => result.content?.length === 1))
+        ok('C2b brain_step stateless fixed guidance')
+      else fail('C2b brain_step stateless fixed guidance', JSON.stringify([startedStep, workingStep, reviewStep, repeatedStep]))
       const r = await mgrReal.call(realRoot, 'brain_think', {})
-      const text = r.content?.map((b) => b.text ?? '').join('\n') ?? ''
-      if (!r.isError && text.includes('# 处理流程') && text.includes('@brain-virtual/deep.md') && !text.includes('<core ')) ok('C3 brain_think provides processing entry')
-      else fail('C3 brain_think provides processing entry', text.slice(0, 300))
+      const text = r.content?.map((b) => b.text ?? '').join('\\n') ?? ''
+      if (!r.isError && text.includes('[身份]') && text.includes('brain_step("start")') && !text.includes('<core '))
+        ok('C3 brain_think provides initial Step 1')
+      else fail('C3 brain_think provides initial Step 1', text.slice(0, 300))
       const memoryView = await mgrReal.call(realRoot, 'brain_cat', { path: '@brain-virtual/deep-memory.md', limit: 1 })
       if (!memoryView.isError && memoryView.content?.[0]?.text?.includes('## 记忆的角色')) ok('C3b full virtual memory forwarding')
       else fail('C3b full virtual memory forwarding', JSON.stringify(memoryView))

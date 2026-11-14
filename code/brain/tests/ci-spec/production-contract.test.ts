@@ -145,9 +145,7 @@ describe("generic MCP public contract", () => {
       exclude: ["brain_think"],
     });
     expect(explicit.has("brain_think")).toBe(false);
-    expect(explicit.get("brain_step")?.config.description).toBe(
-      `每收到一条新的用户消息，立即使用本工具的 start(message) 直接进入 Background + Goal / Work。后续调用传回本轮返回的 turnId，并按当前 Markdown 任务完成工作、检视和修正。\n\n${canonicalStep.description}`,
-    );
+    expect(explicit.get("brain_step")?.config.description).toBe(canonicalStep.description);
     expect(host.has("brain_think")).toBe(false);
     expect(host.get("brain_step")?.config.description).toBe(canonicalStep.description);
   });

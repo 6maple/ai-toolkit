@@ -16,7 +16,7 @@ import {
 import { isBrainVirtualPath } from "../../brain/src/application/think-context.ts";
 import type { Invocation } from "./arguments.ts";
 import { CliError } from "./errors.ts";
-import { createFileRuntime, type BrainStepResult } from "../../brain/step/index.mjs";
+import { executeStep } from "../../brain/step/index.mjs";
 
 const MUTATIONS = new Set(["write", "edit", "rm", "mv", "feedback"]);
 
@@ -99,7 +99,7 @@ export async function createCliRuntime(
     });
     return {
       binding: { sourceRoot, brainRoot, projectId: project.projectId },
-      async execute(): Promise<string | BrainStepResult> {
+      async execute(): Promise<string> {
         signal.throwIfAborted();
         if (config.features.semanticSearch && MUTATIONS.has(invocation.command)) {
           // Mark before mutation: failures and partial writes cannot silently leave a
@@ -114,16 +114,14 @@ export async function createCliRuntime(
         const context = { signal };
         switch (invocation.command) {
           case "step": {
-            const runtime = createFileRuntime({
-              sourceRoot,
-              brainRoot: infrastructure.binding.brainRoot,
-              onNewTurn: async () => {
-                const restored = await routed.think();
-                signal.throwIfAborted();
-                return restored.diagnostics.map((item) => item.message);
-              },
-            });
-            return await runtime.execute(args);
+            const text = executeStep(args);
+            if (args.action === "start") {
+              // Preserve the former first-call Brain maintenance independently of Step.
+              const restored = await routed.think();
+              signal.throwIfAborted();
+              warnings.push(...restored.diagnostics.map((item) => item.message));
+            }
+            return text;
           }
           case "cat": {
             if (isBrainVirtualPath(path)) {

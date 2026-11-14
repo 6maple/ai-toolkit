@@ -29,32 +29,19 @@ normal/deep 流程及 memory 视图通过 `cat` 分层读取。四份虚拟视�
 
 普通 cat 的 offset/limit 是从 1 开始的逻辑行；按返回的 `next_offset` 续读。`absolute-path` 只映射位置，目标可以尚不存在。
 
-## 深度思考流程控制
+## 固定 Brain Step 提示词
 
-`step start` 返回新轮的 `turnId`，同轮后续操作都传回该 ID。以下示例中的 `'<本轮 ID>'` 替换为实际返回值。
+本地 CLI 只用三个动作，不保存阶段 State 或轮次 ID：
 
-```powershell
-brain-skill --project 'D:/Workspace/my-project' step --help
-brain-skill --project 'D:/Workspace/my-project' step start --message '本轮用户消息原文'
-brain-skill --project 'D:/Workspace/my-project' step submit-work --turn-id '<本轮 ID>' --result '实际 Markdown 成果'
-brain-skill --project 'D:/Workspace/my-project' step submit-review --turn-id '<本轮 ID>'
-brain-skill --project 'D:/Workspace/my-project' step confirm-review --turn-id '<本轮 ID>'
-brain-skill --project 'D:/Workspace/my-project' step read --turn-id '<本轮 ID>'
-```
-
-`step submit-review` / `step confirm-review` 省略 `--result` 表示检视无实质问题，有实际问题则通过 `--result '<问题、依据与影响>'` 提交。首次提交成果用 `step submit-work --result '<Markdown>'`；已通过 update 保存的修正成果用 `step submit-work` 完成修正，不重复提交整篇。
+先获取 Step 1：
 
 ```powershell
-brain-skill --project 'D:/Workspace/my-project' step update --turn-id '<本轮 ID>' --old-text '旧文' --new-text '新文'
-brain-skill --project 'D:/Workspace/my-project' step update --turn-id '<本轮 ID>' --old-text '旧文甲' --new-text '新文甲' --old-text '旧文乙' --new-text '新文乙'
-brain-skill --project 'D:/Workspace/my-project' step submit-work --turn-id '<本轮 ID>' --result-file 'D:/Cache/current-result.md'
+brain-skill step --intro
 ```
 
-较长、包含引号或复杂 Shell 字符的消息和 Markdown 用 `--message-file`、`--result-file`、`--old-text-file`、`--new-text-file` 传完整 UTF-8 原文；这些选项都接受 `-` 从 stdin 读取。通过 Shell 可靠传送 stdin 时不需要创建参数文件。多处替换按顺序重复 `--old-text` 和 `--new-text`，由程序一次提交，旧文必须唯一匹配。返回直接是当前 Markdown 任务或 State 正文，按返回任务继续推进。
+阅读并完成本步骤要求的思考后，单独执行 `brain-skill --project 'D:/Workspace/my-project' step start`，获取 Step 2。完成 Step 2 的要求后再单独执行 `step ready`，取得 Step 3；实际工作取得结果后再单独执行 `step review`，取得 Step 4。每次 Shell 调用只执行一个 `step` 命令，根据本次返回完成工作再进行下一次调用。Step 4 若还有改进点就再次调用 `ready`，否则正式回复。无需 `--turn-id`、`--message`、`--result` 或其它 Step 参数。可用 `step --schema` 查看仅含 `action` 的工具协议。
 
-`step --input-file <file或->` 接受 JSON 请求，后续动作使用 `turnId` 字段。`step --schema` 显示请求契约。
-
-用同一个 ID 和原消息再次调用 `start` 可恢复当前任务。每次省略 ID 的 `start` 都创建独立 State，即使消息完全相同。State 按项目和 Brain 数据根隔离。
+记忆、项目源文件及外部信息的读取与维护继续使用现有独立工具。
 
 ## 发现记忆
 
@@ -118,7 +105,7 @@ mv、rm、feedback 只作用于具体归档文档。mv 保留来源身份及适�
 
 JSON 结果包含 `ok`、`text`、`warnings`、`binding`。binding 包含 sourceRoot、brainRoot、projectId；初始化尚未成功时可能为 null。失败附 `error.code` 与 `error.message`。正文保留现有 Brain 渲染，不额外解析为另一套记忆数据结构。帮助和版本查询始终输出普通文本。
 
-`step` 的 `text` 是当前任务或 State 正文，`turnId` 是本轮 ID。文本模式在 Markdown 后显示 ID。输入参数或 schema 错误退出 2；状态机拒绝退出 1，并返回纠正指导。
+`step` 的 `text` 是相应动作的固定提示词，不使用轮次 ID、成果提交或状态文件。输入参数或 schema 错误退出 2。
 
 - 用法错误：退出码 2，修正参数、路径对象种类、JSON 格式或缺失内容。
 - 操作失败：退出码 1，按具体 code 处理。过期精确替换失败时重读原文，不改成覆盖。

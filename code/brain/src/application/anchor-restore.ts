@@ -1,7 +1,6 @@
 import {
   BRAIN_NORMAL_FLOW,
   BRAIN_PROCESSING_ENTRY,
-  renderDeepFlow,
   type BrainVirtualPath,
 } from "./think-context.ts";
 import {
@@ -45,7 +44,6 @@ import {
   type RelatedProjectErrorProjection,
   type RelatedProjectProjection,
   type RelatedProjectWarningProjection,
-  type ThinkWorkflowProjection,
 } from "./anchor-renderer.ts";
 
 export const L0_MAX_CANDIDATES = 10;
@@ -144,7 +142,6 @@ export class AnchorRestore {
     private readonly operations: AnchorOperationPort,
     private readonly checkpoint: AnchorCheckpointPort,
     private readonly features: BrainRuntimeFeatures = DEFAULT_BRAIN_RUNTIME_FEATURES,
-    private readonly loadThinkWorkflow?: () => Promise<ThinkWorkflowProjection | undefined>,
   ) {}
 
   async runAnchor(_request: AnchorRequest): Promise<AnchorResult> {
@@ -184,11 +181,8 @@ export class AnchorRestore {
 
   async readVirtual(path: BrainVirtualPath, request: AnchorRequest = {}): Promise<AnchorResult> {
     if (path === "@brain-virtual/normal.md") return { context: BRAIN_NORMAL_FLOW, diagnostics: [] };
-    if (path === "@brain-virtual/deep.md") {
-      const workflow = await this.loadThinkWorkflow?.();
-      if (workflow === undefined) throw new Error("think-workflow unavailable");
-      return { context: renderDeepFlow(workflow.absolutePath), diagnostics: [] };
-    }
+    if (path === "@brain-virtual/deep.md")
+      return { context: BRAIN_PROCESSING_ENTRY, diagnostics: [] };
     return this.readMemory(request);
   }
 

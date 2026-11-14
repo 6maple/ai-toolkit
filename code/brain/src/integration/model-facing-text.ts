@@ -1,4 +1,5 @@
 // Model-visible wording; layered composition: doc/brain/v7/17-layered-context.md.
+import { initialPrompt } from "brain/step";
 export const BRAIN_CONTEXT_PREFIX = `# 记忆读取与维护要求
 
 必须严格执行下方要求，并按本轮 Core 中的指引读取和使用记忆。
@@ -42,11 +43,9 @@ export const BRAIN_SCOPE = `## 范围与相关项目
 
 Global cognition跨项目使用；Project cognition用于对应项目。相关项目的普通cognition在实际配置的发现范围内；相关Project Core不自动加载，当前可用路径和权限见本轮相关项目列表。`;
 
-export const BRAIN_EXPLICIT_INSTRUCTION =
-  "每收到一条新的用户消息，在其他实质行动前立即调用 brain_step 的 start(message)，直接进入 Background + Goal 工作。后续调用传回本轮返回的 turnId，并按当前 Markdown 任务完成工作、检视和修正。";
+export const BRAIN_EXPLICIT_INSTRUCTION = initialPrompt;
 
-export const BRAIN_EXPLICIT_STEP_INSTRUCTION =
-  "每收到一条新的用户消息，立即使用本工具的 start(message) 直接进入 Background + Goal / Work。后续调用传回本轮返回的 turnId，并按当前 Markdown 任务完成工作、检视和修正。";
+export const BRAIN_EXPLICIT_STEP_INSTRUCTION = initialPrompt;
 
 export const BRAIN_FAILURE_TEMPLATE = `# 本轮 Brain 上下文未建立
 

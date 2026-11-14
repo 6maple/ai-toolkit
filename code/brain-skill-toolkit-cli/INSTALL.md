@@ -141,7 +141,7 @@ $brain 请结合本项目已有记忆，帮我处理这项工作。
 
 Claude Code 使用 `/brain` 并附上任务。用户选择使用后，AI 才按 skill 调用 Brain；CLI 通过 `step start` 开始正式工作。
 
-用 `step start --message ...` 开始完整工作，随后每次 `step` 都用 `--turn-id <ID>` 传回工具返回的轮次 ID。长文本使用 CLI 的 `--*-file` 选项或标准输入。
+先运行 `brain-skill step --intro` 取得 Step 1，完成其要求的思考后单独调用 `step start`。每次读取返回的提示词并完成相应的思考或实际工作，再单独调用 `step ready`、`step review`。每次 Shell 调用只执行一个 `step` 命令。三个动作无需额外参数或轮次 ID。普通 Brain 记忆写入等长文本操作仍可使用各自的文件输入选项。
 
 运行失败时，记录命令、错误码、错误信息和相关警告，反馈给维护者。命令参考已包含在安装后的 `references/commands.md` 中，目标项目 AI 据此调用公开能力。
 

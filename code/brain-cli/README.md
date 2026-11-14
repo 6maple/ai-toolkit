@@ -20,6 +20,6 @@ Agent 安装和更新命令会复制指定来源中的 Brain、对应宿主插�
 
 宿主 install/update 仅使用默认数据根；`BRAIN_CLI_ROOT` 是隔离验证使用的覆盖入口。CLI 指定其他数据根时，必须对那个根执行 pack 准备并核验。包安装沿用相同跳过、不同报冲突规则，不自动替换官方旧正文或用户修改。冲突在宿主接入变更前返回；方法写入后宿主调用失败时，错误报告已完成的准备步骤，不能视为接入成功。
 
-这六份记忆包含读取指导和专业Skill；思考流程位于Brain的`think-workflow/`资源，在记忆外。包安装保持记忆安装语义，流程选择使用`config.json`的`thinkWorkflowFile`，例如`@internal/think-workflow/brain-ai/index.md`。旧包有用户改动时继续保留冲突预检，不静默覆盖；迁移已安装的旧流程记忆前先保存原文，再更新为读取指导并保留专业记忆及有效入口。
+这六份记忆包含读取指导和专业 Skill；Brain 的工作引导由固定的 Step 1～4 提示词提供，`brain_step` 只需 `start`、`ready`、`review`。方法记忆与固定提示词各有独立职责。旧包有用户改动时继续保留冲突预检，不静默覆盖。
 
 `semantic-search install/update` 使用原安装脚本移入本目录的逻辑。依赖安装完成后仍需在 Brain 全局配置中启用语义搜索并重启宿主。模型可读的辅助说明见 [llm.txt](llm.txt)。

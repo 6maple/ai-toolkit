@@ -108,7 +108,7 @@ describe("built-in virtual context", () => {
         arguments: { path: "@brain-virtual/normal.md" },
       });
       expect(normal.isError).not.toBe(true);
-      expect(textOf(normal)).toContain("@brain-virtual/normal-memory.md");
+      expect(textOf(normal)).toContain('brain_step("start")');
       expect(textOf(normal)).not.toContain("deep-memory");
     });
   });

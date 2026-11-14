@@ -49,12 +49,6 @@ export interface AnchorProjection {
   readonly relatedProjectErrors?: readonly RelatedProjectErrorProjection[];
 }
 
-export interface ThinkWorkflowProjection {
-  readonly source: string;
-  readonly absolutePath: string;
-  readonly text: string;
-}
-
 export function escapeXmlAttribute(value: string): string {
   return value
     .replaceAll("&", "&amp;")
