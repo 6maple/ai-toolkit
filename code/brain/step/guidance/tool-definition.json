@@ -1,6 +1,6 @@
 {
   "name": "brain_step",
-  "description": "返回固定的 Brain 工作提示词。start 返回第二步，ready 返回第三步，review 返回第四步；每次只需提供 action。每次单独调用一个动作，读取返回的提示词，完成其中要求的思考、调查或实际工作后，再根据结果发起下一次调用。",
+  "description": "完成当前 Brain 提示词要求的工作后，提交指定动作和本轮实际形成的思考，取得该动作对应的固定提示词。",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -11,11 +11,16 @@
           "ready",
           "review"
         ],
-        "description": "选择要读取的固定提示词。"
+        "description": "当前 Brain 提示词要求的动作。"
+      },
+      "thought": {
+        "type": "string",
+        "description": "本步骤完成后实际形成的“你的思考”，必填且非空。"
       }
     },
     "required": [
-      "action"
+      "action",
+      "thought"
     ],
     "additionalProperties": false
   }

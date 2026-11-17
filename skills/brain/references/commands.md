@@ -8,12 +8,8 @@
 | -------------------------- | -------------------------------------------------- |
 | `--project <directory>`    | 项目源码根，默认当前目录；任务内固定显式传入       |
 | `--brain-root <directory>` | Brain 数据根，默认 `~/.brain-data`                 |
-| `--json`                   | stdout 输出一个 JSON 结果，日志与警告输出到 stderr |
-| `--help`、`--version`      | 查询帮助或版本，不初始化 Brain                     |
 
 公开路径、正则和 glob 使用引号。公开路径使用正斜杠。归档目录为 `<scope>/memories/{decision,knowledge,intention,skill}/`；Core 是 `<scope>/core.md`。`scope` 是 `@global`、`@project` 或已配置 `#alias`。Core、目录和具体归档文档按不同命令分别使用。
-
-完整工作方式需要维护者先准备正式 brain-ai 六份方法和 Global Core 入口。项目安装按 [接入引导](../../../code/brain-skill-toolkit-cli/INSTALL.md) 使用现有 cat 核验入口及六份正文；自定义 --brain-root 的准备与核验必须使用同一目录。缺少方法时报告就绪缺口，单项记忆操作保持其原有用途。
 
 ## 工作入口与读取
 
@@ -29,19 +25,23 @@ normal/deep 流程及 memory 视图通过 `cat` 分层读取。四份虚拟视�
 
 普通 cat 的 offset/limit 是从 1 开始的逻辑行；按返回的 `next_offset` 续读。`absolute-path` 只映射位置，目标可以尚不存在。
 
-## 固定 Brain Step 提示词
+## `step` 命令
 
-本地 CLI 只用三个动作，不保存阶段 State 或轮次 ID：
-
-先获取 Step 1：
+读取正式初始提示词：
 
 ```powershell
 brain-skill step --intro
 ```
 
-阅读并完成本步骤要求的思考后，单独执行 `brain-skill --project 'D:/Workspace/my-project' step start`，获取 Step 2。完成 Step 2 的要求后再单独执行 `step ready`，取得 Step 3；实际工作取得结果后再单独执行 `step review`，取得 Step 4。每次 Shell 调用只执行一个 `step` 命令，根据本次返回完成工作再进行下一次调用。Step 4 若还有改进点就再次调用 `ready`，否则正式回复。无需 `--turn-id`、`--message`、`--result` 或其它 Step 参数。可用 `step --schema` 查看仅含 `action` 的工具协议。
+提交一个动作并取得对应提示词：
 
-记忆、项目源文件及外部信息的读取与维护继续使用现有独立工具。
+```powershell
+brain-skill --project '<项目根目录>' step <action> --thought '<实际形成的思考>'
+```
+
+`action` 只能是 `start`、`ready`、`review`，分别返回 Step 2、Step 3、Step 4。`--thought` 必须为非空文字；长内容可改用 `--thought-file <file|->`，从 UTF-8 文件或标准输入读取。两种输入方式只能选择一种。
+
+具体使用过程参见 [完整示例](example.md)。
 
 ## 发现记忆
 
@@ -103,14 +103,14 @@ mv、rm、feedback 只作用于具体归档文档。mv 保留来源身份及适�
 
 ## 输出与失败
 
-JSON 结果包含 `ok`、`text`、`warnings`、`binding`。binding 包含 sourceRoot、brainRoot、projectId；初始化尚未成功时可能为 null。失败附 `error.code` 与 `error.message`。正文保留现有 Brain 渲染，不额外解析为另一套记忆数据结构。帮助和版本查询始终输出普通文本。
+命令默认返回可直接阅读的文本。Brain Step 在正文开头给出当前项目路径；其他命令保持各自原有的文本结果。失败返回具体错误信息及非零退出码。
 
-`step` 的 `text` 是相应动作的固定提示词，不使用轮次 ID、成果提交或状态文件。输入参数或 schema 错误退出 2。
+`step` 的 `start`、`ready`、`review` 校验 `action` 和非空 `thought`，在项目路径提示后返回对应的固定提示词，不另外保存 Step 记录。输入参数或 schema 错误退出 2。
 
 - 用法错误：退出码 2，修正参数、路径对象种类、JSON 格式或缺失内容。
 - 操作失败：退出码 1，按具体 code 处理。过期精确替换失败时重读原文，不改成覆盖。
 - `mutation-partially-applied`：可能存在部分持久更改，先重读目标；mv 同时重读来源和目标。
 - `mutation-failed`：操作未完成，此操作先前更改已恢复；修复存储原因后再判断重试。
-- 警告：正文操作可能成功，但辅助状态、历史或索引维护降级。根据警告判断影响，不把它说成全部完成。
+- 只有影响当前操作结果的异常才需要模型处理；内部历史检查点和索引维护诊断不作为普通任务的行动提示。
 
 语义维护暂不可用时，CLI 保存待更新标记，供后续索引恢复；内容搜索可继续。新轮 `step start` 执行记忆周期维护并尝试 Git 检查点。Ctrl+C/SIGTERM 请求中断并清理本次资源。

@@ -1,14 +1,14 @@
 import { format } from "node:util";
 import { readFile } from "node:fs/promises";
 import { parseInvocation } from "./arguments.ts";
-import { executeStep } from "../../brain/step/index.mjs";
+import { executeStep, stepPromptForProject } from "../../brain/step/index.mjs";
 import { CliError, describeError } from "./errors.ts";
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   const warnings: string[] = [];
-  let json = argv.includes("--json");
-  let binding: { sourceRoot: string; brainRoot: string; projectId: string } | null = null;
+  const internalDiagnostics: string[] = [];
   let runtime: Awaited<ReturnType<typeof import("./runtime.ts").createCliRuntime>> | undefined;
+  let project: string | undefined;
   const controller = new AbortController();
   let interrupted = 0;
   const onInterrupt = () => {
@@ -36,21 +36,19 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       process.stdout.write(pkg.version + "\n");
       return;
     }
-    json = invocation.json;
-    // Existing Brain services report auxiliary degradation through console.error.
-    // This process executes one action; collect those diagnostics without scraping
-    // rendered cognition text or mixing logs into JSON stdout.
-    console.error = (...args: unknown[]) => warnings.push(format(...args));
+    project = invocation.project;
+    // Internal Brain diagnostics are kept separate from model-facing results.
+    console.error = (...args: unknown[]) => internalDiagnostics.push(format(...args));
     capture = true;
     if (invocation.command === "step" && invocation.args.action !== "start") {
-      // ready/review only return static text; they need no Brain project runtime.
-      text = executeStep(invocation.args);
+      text = await executeStep(invocation.args);
     } else {
       const { createCliRuntime } = await import("./runtime.ts");
       runtime = await createCliRuntime(invocation, warnings, controller.signal);
-      binding = runtime.binding;
       text = await runtime.execute();
     }
+    if (invocation.command === "step")
+      text = stepPromptForProject(text, runtime?.binding.sourceRoot ?? invocation.project);
     controller.signal.throwIfAborted();
   } catch (error) {
     failure = describeError(error);
@@ -59,7 +57,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     try {
       runtime?.close();
     } catch (error) {
-      warnings.push(
+      internalDiagnostics.push(
         `Resource cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       if (failure === undefined) {
@@ -71,19 +69,10 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     process.removeListener("SIGINT", onInterrupt);
     process.removeListener("SIGTERM", onTerminate);
   }
-  if (json)
-    process.stdout.write(
-      JSON.stringify({
-        ok: failure === undefined,
-        text,
-        warnings,
-        binding,
-        ...(failure === undefined ? {} : { error: failure }),
-      }) + "\n",
-    );
-  else {
-    if (text !== "") process.stdout.write(text + (text.endsWith("\n") ? "" : "\n"));
-    if (failure !== undefined) process.stderr.write(`error: ${failure.code}\n${failure.message}\n`);
+  if (text !== "") process.stdout.write(text + (text.endsWith("\n") ? "" : "\n"));
+  if (failure !== undefined) {
+    if (project !== undefined) process.stderr.write(`当前项目：${project.replaceAll("\\", "/")}\n`);
+    process.stderr.write(`错误：${failure.code}\n${failure.message}\n`);
   }
-  for (const warning of warnings) process.stderr.write(`warning: ${warning}\n`);
+  for (const warning of warnings) process.stderr.write(`警告：${warning}\n`);
 }

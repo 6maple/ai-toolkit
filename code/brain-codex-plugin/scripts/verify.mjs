@@ -179,7 +179,7 @@ async function main() {
     assert.equal(firstHookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     const firstContext = firstHookOutput.hookSpecificOutput.additionalContext;
     assert.equal(typeof firstContext, "string");
-    assert.match(firstContext, /brain_step\("start"\)/);
+    assert.match(firstContext, /brain_step\("start",/);
     assert.match(firstContext, /\[身份\]/);
     assert.doesNotMatch(firstContext, /<core\b/);
     assert.doesNotMatch(firstContext, /<brain_context\b/);
@@ -413,8 +413,8 @@ async function main() {
     })));
     const stepCall = (id, threadId, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { _meta: { threadId }, name: "brain_step", arguments: args } });
     requests.push(
-      stepCall(100, firstHookInput.session_id, { action: "start" }),
-      stepCall(102, secondHookInput.session_id, { action: "start" }),
+      stepCall(100, firstHookInput.session_id, { action: "start", thought: "first project initial assessment" }),
+      stepCall(102, secondHookInput.session_id, { action: "start", thought: "second project initial assessment" }),
     );
     const mcp = await runMcpSession(mcpEntry, {
       cwd: pluginRoot,
@@ -436,24 +436,27 @@ async function main() {
     assert.equal(names.includes("brain_step"), true);
     console.log("PASS MCP omits brain_think after host-owned restoration");
     const stepResponse = (id) => messages.find((message) => message.id === id)?.result;
-    assert.match(stepResponse(100)?.content[0].text, /brain_step\("ready"\)/);
-    assert.match(stepResponse(102)?.content[0].text, /brain_step\("ready"\)/);
+    assert.match(stepResponse(100)?.content[0].text, /brain_step\("ready",/);
+    assert.match(stepResponse(102)?.content[0].text, /brain_step\("ready",/);
+    const firstTurn = /本轮 turnId: ([0-9a-f-]{36})/.exec(stepResponse(100)?.content[0].text)?.[1];
+    const secondTurn = /本轮 turnId: ([0-9a-f-]{36})/.exec(stepResponse(102)?.content[0].text)?.[1];
+    assert.ok(firstTurn && secondTurn && firstTurn !== secondTurn);
     assert.equal(stepResponse(100)?.content.length, 1);
     const next = await runMcpSession(mcpEntry, {
       cwd: pluginRoot,
       env,
       requests: [
         requests[0], requests[1],
-        stepCall(104, firstHookInput.session_id, { action: "ready" }),
-        stepCall(105, firstHookInput.session_id, { action: "review" }),
-        stepCall(106, secondHookInput.session_id, { action: "ready" }),
+        stepCall(104, firstHookInput.session_id, { action: "ready", turnId: firstTurn, thought: "first prepared" }),
+        stepCall(105, firstHookInput.session_id, { action: "review", turnId: firstTurn, thought: "first verified result" }),
+        stepCall(106, secondHookInput.session_id, { action: "ready", turnId: secondTurn, thought: "second prepared" }),
       ],
     });
     const response = (id) => next.messages.find((message) => message.id === id)?.result;
-    assert.match(response(104)?.content[0].text, /brain_step\("review"\)/);
-    assert.match(response(105)?.content[0].text, /否则开始向用户正式汇报/);
-    assert.match(response(106)?.content[0].text, /brain_step\("review"\)/);
-    console.log("PASS stateless brain_step actions across independent Codex sessions");
+    assert.match(response(104)?.content[0].text, /brain_step\("review",/);
+    assert.match(response(105)?.content[0].text, /否则正式跟用户汇报/);
+    assert.match(response(106)?.content[0].text, /brain_step\("review",/);
+    console.log("PASS brain_step journal across independent Codex sessions");
 
     const firstCat = messages.find((message) => message.id === 6);
     const secondCat = messages.find((message) => message.id === 7);
@@ -490,7 +493,7 @@ async function main() {
     const semanticContext = JSON.parse(
       semanticPrompted.stdout,
     ).hookSpecificOutput.additionalContext;
-    assert.match(semanticContext, /brain_step\("start"\)/);
+    assert.match(semanticContext, /brain_step\("start",/);
     assert.doesNotMatch(semanticContext, /## 候选与发现/);
 
     const semanticPermission = await runProcess(permissionHookEntry, {

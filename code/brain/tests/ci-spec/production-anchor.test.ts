@@ -480,7 +480,7 @@ describe("anchor restore", () => {
     };
     const result = await app.runAnchor({});
     expect(checkpoint.calls).toBe(1);
-    expect(result.context).toContain('brain_step("start")');
+    expect(result.context).toContain('brain_step("start",');
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({ kind: "history-checkpoint-degraded" }),
     );
@@ -526,7 +526,7 @@ describe("anchor restore", () => {
     const item = archival("@project/memories/knowledge/visible.md");
     state.add(item, { importance: "critical" });
     const initial = await app.runAnchor({});
-    expect(initial.context).toContain('brain_step("start")');
+    expect(initial.context).toContain('brain_step("start",');
     expect(initial.context).not.toContain("GLOBAL");
     expect(initial.context).not.toContain(formatPublicPath(item));
     expect(state.cycles.get("project")?.cycle).toBe(1);

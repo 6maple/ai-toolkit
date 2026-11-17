@@ -335,17 +335,18 @@ function handlerFor(
       const routed = invocationServices.routed;
       switch (name) {
         case "brain_step": {
-          const text = executeStep(rawArgs);
+          const text = await executeStep(rawArgs);
           if (args.action !== "start" || restoreMode === "host") {
-            return { content: stepResultContent(text) };
+            return {
+              content: stepResultContent(text, invocationServices.sourceRoot ?? process.cwd()),
+            };
           }
           // Explicit hosts previously restored Brain on the first Step call.
           // Preserve that independent lifecycle work without a Step state file.
-          const restored = routed === undefined
-            ? await invocationServices.anchor.runAnchor({})
-            : await routed.think();
+          if (routed === undefined) await invocationServices.anchor.runAnchor({});
+          else await routed.think();
           return {
-            content: stepResultContent(text, restored.diagnostics.map((item) => item.message)),
+            content: stepResultContent(text, invocationServices.sourceRoot ?? process.cwd()),
           };
         }
         case "brain_think": {
@@ -355,7 +356,9 @@ function handlerFor(
               : await routed.think();
           return textResult(
             result.context,
-            result.diagnostics.map((diagnostic) => diagnostic.message),
+            result.diagnostics
+              .filter((diagnostic) => diagnostic.kind === "archival-item-skipped")
+              .map((diagnostic) => diagnostic.message),
           );
         }
         case "brain_absolute_path": {
@@ -446,7 +449,9 @@ function handlerFor(
                 : await routed.readVirtual(path);
             return textResult(
               view.context,
-              view.diagnostics.map((diagnostic) => diagnostic.message),
+              view.diagnostics
+                .filter((diagnostic) => diagnostic.kind === "archival-item-skipped")
+                .map((diagnostic) => diagnostic.message),
             );
           }
           const result =

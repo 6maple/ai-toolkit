@@ -1,5 +1,5 @@
 # Brain 工作入口
 
-当前轮的初始提示词由 Brain Step 的正式 `step1.md` 提供，模型按该提示词调用 `brain_step("start")`，之后根据每次工具返回的固定提示词继续工作。工具只接收 `start`、`ready`、`review` 三个动作，不需要轮次 ID 或成果提交参数。
+当前轮的初始提示词由 Brain Step 的正式 `step1.md` 提供，模型按该提示词调用 `brain_step("start", "你的思考")`，之后根据每次工具返回的固定提示词继续工作。工具只接收 `start`、`ready`、`review` 三个动作和非空 `thought`，不需要轮次 ID 或成果提交参数。
 
 Brain 历史记忆的查找、读取和维护由现有 Brain 记忆工具与 Core 方法承担；实际调查、计划、执行、检视及是否继续改进由模型根据本轮用户消息和真实依据处理。

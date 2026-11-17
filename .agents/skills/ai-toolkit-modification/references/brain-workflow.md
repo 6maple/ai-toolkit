@@ -6,17 +6,17 @@
 
 用户实际评价的是模型完成的工作。模型根据初始「顶尖全能秘书」身份和提醒，自主理解用户的完整需求，主动取得有关的 Brain 记忆、网络和其他外部资料，作出有据的专业判断，调查、执行并检查实际结果。
 
-`brain_step` 只返回固定的提示词，不保存模型的工作过程，也不替模型决定是否做完。当前正式 Prompt 统一放在 `code/brain/step/prompts/step1.md`～`step4.md`，以用户确认的最新文本为准。修改提示词须完整核对用户当前审定文本，不自行补写旧流程。
+`brain_step` 接收模型主动提交的“你的思考”并返回固定提示词；它不维护本轮状态，也无法证明提交的文字来自充分思考。当前正式 Prompt 统一放在 `code/brain/step/prompts/step1.md`～`step4.md`，以用户确认的最新文本为准。修改提示词须完整核对用户当前审定文本，不自行补写旧流程。
 
-初始 Step 1 由 MCP 或宿主 Hook 向模型提供；后续 `brain_step` 只接收 `action`：
+初始 Step 1 由 MCP、宿主 Hook 或 CLI Skill 向模型提供；后续 `brain_step` 使用 `action`、`thought`：
 
 | action | 响应 |
 | --- | --- |
-| `start` | Step 2：重点资源与重新判断 |
-| `ready` | Step 3：模型自主开展工作 |
-| `review` | Step 4：检查实际质量，必要时再次 `ready` |
+| `start` | 返回 Step 2 |
+| `ready` | 返回 Step 3：模型自主工作 |
+| `review` | 返回 Step 4：检视与改进 |
 
-没有 `turnId`、`message`、`result`、`edits`、单轮 Step State、阶段顺序控制或确认动作。模型在每次返回的提示词要求完成之后，才单独调用下一个 Step 动作；Step 3 在完成实际工作并取得结果后进入 Review。模型按照 Step 4 原文决定是返工还是向用户正式汇报；95/100 分是模型引导，并非程序认证的评价。
+`start`、`ready`、`review` 都必须传入非空 `thought`，返回对应提示词，不保存步骤记录，也不维护阶段控制状态。模型在每次返回的提示词要求完成之后，才单独调用下一个 Step 动作；Step 3 在完成实际工作并取得结果后进入 Review。模型按照 Step 4 原文决定是返工还是向用户正式汇报；95/100 分是模型引导，并非程序认证的评价。
 
 ## 源码与接入的核对入口
 

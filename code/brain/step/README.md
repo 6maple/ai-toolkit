@@ -1,30 +1,29 @@
-# brain_step：固定工作提示词
+# brain_step：固定提示词
 
-模型是实际工作主体。程序仅按动作返回固定 Markdown：
+模型按四份正式提示词开展工作。工具验证 `action` 和非空 `thought`，返回一行当前项目路径及对应提示词，不保存步骤状态。
 
-| action | 返回 |
-| --- | --- |
-| `start` | `prompts/step2.md` |
-| `ready` | `prompts/step3.md` |
-| `review` | `prompts/step4.md` |
+| action | 参数 | 返回 |
+| --- | --- | --- |
+| `start` | `action`、`thought` | `prompts/step2.md` |
+| `ready` | `action`、`thought` | `prompts/step3.md` |
+| `review` | `action`、`thought` | `prompts/step4.md` |
 
-`prompts/step1.md` 是第一次调用 `start` 前由宿主或显式 Brain Skill 提供给模型的初始提示词。四份文本来自用户审核的原文，作为模型可见内容的唯一正式来源。
+`prompts/step1.md` 由 MCP、宿主或 CLI Skill 在首次 `start` 之前提供。模型按当前提示词的要求完成思考或实际工作，再提交对应动作。Step 4 若仍有改进点继续 `ready`，否则正式汇报。
 
-每次调用只需 `{ "action": "start" | "ready" | "review" }`，不使用 `turnId`、`message`、`result` 或持久 Step State，不检查动作顺序。模型每次独立调用一个动作，取得提示词后完成本步骤要求的思考或实际工作，再调用下一步。Step 4 要求模型在仍有值得改进之处时再次调用 `ready`，否则直接向用户汇报。
+## MCP 与 CLI
 
-## MCP 入口
+`registerBrainTools` 注册此工具，也可以使用 `registerBrainStep(server)` 单独注册。
 
-`registerBrainTools` 会注册 `brain_step`，直接注册也可：
+CLI 通过 `brain-skill step --intro` 获取 Step 1。完成要求后调用：
 
-```js
-import { registerBrainStep } from "brain/step";
-registerBrainStep(server);
+```powershell
+brain-skill --project '<项目根目录>' step start --thought '初步认识'
 ```
 
-宿主需要的 Brain 记忆恢复、项目绑定与 Git 历史维护属于 Brain 的其他能力。在现有显式 MCP 接入模式下，`start` 继续触发宿主的恢复处理；在 Codex/Claude/DSH Hook 模式下，恢复在用户消息入口执行。以上维护与固定 Step 提示词分发相互独立。
+后续按提示词独立调用 `step ready --thought '...'` 或 `step review --thought '...'`。长内容可通过 `--thought-file <file|->` 传入。
 
-CLI 同样使用三个动作：`brain-skill step start`、`step ready`、`step review`；通过 `brain-skill step --intro` 可读取初始 Step 1 原文。
+显式 MCP/CLI 首次 `start` 仍执行独立的 Brain 记忆恢复和历史维护；Codex、Claude、DSH 宿主在用户消息入口恢复。Brain 长期记忆与本工具的固定提示词返回是不同职责。
 
-## 验证
+## 验证边界
 
-工程测试应核对四份提示词与人工稿完全一致、MCP/CLI 只接受三个动作、任意顺序均返回对应固定文本、不会创建 Step State 文件，以及独立的 Brain 记忆与宿主恢复不受影响。模型是否真实查证、执行和改进需要实际使用场景验证。
+测试核对四份提示词、输入约束、MCP/CLI 调用及宿主恢复。程序验证参数与返回内容，模型是否真正充分思考、实际完成任务仍需在真实场景中观察。

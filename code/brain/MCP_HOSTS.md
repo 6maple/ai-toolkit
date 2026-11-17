@@ -9,7 +9,7 @@
 - multiplexed host MCP 必须为每次调用解析出可信 source/project binding，不得把长驻进程 cwd 当成当前 project；宿主可用自己的 session/thread id 找到该 binding；
 - 同一 ProjectId 可在 `project.json` 中登记多个 source roots；
 - `BRAIN_ASK_LONG_TERM` = `none`（默认）或 `protect`；
-- `brain_step` 是无状态工具，`start`、`ready`、`review` 只返回固定提示词，不使用 `turnId`。宿主提供的上下文仅用于其它 Brain 记忆服务的项目绑定。
+- `brain_step` 接收 `action` 和 `thought` 并返回固定步骤提示词；不单独保存 Step 思考记录。宿主项目绑定仍用于恢复正确的 Brain 记忆。
 
 ## 2. DSH（DeepSeek Harness）
 

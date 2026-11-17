@@ -50,7 +50,6 @@ function run(f, args, options = {}) {
         f.brain,
         "--project",
         options.project ?? f.project,
-        "--json",
         ...args,
       ],
       {
@@ -84,19 +83,7 @@ function run(f, args, options = {}) {
     });
     child.once("close", (code) => {
       clearTimeout(timer);
-      let result;
-      if (
-        code !== 0 ||
-        (!args.includes("--help") && !args.includes("--version") && !args.includes("--schema") && !args.includes("--intro"))
-      ) {
-        try {
-          result = JSON.parse(stdout);
-        } catch {
-          reject(new Error(`Invalid CLI JSON (${code}): ${stdout}\n${stderr}`));
-          return;
-        }
-      }
-      resolve({ code, stdout, stderr, result });
+      resolve({ code, stdout, stderr });
     });
     child.stdin.on("error", () => {});
     child.stdin.end(options.input ?? "");
@@ -106,8 +93,7 @@ function run(f, args, options = {}) {
 async function ok(f, args, options) {
   const response = await run(f, args, options);
   assert.equal(response.code, 0, response.stderr + response.stdout);
-  assert.equal(response.result.ok, true);
-  return response.result;
+  return { text: response.stdout.trimEnd(), warnings: response.stderr.split(/\r?\n/).filter(Boolean) };
 }
 
 void test("CLI and existing MCP exchange cognition and current challenge state", async (t) => {
@@ -167,7 +153,6 @@ void test("interrupting streamed input exits without initializing Brain", async 
     f.brain,
     "--project",
     f.project,
-    "--json",
     "write",
     memoryPath,
     "--content-file",
@@ -202,7 +187,7 @@ void test("interrupting streamed input exits without initializing Brain", async 
     child.stdin.write("---\n");
   });
   assert.equal(response.code, 130, response.stderr);
-  assert.equal(JSON.parse(response.stdout).ok, false);
+  assert.match(response.stderr, /错误：|error:/);
   await assert.rejects(fs.stat(f.brain), { code: "ENOENT" });
 });
 
@@ -232,37 +217,41 @@ void test("stub help/version and invalid arguments do not initialize Brain", asy
     ["step", "read"],
     ["step", "read", "--turn-id", "host-session"],
     ["step", "--input-file", "-", "--schema"],
+    ["step", "start", "--thought", "x", "--json"],
   ]) {
     const response = await run(f, args);
     assert.equal(response.code, 2, response.stdout);
-    assert.equal(response.result.error.code, "usage");
-    assert.equal(response.result.binding, null);
+    assert.match(response.stderr, /错误：usage/);
   }
   await assert.rejects(fs.stat(f.brain), { code: "ENOENT" });
 });
 
-void test("CLI Step uses fixed prompts and no turn state", async (t) => {
+void test("CLI Step returns fixed prompts without turn IDs or journal files", async (t) => {
   const f = await fixture(t);
-  const first = await run(f, ["step", "--intro"]);
-  assert.equal(first.code, 0);
-  assert.match(first.stdout, /\[身份\]/);
-  assert.match(first.stdout, /brain_step\("start"\)/);
-  for (const [action, expected] of [
-    ["ready", /brain_step\("review"\)/],
-    ["review", /否则开始向用户正式汇报/],
-    ["ready", /brain_step\("review"\)/],
-  ]) {
-    const r = await ok(f, ["step", action]);
-    assert.match(r.text, expected);
-    assert.equal(r.binding, null);
-    assert.equal(r.turnId, undefined);
-  }
-  await assert.rejects(fs.stat(f.brain), { code: "ENOENT" });
-  const started = await ok(f, ["step", "start"]);
-  assert.match(started.text, /brain_step\("ready"\)/);
-  assert.equal(started.turnId, undefined);
-  assert.ok(started.binding);
-  await assert.rejects(fs.stat(path.join(f.project, ".brain-working", "brain-step")), { code: "ENOENT" });
+  const intro = await run(f, ["step", "--intro"]);
+  assert.equal(intro.code, 0);
+  assert.match(intro.stdout, /brain_step\("start",/);
+  assert.match(intro.stdout, /^当前项目：/);
+  const noThought = await run(f, ["step", "start"]);
+  assert.equal(noThought.code, 2);
+  const started = await ok(f, ["step", "start", "--thought", "第一轮想法"]);
+  assert.match(started.text, /brain_step\("ready",/);
+  assert.doesNotMatch(started.text, /turnId/);
+  assert.match(started.text, /^当前项目：/);
+  assert.ok(!started.warnings.some((warning) => warning.includes("Git history checkpoint")));
+  const thought = path.join(f.temp, "思考.md");
+  await fs.writeFile(thought, "结合外部资料重新考虑\n实际下一步");
+  const ready = await ok(f, ["step", "ready", "--thought-file", thought]);
+  assert.match(ready.text, /brain_step\("review",/);
+  const reviewed = await ok(f, ["step", "review", "--thought", "实际完成与复盘"]);
+  assert.doesNotMatch(reviewed.text, /turnId/);
+  await assert.rejects(fs.stat(path.join(f.project, ".brain-working", "brain-step")), {
+    code: "ENOENT",
+  });
+  const invalid = await run(f, ["step", "ready", "--turn-id", "old-id", "--thought", "x"]);
+  assert.equal(invalid.code, 2);
+  const removed = await run(f, ["step", "read", "--thought", "x"]);
+  assert.equal(removed.code, 2);
 });
 
 void test("UTF-8 file/stdin roundtrip, pagination and all discovery commands", async (t) => {
@@ -284,8 +273,8 @@ void test("UTF-8 file/stdin roundtrip, pagination and all discovery commands", a
     /release.md/,
   );
   const empty = await ok(f, ["grep", "does-not-exist", "--literal"]);
-  assert.equal(empty.ok, true);
-  assert.equal(created.binding.projectId, rest.binding.projectId);
+  assert.match(empty.text, /no matching/i);
+  assert.match(created.text, /release\.md/);
   await ok(f, ["edit", memoryPath, "--content-file", "-"], { input: markdown("修订后\n") });
   assert.equal(await fs.readFile(physical, "utf8"), markdown("修订后\n"));
 });
@@ -297,7 +286,7 @@ void test("Core exact edits are atomic and stale edits fail across processes", a
     input: "overwrite",
   });
   assert.equal(refused.code, 1);
-  assert.equal(refused.result.error.code, "nonempty-core-requires-exact-edit");
+  assert.match(refused.stderr, /nonempty-core-requires-exact-edit/);
   const edits = JSON.stringify([{ oldText: "original", newText: "updated" }]);
   const responses = await Promise.all([
     run(f, ["edit", "@project/core.md", "--edits-file", "-"], { input: edits }),
@@ -344,10 +333,10 @@ void test("project binding stays explicit and related aliases retain permissions
   const subdirectory = path.join(f.project, "src");
   await fs.mkdir(related);
   await fs.mkdir(subdirectory);
-  const current = await ok(f, ["cat", "@project/core.md"]);
+  const current = await ok(f, ["absolute-path", "@project/core.md"]);
   assert.equal(
-    (await ok(f, ["cat", "@project/core.md"], { cwd: subdirectory })).binding.projectId,
-    current.binding.projectId,
+    (await ok(f, ["absolute-path", "@project/core.md"], { cwd: subdirectory })).text,
+    current.text,
   );
   await ok(f, ["write", memoryPath, "--content-file", "-"], {
     project: related,
@@ -365,7 +354,7 @@ void test("project binding stays explicit and related aliases retain permissions
   const denied = await run(f, ["write", aliasPath, "--content-file", "-"], {
     input: markdown("denied"),
   });
-  assert.equal(denied.result.error.code, "related-project-read-only");
+  assert.match(denied.stderr, /related-project-read-only/);
   await fs.writeFile(
     configPath,
     JSON.stringify({ relatedProjects: { related: { path: "../related", access: "write" } } }),
@@ -383,8 +372,8 @@ void test("virtual guidance uses configured workflow", async (t) => {
     path.join(f.brain, "config.json"),
     JSON.stringify({ thinkWorkflowFile: workflow }),
   );
-  assert.match((await ok(f, ["cat", "@brain-virtual/normal.md"])).text, /\[身份\]/);
-  assert.match((await ok(f, ["cat", "@brain-virtual/deep.md"])).text, /brain_step\("start"\)/);
+  assert.match((await ok(f, ["cat", "@brain-virtual/normal.md"])).text, /brain_step\("start",/);
+  assert.match((await ok(f, ["cat", "@brain-virtual/deep.md"])).text, /brain_step\("start",/);
   assert.match((await ok(f, ["cat", "@brain-virtual/deep-memory.md"])).text, /Global Core/);
 });
 
@@ -392,7 +381,7 @@ void test("semantic disabled/unavailable differs from an empty result and defers
   const f = await fixture(t);
   const disabled = await run(f, ["ask-search", "发布决定"]);
   assert.equal(disabled.code, 1);
-  assert.equal(disabled.result.error.code, "semantic-search-disabled");
+  assert.match(disabled.stderr, /semantic-search-disabled/);
   await fs.mkdir(f.brain, { recursive: true });
   await fs.writeFile(
     path.join(f.brain, "config.json"),
@@ -400,9 +389,9 @@ void test("semantic disabled/unavailable differs from an empty result and defers
   );
   const unavailable = await run(f, ["ask-search", "发布决定"]);
   assert.equal(unavailable.code, 1);
-  assert.equal(unavailable.result.error.code, "semantic-search-unavailable");
+  assert.match(unavailable.stderr, /semantic-search-unavailable/);
   const saved = await ok(f, ["write", memoryPath, "--content-file", "-"], { input: markdown() });
-  assert.ok(saved.warnings.some((warning) => warning.includes("Semantic index update deferred")));
+  assert.ok(!saved.warnings.some((warning) => warning.includes("Semantic index update deferred")));
   const pending = await fs.readdir(path.join(f.brain, ".runtime", "semantic-search", "pending"));
   assert.ok(pending.some((name) => name.endsWith(".pending")));
   const read = await ok(f, ["cat", memoryPath]);

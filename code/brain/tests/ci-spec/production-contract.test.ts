@@ -153,7 +153,9 @@ describe("generic MCP public contract", () => {
   test("keeps semantic search off by default while the canonical tool source contains the optional definition", () => {
     const { services } = fakeServices();
     const registered = captureRegistration(services);
-    expect([...registered.keys()].sort()).toEqual(EXPECTED_TOOLS.filter((name) => name !== "brain_think"));
+    expect([...registered.keys()].sort()).toEqual(
+      EXPECTED_TOOLS.filter((name) => name !== "brain_think"),
+    );
     expect(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name).sort()).toEqual(EXPECTED_SEMANTIC_TOOLS);
     expect(new Set(PUBLIC_BRAIN_TOOLS.map((tool) => tool.name)).size).toBe(13);
     for (const tool of PUBLIC_BRAIN_TOOLS) {
@@ -171,7 +173,9 @@ describe("generic MCP public contract", () => {
     const registered = captureRegistration(services, {
       features: { semanticSearch: true },
     } as BrainToolRegistrationOptions);
-    expect([...registered.keys()].sort()).toEqual(EXPECTED_SEMANTIC_TOOLS.filter((name) => name !== "brain_think"));
+    expect([...registered.keys()].sort()).toEqual(
+      EXPECTED_SEMANTIC_TOOLS.filter((name) => name !== "brain_think"),
+    );
   });
 
   test("declares brain_think as closed-world and non-destructive without claiming read-only or idempotent behavior", () => {
@@ -186,7 +190,10 @@ describe("generic MCP public contract", () => {
 
   test("a host-owned lifecycle operation can be omitted without changing the canonical tool source", () => {
     const { services } = fakeServices();
-    const registered = captureRegistration(services, { restoreMode: "host", exclude: ["brain_think"] });
+    const registered = captureRegistration(services, {
+      restoreMode: "host",
+      exclude: ["brain_think"],
+    });
     expect([...registered.keys()].sort()).toEqual(
       EXPECTED_TOOLS.filter((name) => name !== "brain_think"),
     );
@@ -198,7 +205,10 @@ describe("generic MCP public contract", () => {
     const context = `<brain_think_context>\n${"完整认知正文\n".repeat(2_000)}</brain_think_context>\n`;
     services.anchor.runAnchor = vi.fn(async () => ({
       context,
-      diagnostics: [{ code: "test-warning", message: "restore warning" }],
+      diagnostics: [
+        { kind: "history-checkpoint-degraded", message: "Git history checkpoint was not recorded" },
+        { kind: "archival-item-skipped", message: "An archival cognition could not be read" },
+      ],
     })) as never;
     const pageText = "1: first line\nnext_offset: 2\n";
     services.reads.cat = vi.fn(async () => ({ page: {}, text: pageText })) as never;
@@ -241,7 +251,7 @@ describe("generic MCP public contract", () => {
       expect(restored.structuredContent).toBeUndefined();
       expect(restored.content).toEqual([
         { type: "text", text: context },
-        { type: "text", text: "warning: restore warning" },
+        { type: "text", text: "warning: An archival cognition could not be read" },
       ]);
       const page = await client.callTool({
         name: "brain_cat",

@@ -9,5 +9,12 @@ export const definition = JSON.parse(
 );
 
 export const inputSchema = z.strictObject({
-  action: z.enum(["start", "ready", "review"]).describe("在完成当前步骤要求后，选择下一项固定 Brain Step 提示词。"),
+  action: z
+    .enum(["start", "ready", "review"])
+    .describe("选择当前步骤完成后需要取得的下一份 Brain 提示词。"),
+  thought: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("你的思考：完成当前步骤后实际形成的认识、判断或工作情况。"),
 });

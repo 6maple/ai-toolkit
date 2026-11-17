@@ -50,34 +50,23 @@ try {
 
 本机安装位置为 `C:/Users/Maple/.local/bin`，已在系统 PATH 中；包链接指向本仓库的 `code/brain-skill-toolkit-cli`。
 
-## 验证与日常使用
+## 日常使用
 
-在仓库以外的目录，分别用 PowerShell 和 Git Bash 执行：
-
-```powershell
-brain-skill --version
-brain-skill --help
-brain-skill step --help
-brain-skill step --schema
-```
-
-这些查询只读取 CLI 信息。命令找不到时，PowerShell 用 `Get-Command brain-skill`、Bash 用 `command -v brain-skill` 检查解析位置和宿主实际 PATH。若 PATH 尚未更新，PowerShell 可先执行 `& "$HOME/.local/bin/brain-skill.cmd" --version`。
-
-再按 [项目安装引导](INSTALL.md) 安装 Skill 并验证目标项目绑定。完整 Brain 工作先通过 `step --intro` 读取 Step 1，然后按提示词使用三个固定动作：
+按 [项目安装引导](INSTALL.md) 安装 Skill 并验证目标项目绑定。完整 Brain 工作先通过 `step --intro` 读取 Step 1，然后按提示词使用三个固定动作：
 
 ```powershell
 brain-skill step --intro
 ```
 
-按 Step 1 完成思考后，单独执行 `brain-skill --project 'D:/Workspace/my-project' step start`，再根据返回的 Step 2 完成相应思考；准备好后单独执行 `step ready`，实际工作并取得结果后再单独执行 `step review`。每次 Shell 调用只执行一个 `step` 命令，阅读返回内容并完成当前工作后才进入下一步。项目记忆可另行读取，例如 `brain-skill --project 'D:/Workspace/my-project' cat '@project/core.md'`。
+按 Step 1 完成思考后，单独执行 `brain-skill --project 'D:/Workspace/my-project' step start --thought '初步认识'`，取得 Step 2。之后按照当前提示词要求，使用 `step ready --thought '更新后的认识'` 或 `step review --thought '实际结果与复检'`；较长内容可用 `--thought-file <file|->`。每次 Shell 调用只执行当前步骤要求的动作。项目记忆可另行读取，例如 `brain-skill --project 'D:/Workspace/my-project' cat '@project/core.md'`。
 
-`step start`、`ready`、`review` 分别返回固定的 Step 2、3、4 Markdown，不使用轮次 ID、消息或成果提交字段；评估有改进点时由模型根据 Step 4 再次调用 `ready`。 `step --schema` 显示只有 `action` 的调用契约。
+`start`、`ready`、`review` 校验 `action` 和 `thought`，直接返回一行当前项目路径和对应的 Step 提示词，不单独存储步骤记录。内部历史维护诊断不作为模型的工作提示。
 
-完整命令与错误处理见 [命令参考](../../skills/brain/references/commands.md)。所有命令都有 `--help`。默认数据根为 `~/.brain-data`，使用 `--brain-root` 选择隔离数据环境；`--project` 指定项目源码根。Brain 记忆读写、争议与权限沿用既有行为。只有 `start` 保留首次 Brain 维护；`ready` 和 `review` 直接取得本地静态文本。
+完整命令与错误处理见 [命令参考](../../skills/brain/references/commands.md)。所有命令都有 `--help`。默认数据根为 `~/.brain-data`，使用 `--brain-root` 选择隔离数据环境；`--project` 指定项目源码根。Brain 记忆读写、争议与权限沿用既有行为。只有 `start` 保留首次 Brain 维护；其他 Step 动作只返回对应提示词。
 
 `build` 与 `stub` 都运行 `unbuild --stub`。安装和链接必须保留 CLI、相邻 Brain 源码及依赖的位置关系；源码更新后新命令进程使用更新内容。该目录按仓库内使用设计，不能仅复制 dist 文件执行。
 
-源码内容更新后通常无需重新链接；依赖变化时重新安装对应依赖，构建配置或入口变化时重新生成 stub。仓库搬家后在新位置重新执行本地链接，再核对命令解析和版本。其他机器需要各自安装本地命令，复制 skill 不会安装 CLI。
+源码内容更新后通常无需重新链接；依赖变化时重新安装对应依赖，构建配置或入口变化时重新生成 stub。仓库搬家后在新位置重新执行本地链接。其他机器需要各自安装本地命令，复制 skill 不会安装 CLI。
 
 卸载本机命令时，指定同一个安装目录和包名（包名为 `brain-skill-toolkit-cli`，命令名为 `brain-skill`）：
 

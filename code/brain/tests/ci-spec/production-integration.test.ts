@@ -81,7 +81,7 @@ describe("real runtime + MCP integration", () => {
 
       const think = await client.callTool({ name: "brain_think", arguments: {} });
       expect(think.isError).not.toBe(true);
-      expect(textOf(think)).toContain('brain_step("start")');
+      expect(textOf(think)).toContain('brain_step("start",');
       expect(textOf(think)).not.toContain("@project/memories/knowledge/real.md");
       const view = await client.callTool({
         name: "brain_cat",

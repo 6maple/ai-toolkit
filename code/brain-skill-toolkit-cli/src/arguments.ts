@@ -8,8 +8,7 @@ import {
 } from "../../brain/src/integration/public-tools.ts";
 import { CliError } from "./errors.ts";
 import { definition as stepDefinition } from "../../brain/step/index.mjs";
-import { BRAIN_EXPLICIT_STEP_INSTRUCTION } from "../../brain/src/integration/model-facing-text.ts";
-import { initialPrompt } from "../../brain/step/index.mjs";
+import { initialPrompt, stepPromptForProject } from "../../brain/step/index.mjs";
 
 interface Command {
   tool: BrainToolName;
@@ -22,10 +21,10 @@ interface Command {
 export const COMMANDS: Record<string, Command> = {
   step: {
     tool: "brain_step",
-    usage: "step <start|ready|review> | step --intro | step --schema",
-    description: BRAIN_EXPLICIT_STEP_INSTRUCTION,
+    usage: "step <start|ready|review> --thought <text> | step --intro | step --schema",
+    description: "Return the Brain prompt for the selected step action.",
     positional: [],
-    options: ["intro", "schema"],
+    options: ["intro", "schema", "thought", "thought-file"],
   },
   cat: {
     tool: "brain_cat",
@@ -117,8 +116,8 @@ const STEP_ACTIONS: Record<string, string> = {
   ready: "ready",
   review: "review",
 };
-const COMMON = ["project", "brain-root", "json", "help", "version"];
-const BOOLEAN = new Set(["json", "help", "version", "literal", "ignore-case", "schema", "intro"]);
+const COMMON = ["project", "brain-root", "help", "version"];
+const BOOLEAN = new Set(["help", "version", "literal", "ignore-case", "schema", "intro"]);
 const OPTIONS = Object.fromEntries(
   [...new Set([...COMMON, ...Object.values(COMMANDS).flatMap((command) => command.options)])].map(
     (name) => [name, { type: BOOLEAN.has(name) ? "boolean" : "string", ...(["old-text", "new-text"].includes(name) ? { multiple: true } : {}) }],
@@ -131,7 +130,6 @@ export interface Invocation {
   args: Record<string, unknown>;
   project: string;
   brainRoot?: string;
-  json: boolean;
 }
 
 export function help(command?: string): string {
@@ -156,12 +154,11 @@ export function help(command?: string): string {
           ...(command === "step"
             ? [
                 "",
-                "Step actions: start, ready, review. Run one step command per invocation; complete the returned task before requesting the next step.",
-                "  step --intro   Show the initial Brain prompt before start",
-                "  step start     Read step2.md",
-                "  step ready     Read step3.md",
-                "  step review    Read step4.md",
-                "  step --schema  Display the action-only JSON schema",
+                "  --intro                 Show the initial Brain prompt",
+                "  <action>                start, ready, or review",
+                "  --thought <text>        Submit a nonempty thought for the selected action",
+                "  --thought-file <file|->  Read thought from a UTF-8 file or stdin instead",
+                "  --schema                Display the input schema",
               ]
             : []),
         ]),
@@ -169,13 +166,11 @@ export function help(command?: string): string {
     "Common options (before or after the command):",
     "  --project <directory>     Project source root (default: current directory)",
     "  --brain-root <directory>  Brain data root (default: ~/.brain-data)",
-    "  --json                    One JSON result on stdout, including errors",
     "  --help                    Show help; use <command> --help for syntax",
     "  --version                 Show version",
     "",
     "Public paths: @global, @project, configured #alias; quote paths and glob patterns.",
     "Content/edits/challenge/input files are UTF-8; '-' reads stdin. Commands never prompt.",
-    "Example (one command per invocation): brain-skill step --intro",
   ].join("\n");
 }
 
@@ -232,7 +227,7 @@ export async function parseInvocation(
   if (values.intro) {
     if (command !== "step" || positionals.length !== 1 || values.schema)
       throw new CliError("usage", "Use step --intro without an action or --schema.", 2);
-    return { help: initialPrompt };
+    return { help: stepPromptForProject(initialPrompt, resolve(String(values.project ?? process.cwd()))) };
   }
   if (values.schema) {
     if (command !== "step" || positionals.length !== 1)
@@ -241,6 +236,8 @@ export async function parseInvocation(
   }
   if (command === "step" && stepAction === undefined)
     throw new CliError("usage", `Usage: brain-skill ${spec.usage}`, 2);
+  if (command === "step" && values.thought !== undefined && values["thought-file"] !== undefined)
+    throw new CliError("usage", "Use only one of --thought and --thought-file.", 2);
   // Check missing/ambiguous input before reading stdin or creating a Brain project.
   if (command === "write" && values["content-file"] === undefined)
     throw new CliError("usage", "write requires --content-file <file|->.", 2);
@@ -268,7 +265,11 @@ export async function parseInvocation(
   for (const name of spec.options) {
     const value = values[name];
     if (value === undefined) continue;
-    if (stepAction !== undefined && command === "step") continue;
+    if (command === "step") {
+      if (name === "thought") args.thought = String(value);
+      else if (name === "thought-file") args.thought = await inputFile(String(value), signal);
+      continue;
+    }
     if (name.endsWith("-file")) {
       const text = await inputFile(String(value), signal);
       if (name === "edits-file") {
@@ -307,6 +308,5 @@ export async function parseInvocation(
     ...(values["brain-root"] === undefined
       ? {}
       : { brainRoot: resolve(String(values["brain-root"])) }),
-    json: values.json === true,
   };
 }

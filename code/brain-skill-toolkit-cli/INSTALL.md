@@ -2,7 +2,7 @@
 
 这份引导给目标项目的使用者或 AI 执行。Brain 的安装、依赖、构建，以及实际数据根中的六份正式 brain-ai 方法和 Global Core 入口已经由维护者准备好；目标项目只使用现成命令与 skill 文件。
 
-维护者首次准备本机 CLI 时，先按 [README 的本地安装步骤](README.md#本地安装命令windows--powershell) 安装依赖、生成 stub 并执行本地 `npm link`。无需发布包。先在目标宿主中确认 `brain-skill --version`、`step --help`、`step --schema` 可用，再执行本页项目接入；复制或链接 skill 本身不会安装 CLI。
+维护者首次准备本机 CLI 时，按 [README 的本地安装步骤](README.md#本地安装命令windows--powershell) 安装依赖、生成 stub 并执行本地 `npm link`。复制或链接 skill 本身不会安装 CLI。
 
 ## 接入需要的信息
 
@@ -27,13 +27,12 @@
 现成 skill 目录：D:/Workspace/ai-projects/ai-toolkit/skills/brain
 AI 宿主：<当前宿主，例如 Codex 或 Claude Code>
 
-把 Brain 当作已就绪的外部工具，只使用公开 CLI、帮助和交付的 skill。
+把 Brain 当作已就绪的外部工具，使用公开 CLI 和交付的 skill。
 依赖安装、构建和维护由 Brain 维护者负责；不要进入 Brain 实现代码、重新安装/构建它，
 或向当前项目添加 Brain 的源码和依赖。
 
 请完成项目范围的接入：
-1. 确认目标项目根、当前宿主和现成 skill 路径，执行 CLI 的 --version 与 --help。
-   命令不可用时使用维护者已提供的绝对入口；没有可用入口则报告具体错误，交由维护者处理。
+1. 根据提供的信息确定目标项目根、当前宿主、CLI 入口和现成 skill 路径。
 2. 检查当前宿主的项目级 skill 目录。Codex 使用 .agents/skills/brain，
    Claude Code 使用 .claude/skills/brain；其他宿主先取得其准确目录与调用规则。
 3. 将整个现成 skill 目录复制到对应目标位置，包含 SKILL.md、references、agents。
@@ -43,22 +42,20 @@ AI 宿主：<当前宿主，例如 Codex 或 Claude Code>
    Claude Code 仅在目标副本 SKILL.md 的 YAML frontmatter 添加
    disable-model-invocation: true，保留其他字段与正文；不要修改交付源文件。
    共享目录链接没有独立副本，不在链接内添加宿主专用字段；需要此字段时使用独立副本。
-5. 执行 brain-skill --project '<目标项目根>' --json cat '@project/core.md'。
-   检查退出码为 0、ok 为 true，且 binding.sourceRoot 对应目标项目根。
-   Project Core 为空是正常结果。报告有影响的警告。
+5. 执行 `brain-skill --project '<目标项目根>' cat '@project/core.md'`。
+   检查命令成功返回 Project Core 正文；Core 为空是正常结果。
+   项目根路径由 `--project` 指定，并核对该目录的实际路径。
    使用同一 --project 和 --brain-root 读取 @global/core.md，核对正式方法入口；
    再读取 @global/memories/skill/brain-ai/ 下的 core.md、software.md、agentic-software.md、
    instructions.md、user-facing-expression.md、report-writing.md，确认六份正文均可用。
-   六份方法的 cat 结果均须退出码为 0、ok 为 true；可用 --limit 限制输出，无需逐页读完。
+   六份方法的 `cat` 命令均须成功；可用 `--limit` 限制输出，无需逐页读完。
    实际任务按适用条件读取完整方法正文。
    缺少方法或入口时报告完整环境未就绪，交由维护者准备；不自行写入 Global。
-   另外执行 brain-skill step --help 与 brain-skill step --schema，确认交付包含流程控制命令。
-6. 报告 skill 安装位置、CLI 入口与版本、项目绑定验证结果、用户如何显式调用，
+6. 报告 skill 安装位置、CLI 入口、项目绑定验证结果、用户如何显式调用，
    并分别说明方法记忆/入口的就绪情况，以及宿主是否已经实际发现该 skill。
 
 本次接入只安装项目 skill 并验证命令，不启用“每轮强制使用 Brain”，
 不新增 MCP/hook，不改变全局配置，也不修改当前项目的业务代码。
-安装验证通过帮助和 schema 检查流程入口。
 ```
 
 没有指定其他目标目录时，在该项目聊天中根据已知工作区确定项目根，不把 Brain 的交付目录当作目标项目。
@@ -105,10 +102,6 @@ $targetProject = (Resolve-Path -LiteralPath 'D:/Workspace/my-project' -ErrorActi
 $skillsParent = Join-Path $targetProject '.agents/skills'
 $targetSkill = Join-Path $skillsParent 'brain'
 
-Get-Command brain-skill -ErrorAction Stop | Out-Null
-brain-skill --version
-if ($LASTEXITCODE -ne 0) { throw '现成 Brain 命令不可用，请向维护者反馈' }
-
 if (-not (Test-Path -LiteralPath (Join-Path $preparedSkill 'SKILL.md'))) {
     throw '现成 skill 路径不正确，请核对维护者提供的位置'
 }
@@ -119,17 +112,15 @@ if (Test-Path -LiteralPath $targetSkill) {
 New-Item -ItemType Directory -Path $skillsParent -Force -ErrorAction Stop | Out-Null
 Copy-Item -LiteralPath $preparedSkill -Destination $targetSkill -Recurse -ErrorAction Stop
 
-$verificationJson = brain-skill --project $targetProject --json cat '@project/core.md'
-if ($LASTEXITCODE -ne 0) { throw 'Brain 项目绑定验证失败，请查看返回错误' }
-$verification = $verificationJson | ConvertFrom-Json -ErrorAction Stop
-if (-not $verification.ok) { throw 'Brain 未返回成功结果' }
-$verification.binding
-$verification.warnings
+brain-skill --project $targetProject cat '@project/core.md'
+if ($LASTEXITCODE -ne 0) { throw 'Brain 项目读取失败，请查看返回错误' }
+brain-skill --project $targetProject absolute-path '@project/core.md'
+if ($LASTEXITCODE -ne 0) { throw 'Brain 项目路径解析失败，请查看返回错误' }
 ```
 
-若使用维护者提供的绝对命令路径，PowerShell 调用形式为 `& '<CLI绝对路径>' --version`，其余参数保持相同。
+若使用维护者提供的绝对命令路径，PowerShell 调用形式为 `& '<CLI绝对路径>' <命令和参数>`。
 
-核对打印出的 `binding.sourceRoot` 是否对应实际项目根（有目录链接时以真实目录为准）。cat 验证会建立或恢复目标项目在 Brain 中的绑定，可能初始化项目记忆入口。空 Project Core 可以正常使用，不需要为安装凑写项目记忆；这不代表 Global 方法记忆和读取入口已齐备，还需完成前述六份正文与 Global Core 核验。原有 Brain 数据和已配置的可选能力由维护者负责。
+核对命令使用的 `$targetProject` 是目标项目实际源码根（有目录链接时以真实目录为准）。`cat` 验证会建立或恢复目标项目在 Brain 中的绑定，可能初始化项目记忆入口。空 Project Core 可以正常使用，不需要为安装凑写项目记忆；这不代表 Global 方法记忆和读取入口已齐备，还需完成前述六份正文与 Global Core 核验。原有 Brain 数据和已配置的可选能力由维护者负责。
 
 ## 安装后的使用
 
@@ -141,7 +132,7 @@ $brain 请结合本项目已有记忆，帮我处理这项工作。
 
 Claude Code 使用 `/brain` 并附上任务。用户选择使用后，AI 才按 skill 调用 Brain；CLI 通过 `step start` 开始正式工作。
 
-先运行 `brain-skill step --intro` 取得 Step 1，完成其要求的思考后单独调用 `step start`。每次读取返回的提示词并完成相应的思考或实际工作，再单独调用 `step ready`、`step review`。每次 Shell 调用只执行一个 `step` 命令。三个动作无需额外参数或轮次 ID。普通 Brain 记忆写入等长文本操作仍可使用各自的文件输入选项。
+先运行 `brain-skill step --intro` 取得 Step 1，完成其要求的思考后单独执行 `step start --thought '初步认识'`。随后按当前提示词要求，使用 `step ready --thought '进一步认识'`、`step review --thought '结果与检视'`；长内容用 `--thought-file <file|->`。每次 Shell 调用只执行当前步骤要求的动作。普通 Brain 记忆写入仍使用已有独立工具。
 
 运行失败时，记录命令、错误码、错误信息和相关警告，反馈给维护者。命令参考已包含在安装后的 `references/commands.md` 中，目标项目 AI 据此调用公开能力。
 

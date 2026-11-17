@@ -42,7 +42,7 @@
 
 ## Brain Step 与宿主入口
 
-`brain_step` 只接收一个 `action` 参数，三个值分别返回固定的 Markdown：
+`brain_step` 用 `action` 和非空 `thought` 接收模型在当前步骤实际形成的思考，并返回固定 Markdown：
 
 | 动作 | 返回 |
 | --- | --- |
@@ -50,7 +50,7 @@
 | `ready` | [Step 3](step/prompts/step3.md) |
 | `review` | [Step 4](step/prompts/step4.md) |
 
-[Step 1](step/prompts/step1.md) 是第一次调用 `start` 前模型看到的初始提示词，由 MCP server instructions 或 Codex、Claude、DSH 宿主入口提供；显式 CLI Skill 使用 `brain-skill step --intro`。各份提示词由正式文件直接读取，用户的原文保持不变。无需消息参数、轮次 ID、成果提交或 Step State，模型自主工作和检视，有实际改进时在 Step 4 中再次调用 `ready`。
+[Step 1](step/prompts/step1.md) 是第一次调用 `start` 前模型看到的初始提示词，由 MCP server instructions 或 Codex、Claude、DSH 宿主入口提供；显式 CLI Skill 使用 `brain-skill step --intro`。各份提示词由正式文件直接读取，用户的原文保持不变。程序不另存 Step 思考记录，也不评价思考充分程度。模型自主工作和检视，有实际改进时在 Step 4 中再次调用 `ready`。
 
 Brain 独立管理 Global/Project 长期记忆、发现工具和历史检查点。Codex/Claude/DSH 由已有宿主 Hook 在用户消息边界完成恢复；显式 MCP/Tunnel 与 CLI 的 `start` 保留首次恢复的调用。工作提示词与记忆维护是不同的职责。
 
@@ -69,7 +69,7 @@ Brain 独立管理 Global/Project 长期记忆、发现工具和历史检查点�
 
 主要模型可见工具：
 
-- `brain_step` — 根据 start、ready、review 返回固定的 Markdown 提示词；
+- `brain_step` — 接收当前步骤形成的思考，返回下一份固定 Markdown；
 - `brain_absolute_path` — 把 Brain workspace 地址映射为 filesystem path；
 - `brain_ls` — 浏览一个 archival cognition directory；
 - `brain_glob` — 按 public path glob 查找 archival cognition；
@@ -84,7 +84,7 @@ Brain 独立管理 Global/Project 长期记忆、发现工具和历史检查点�
 
 具体 model-visible schema / guidance 以 `src/integration/public-tools.ts` 为准。
 
-所有 Brain 工具均通过 MCP `content` 返回文本。`brain_step` 成功时第一段文本是对应固定提示词，不使用 `turnId`、`structuredContent` 或 `outputSchema`；显式入口恢复历史记忆有警告时，可能另返回警告文本块。其它 Brain 工具的分页信息随读取正文返回，失败通过 `isError: true` 标记。
+所有 Brain 工具均通过 MCP `content` 返回文本。`brain_step` 的 `start`、`ready`、`review` 成功时第一段文本以当前项目路径开头，随后是对应的固定提示词；Brain 内部历史维护诊断不附加到提示词。其它 Brain 工具的分页信息随读取正文返回，失败通过 `isError: true` 标记。
 
 ## Archival cognition
 

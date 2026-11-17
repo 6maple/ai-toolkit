@@ -47,7 +47,6 @@ export async function createCliRuntime(
   try {
     signal.throwIfAborted();
     const config = loadBrainGlobalConfig(brainRoot);
-    warnings.push(...config.diagnostics.map((item) => item.message));
     if (invocation.command === "ask-search" && !config.features.semanticSearch) {
       throw new CliError(
         "semantic-search-disabled",
@@ -59,8 +58,6 @@ export async function createCliRuntime(
       brainRoot,
       projectId: project.projectId,
     });
-    if (infrastructure.historyPreparation.kind !== "available")
-      warnings.push(infrastructure.historyPreparation.diagnostic.message);
     signal.throwIfAborted();
 
     // Read-only CLI operations need no embedding runtime. Mutation services retain
@@ -84,9 +81,6 @@ export async function createCliRuntime(
         embeddings = undefined;
         signal.throwIfAborted();
         if (invocation.command === "ask-search") throw error;
-        warnings.push(
-          `Semantic index update deferred: ${error instanceof Error ? error.message : String(error)}`,
-        );
       }
     }
     signal.throwIfAborted();
@@ -114,19 +108,19 @@ export async function createCliRuntime(
         const context = { signal };
         switch (invocation.command) {
           case "step": {
-            const text = executeStep(args);
+            const text = await executeStep(args);
             if (args.action === "start") {
               // Preserve the former first-call Brain maintenance independently of Step.
               const restored = await routed.think();
               signal.throwIfAborted();
-              warnings.push(...restored.diagnostics.map((item) => item.message));
+              warnings.push(...restored.diagnostics.filter((item) => item.kind === "archival-item-skipped").map((item) => item.message));
             }
             return text;
           }
           case "cat": {
             if (isBrainVirtualPath(path)) {
               const result = await routed.readVirtual(path);
-              warnings.push(...result.diagnostics.map((item) => item.message));
+              warnings.push(...result.diagnostics.filter((item) => item.kind === "archival-item-skipped").map((item) => item.message));
               return result.context;
             }
             return (
