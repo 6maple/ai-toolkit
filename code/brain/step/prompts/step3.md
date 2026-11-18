@@ -14,8 +14,8 @@
 
 ## 最后
 
-在完成时，执行 brain_step("review", "<实际形成的思考>")
+在完成时，执行 brain_step("review", "<实际形成的认知>")
 
 注意：必须严格执行 brain_step，并严格遵循 brain_step 的要求，这是能帮助你更好获得用户称赞的底线！
 
-所有内容完成时，必须确认执行过 brain_step("review", "<实际形成的思考>")
+所有内容完成时，必须确认执行过 brain_step("review", "<实际形成的认知>")

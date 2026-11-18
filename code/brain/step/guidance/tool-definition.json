@@ -1,6 +1,6 @@
 {
   "name": "brain_step",
-  "description": "完成当前 Brain 提示词要求的工作后，提交指定动作和本轮实际形成的思考，取得该动作对应的固定提示词。",
+  "description": "完成当前 Brain 提示词要求的工作后，提交指定动作和本步骤实际形成的认知，取得该动作对应的固定提示词。",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -15,7 +15,7 @@
       },
       "thought": {
         "type": "string",
-        "description": "本步骤完成后实际形成的“你的思考”，必填且非空。"
+        "description": "本步骤实际形成的认知，必填且非空。"
       }
     },
     "required": [

@@ -16,5 +16,5 @@ export const inputSchema = z.strictObject({
     .string()
     .trim()
     .min(1)
-    .describe("你的思考：完成当前步骤后实际形成的认识、判断或工作情况。"),
+    .describe("本步骤实际形成的认知。"),
 });
